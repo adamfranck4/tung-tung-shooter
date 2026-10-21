@@ -69,8 +69,9 @@ export class Game {
       const names = NAMES[t].slice();
       const count = t === team ? 4 : 5;
       for (let i = 0; i < count; i++) {
-        const b = new Bot(this, names[i], t, difficulty);
-        if (t === team) b.addMarker(t === 'CT' ? '#7fb2ff' : '#ffc45e');
+        // your teammates are green, the enemy team is red
+        const b = new Bot(this, names[i], t, difficulty, t === team ? 'friend' : 'enemy');
+        if (t === team) b.addMarker('#7ddf5a');
         this.bots.push(b); this.combatants.push(b);
       }
     }

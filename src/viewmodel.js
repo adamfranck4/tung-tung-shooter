@@ -27,12 +27,12 @@ function limb(parent, from, to, thick, color) {
   return m;
 }
 
-// Wooden stick arms (everyone is a Tung Tung Tung Sahur log), with a team-colored wristband.
-const WOOD = 0x8a5d33, KNOB = 0xc0915e;
+// Your arms: thin Tung Tung arms in the friendly (green) team color, with a wristband.
+const WOOD = 0x5d9236, KNOB = 0x8cc45a;
 function arms(g, band, twoHands, leftZ = -0.26) {
   b(g, 0.055, 0.07, 0.075, KNOB, 0.0, -0.075, 0.06);                      // right hand
   b(g, 0.05, 0.05, 0.03, band, 0.02, -0.1, 0.12);                          // wristband
-  limb(g, [0.01, -0.09, 0.09], [0.13, -0.3, 0.42], 0.045, WOOD);           // right stick arm
+  limb(g, [0.01, -0.09, 0.09], [0.13, -0.3, 0.42], 0.045, WOOD);           // right arm
   if (twoHands) {
     b(g, 0.065, 0.055, 0.08, KNOB, -0.01, -0.05, leftZ);                   // left hand
     b(g, 0.05, 0.05, 0.03, band, -0.05, -0.1, leftZ + 0.08);
@@ -42,6 +42,7 @@ function arms(g, band, twoHands, leftZ = -0.26) {
 
 // ---------- knife skins ----------
 // Blades are drawn as 2D outlines (x = forward, y = up) and extruded a few mm thick.
+// Each build(k, parts) adds meshes to k and registers moving parts for the animations.
 function bladeMesh(shape, depth, color) {
   const g = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: true, bevelThickness: 0.0015, bevelSize: 0.0015, bevelSegments: 1, curveSegments: 12 });
   g.translate(0, 0, -depth / 2);
@@ -72,34 +73,37 @@ function knifeKarambit(k) {
   ring.position.set(-0.12, 0, 0); handle.add(ring);
 }
 
-function knifeFlip(k) {
-  k.add(bladeMesh(shapeFrom((s) => {
-    s.moveTo(0, -0.015); s.lineTo(0.12, -0.015);
-    s.quadraticCurveTo(0.165, -0.012, 0.175, 0.004);
-    s.quadraticCurveTo(0.14, 0.022, 0.08, 0.023);
-    s.lineTo(0.0, 0.021);
-    s.lineTo(0.004, 0.032); s.lineTo(-0.008, 0.03); // flipper
-    s.lineTo(-0.008, -0.015);
+function knifeFlip(k, parts) {
+  // the blade swings on a hinge at the front of the handle; folded = rotated half a turn
+  const hinge = new THREE.Group(); hinge.position.set(-0.004, 0.003, 0); k.add(hinge);
+  hinge.add(bladeMesh(shapeFrom((s) => {
+    s.moveTo(0.004, -0.018); s.lineTo(0.124, -0.018);
+    s.quadraticCurveTo(0.169, -0.015, 0.179, 0.001);
+    s.quadraticCurveTo(0.144, 0.019, 0.084, 0.02);
+    s.lineTo(0.004, 0.018);
+    s.lineTo(0.008, 0.029); s.lineTo(-0.004, 0.027); // flipper tab
+    s.lineTo(-0.004, -0.018);
   }), 0.005, 0xb9bec6));
+  parts.blade = hinge;
   b(k, 0.11, 0.03, 0.024, 0x2b2e33, -0.062, 0.003, 0);
   b(k, 0.02, 0.032, 0.026, 0x8a9099, -0.005, 0.003, 0, 0, 0, 0, shiny(0x8a9099)); // bolster
 }
 
-function knifeButterfly(k) {
+function knifeButterfly(k, parts) {
   k.add(bladeMesh(shapeFrom((s) => {
     s.moveTo(0, -0.012); s.lineTo(0.14, -0.012);
     s.lineTo(0.175, 0.004);
     s.lineTo(0.14, 0.018); s.lineTo(0, 0.016);
   }), 0.005, 0xcfd3d9));
-  // two handle halves that swing around the pivots during flips
+  // two handle halves that swing around their pins during flips
   const mk = (y, z) => {
     const piv = new THREE.Group(); piv.position.set(0, y, z); k.add(piv);
     b(piv, 0.12, 0.014, 0.012, 0, -0.06, 0, 0, 0, 0, 0, shiny(0x6d7480));
     b(piv, 0.1, 0.006, 0.013, 0x22262c, -0.06, 0, 0);
     return piv;
   };
-  k.userData.bfA = mk(0.009, 0.007);
-  k.userData.bfB = mk(-0.006, -0.007);
+  parts.bfA = mk(0.009, 0.007);
+  parts.bfB = mk(-0.006, -0.007);
 }
 
 function knifeSword(k) {
@@ -115,29 +119,140 @@ function knifeSword(k) {
   pommel.position.set(-0.14, 0, 0); blade.add(pommel);
 }
 
+// ---------- CS2-style draw and inspect animations ----------
+// Keyframe tracks [time, value]; values blend with an ease-in-out between keys.
+//   px py pz rx ry rz : whole hand + knife offset (meters / radians)
+//   roll  : twirl around the blade's length      spin : rotate in the blade's plane around the pivot
+//   blade : flip knife blade (0 open, PI folded)  bfA / bfB : butterfly handles (0 open, ±PI closed)
+const PI = Math.PI, TAU = Math.PI * 2;
+const CLIPS = {
+  knife: {
+    // pulled up with a quick twirl
+    draw: { dur: 0.9, tracks: {
+      px: [[0, 0], [0.3, -0.04], [0.6, -0.02], [0.9, 0]],
+      py: [[0, -0.22], [0.3, 0.05], [0.6, 0.02], [0.9, 0]], rx: [[0, -0.7], [0.3, 0.08], [0.55, 0]],
+      roll: [[0, -TAU], [0.55, 0]], rz: [[0, 0.3], [0.4, -0.05], [0.7, 0]],
+    } },
+    // brings it up, turns it to show one face, flips it to the other side, checks the edge
+    inspect: { dur: 3.6, tracks: {
+      px: [[0, 0], [0.45, -0.13], [3.1, -0.13], [3.6, 0]], py: [[0, 0], [0.45, 0.09], [3.1, 0.09], [3.6, 0]],
+      ry: [[0, 0], [0.45, 0.7], [1.5, 0.7], [1.9, 0.35], [3.1, 0.35], [3.6, 0]],
+      rz: [[0, 0], [0.45, -0.6], [1.5, -0.6], [1.9, 0.25], [3.1, 0.25], [3.6, 0]],
+      roll: [[0, 0], [1.5, 0], [1.9, PI], [2.6, PI], [2.85, PI * 0.82], [3.1, PI], [3.6, TAU]],
+      rx: [[0, 0], [2.3, 0], [2.6, 0.35], [3.0, 0.35], [3.3, 0]],
+    } },
+  },
+  karambit: {
+    // brought up and spun twice around the index finger through the ring, then caught in a reverse grip
+    draw: { dur: 1.15, tracks: {
+      px: [[0, 0], [0.3, -0.07], [0.8, -0.06], [1.15, 0]],
+      py: [[0, -0.24], [0.3, 0.08], [0.8, 0.06], [1.15, 0]], rx: [[0, -0.6], [0.3, 0.06], [0.55, 0]],
+      spin: [[0, -2 * TAU], [0.8, 0], [1.15, 0]], rz: [[0, 0.25], [0.45, 0], [0.8, -0.08], [1.15, 0]],
+    } },
+    // shows the claw, spins it on the finger, flips to the other side, spins twice more
+    inspect: { dur: 4.0, tracks: {
+      px: [[0, 0], [0.45, -0.14], [3.5, -0.14], [4.0, 0]], py: [[0, 0], [0.45, 0.1], [3.5, 0.1], [4.0, 0]],
+      ry: [[0, 0], [0.45, 0.6], [1.7, 0.6], [2.1, 0.15], [3.5, 0.15], [4.0, 0]],
+      rz: [[0, 0], [0.45, -0.55], [1.7, -0.55], [2.1, 0.2], [3.5, 0.2], [4.0, 0]],
+      spin: [[0, 0], [0.9, 0], [1.5, TAU], [2.3, TAU], [3.2, 3 * TAU], [4.0, 3 * TAU]],
+      roll: [[0, 0], [1.7, 0], [2.1, PI], [3.3, PI], [3.8, TAU], [4.0, TAU]],
+    } },
+  },
+  flip: {
+    // comes out folded, a flick of the wrist snaps the blade open
+    draw: { dur: 1.0, tracks: {
+      px: [[0, 0], [0.25, -0.05], [0.6, -0.04], [1.0, 0]],
+      py: [[0, -0.2], [0.25, 0.06], [0.6, 0.04], [1.0, 0]], rx: [[0, -0.55], [0.25, 0.05], [0.5, 0]],
+      blade: [[0, PI], [0.28, PI], [0.46, 0]],
+      rz: [[0, 0.15], [0.3, 0.2], [0.46, -0.3], [0.65, 0.05], [1.0, 0]],
+    } },
+    // turns it over, folds the blade, flicks it open again, little toss and catch
+    inspect: { dur: 4.2, tracks: {
+      px: [[0, 0], [0.4, -0.13], [3.7, -0.13], [4.2, 0]],
+      py: [[0, 0], [0.4, 0.09], [2.95, 0.09], [3.15, 0.15], [3.45, 0.09], [3.7, 0.09], [4.2, 0]],
+      ry: [[0, 0], [0.4, 0.65], [3.7, 0.65], [4.2, 0]],
+      rz: [[0, 0], [0.4, -0.5], [2.35, -0.5], [2.5, -0.85], [2.7, -0.4], [3.7, -0.5], [4.2, 0]],
+      roll: [[0, 0], [0.5, 0], [1.1, PI], [1.7, PI], [2.2, TAU], [4.2, TAU]],
+      blade: [[0, 0], [1.75, 0], [2.05, PI], [2.4, PI], [2.55, 0], [4.2, 0]],
+      spin: [[0, 0], [2.95, 0], [3.45, TAU], [4.2, TAU]],
+    } },
+  },
+  butterfly: {
+    // starts closed: one handle swings open, the knife rolls over, the second handle swings, locked open
+    draw: { dur: 1.35, tracks: {
+      px: [[0, 0], [0.3, -0.07], [0.98, -0.06], [1.35, 0]],
+      py: [[0, -0.22], [0.3, 0.07], [0.98, 0.06], [1.35, 0]], rx: [[0, -0.5], [0.3, 0.04], [0.5, 0]],
+      bfA: [[0, PI], [0.3, PI], [0.62, 0]], bfB: [[0, -PI], [0.62, -PI], [0.98, 0]],
+      roll: [[0, 0], [0.3, 0], [0.62, PI], [0.98, TAU], [1.35, TAU]],
+      rz: [[0, 0.2], [0.98, -0.1], [1.35, 0]],
+    } },
+    // two full open/close flips, then an aerial: tossed, spun and caught by the handle
+    inspect: { dur: 4.8, tracks: {
+      px: [[0, 0], [0.4, -0.13], [4.3, -0.13], [4.8, 0]],
+      py: [[0, 0], [0.4, 0.09], [3.0, 0.09], [3.25, 0.17], [3.6, 0.09], [4.3, 0.09], [4.8, 0]],
+      ry: [[0, 0], [0.4, 0.55], [4.3, 0.55], [4.8, 0]],
+      rz: [[0, 0], [0.4, -0.45], [4.3, -0.45], [4.8, 0]],
+      bfA: [[0, 0], [0.5, 0], [0.8, PI], [1.1, 0], [1.9, 0], [2.2, PI], [2.5, PI], [2.8, 0], [4.8, 0]],
+      bfB: [[0, 0], [0.6, 0], [0.95, -PI], [1.3, 0], [2.0, 0], [2.3, -PI], [2.6, -PI], [2.95, 0], [4.8, 0]],
+      roll: [[0, 0], [0.5, 0], [1.3, TAU], [1.9, TAU], [2.95, 2 * TAU], [4.8, 2 * TAU]],
+      spin: [[0, 0], [3.0, 0], [3.6, TAU], [4.8, TAU]],
+    } },
+  },
+  sword: {
+    // drawn from over the shoulder and swung down into the ready position
+    draw: { dur: 1.15, tracks: {
+      rx: [[0, 1.3], [0.45, -0.18], [0.7, 0.05], [1.15, 0]], ry: [[0, -0.5], [0.45, 0.12], [1.15, 0]],
+      py: [[0, 0.12], [0.45, -0.04], [1.15, 0]],
+    } },
+    // two twirls around the grip, shows the blade, then a salute
+    inspect: { dur: 4.0, tracks: {
+      spin: [[0, 0], [0.35, 0], [1.35, 2 * TAU], [4.0, 2 * TAU]],
+      px: [[0, 0], [1.35, 0], [1.7, -0.1], [2.8, -0.1], [3.1, -0.04], [3.7, -0.04], [4.0, 0]],
+      py: [[0, 0], [1.35, 0], [1.7, 0.05], [2.8, 0.05], [3.1, 0], [4.0, 0]],
+      ry: [[0, 0], [1.35, 0], [1.7, 0.55], [2.8, 0.55], [3.1, 0], [4.0, 0]],
+      rz: [[0, 0], [1.35, 0], [1.7, -0.45], [2.8, -0.45], [3.1, 0]],
+      rx: [[0, 0], [3.0, 0], [3.3, 0.85], [3.7, 0.85], [4.0, 0]],
+    } },
+  },
+};
+const ease = (t) => t * t * (3 - 2 * t);
+function sampleTrack(keys, t) {
+  if (t <= keys[0][0]) return keys[0][1];
+  for (let i = 1; i < keys.length; i++) {
+    const [t1, v1] = keys[i];
+    if (t <= t1) { const [t0, v0] = keys[i - 1]; return v0 + (v1 - v0) * ease((t - t0) / (t1 - t0)); }
+  }
+  return keys[keys.length - 1][1];
+}
+
 export const KNIFE_SKINS = [
-  { id: 'knife', name: 'Knife', build: knifeRegular },
-  { id: 'karambit', name: 'Karambit', build: knifeKarambit },
-  { id: 'flip', name: 'Flip Knife', build: knifeFlip },
-  { id: 'butterfly', name: 'Butterfly Knife', build: knifeButterfly },
-  { id: 'sword', name: 'Sword', build: knifeSword },
+  // pivot = the point (in blade space) the knife spins around: the karambit's finger ring, a sword's grip...
+  { id: 'knife', name: 'Knife', build: knifeRegular, pivot: [-0.05, 0] },
+  { id: 'karambit', name: 'Karambit', build: knifeKarambit, pivot: [-0.1163, -0.0297] },
+  { id: 'flip', name: 'Flip Knife', build: knifeFlip, pivot: [-0.05, 0] },
+  { id: 'butterfly', name: 'Butterfly Knife', build: knifeButterfly, pivot: [-0.03, 0] },
+  { id: 'sword', name: 'Sword', build: knifeSword, pivot: [-0.06, 0] },
 ];
 export function knifeName(id) { return (KNIFE_SKINS.find((s) => s.id === id) || KNIFE_SKINS[0]).name; }
 
 function buildKnife(skin, band) {
   const g = new THREE.Group();
-  const k = new THREE.Group();     // knife in "shape space" (x forward, y up)
-  skin.build(k);
-  k.rotation.order = 'YXZ';          // so rotation.x twirls around the blade's length
-  k.rotation.set(0, Math.PI / 2, 0); // shape +x -> view -z
   const holder = new THREE.Group();
   holder.position.set(0, -0.055, 0.04);
   holder.rotation.set(0.25, 0.35, 0); // tip angled up and toward the screen center
-  holder.add(k);
-  g.add(holder);
+  const k = new THREE.Group();        // knife in "shape space" (x forward, y up)
+  k.rotation.order = 'YXZ';           // so rotation.x twirls around the blade's length
+  k.rotation.set(0, Math.PI / 2, 0);  // shape +x -> view -z
+  const spin = new THREE.Group();     // spins in the blade's plane around the skin's pivot
+  spin.position.set(skin.pivot[0], skin.pivot[1], 0);
+  const inner = new THREE.Group();
+  inner.position.set(-skin.pivot[0], -skin.pivot[1], 0);
+  const parts = {};
+  skin.build(inner, parts);
+  spin.add(inner); k.add(spin); holder.add(k); g.add(holder);
   arms(g, band, false);
   g.userData.muzzle = null;
-  g.userData.knife = k;
+  g.userData.knife = { k, spin, parts, clips: CLIPS[skin.id] };
   return g;
 }
 
@@ -245,7 +360,8 @@ export class ViewModel {
     this.team = null; this.models = null; this.current = null; this.key = null;
     this.knifeSkin = 'knife';
     this.bob = 0; this.swayX = 0; this.swayY = 0; this.kick = 0; this.flashT = 0; this.swing = 0;
-    this.inspectT = 0; this.flipT = 0;
+    this.inspectT = 0;           // generic gun inspect
+    this.clip = null; this.clipT = 0; // knife draw / inspect keyframe animation
   }
 
   setTeam(team) {
@@ -265,12 +381,15 @@ export class ViewModel {
     this.key = vmKey;
     this.current = this.models[vmKey];
     if (this.current) this.current.visible = true;
-    this.inspectT = 0;
-    if (vmKey === 'knife_butterfly') this.flipT = 0.7; // flip it open on deploy
+    this.inspectT = 0; this.clip = null;
+    const knife = this.current?.userData.knife;
+    if (knife) this.play(knife.clips.draw);   // every knife has its own draw animation
   }
 
+  play(clip) { this.clip = clip; this.clipT = 0; }
+
   fire(melee) {
-    this.inspectT = 0;
+    this.inspectT = 0; this.clip = null;      // attacking cancels draw / inspect
     if (melee) { this.swing = 1; return; }
     this.kick = 1;
     this.flashT = 0.045;
@@ -278,9 +397,9 @@ export class ViewModel {
   }
 
   inspect() {
-    if (this.inspectT > 0) return;
-    this.inspectT = 2.6;
-    if (this.key === 'knife_butterfly') this.flipT = 2.2;
+    const knife = this.current?.userData.knife;
+    if (knife) { if (!this.clip) this.play(knife.clips.inspect); return; }
+    if (this.inspectT <= 0) this.inspectT = 2.6;
   }
 
   resize() { this.camera.aspect = innerWidth / innerHeight; this.camera.updateProjectionMatrix(); }
@@ -312,7 +431,7 @@ export class ViewModel {
       const dip = Math.sin(Math.min(1, Math.max(0, k)) * Math.PI);
       y -= dip * 0.12; rx -= dip * 0.45; rz += dip * 0.35;
     }
-    if (t < p.deployUntil) {
+    if (t < p.deployUntil && !w.def.melee) {   // knives use their own draw animation instead
       const k = (p.deployUntil - t) / (w.def.deploy || 0.5);
       y -= k * k * 0.3; rx -= k * 0.6;
     }
@@ -321,7 +440,7 @@ export class ViewModel {
       const big = this.key === 'knife_sword' ? 1.5 : 1;
       ry += s * 0.9 * big; rz -= s * 0.6 * big; x -= s * 0.08; z -= s * 0.06;
     }
-    // inspect: turn the weapon to show it off
+    // gun inspect: turn the weapon to show it off
     if (this.inspectT > 0) {
       this.inspectT -= dt;
       const k = 1 - Math.max(0, this.inspectT) / 2.6;
@@ -329,19 +448,21 @@ export class ViewModel {
       x -= e * 0.07; y += e * 0.04; z += e * 0.05;
       ry += e * 0.75; rz -= e * 0.55 + Math.sin(k * Math.PI * 2) * 0.15 * e; rx += e * 0.2;
     }
-    // butterfly knife handle flips
+    // knife draw / inspect keyframes
     const knife = this.current?.userData.knife;
-    if (knife?.userData.bfA) {
-      const A = knife.userData.bfA, B = knife.userData.bfB;
-      if (this.flipT > 0) {
-        this.flipT -= dt;
-        const a = this.flipT * 14;
-        A.rotation.z = Math.PI * (0.5 - 0.5 * Math.cos(a));
-        B.rotation.z = -Math.PI * (0.5 - 0.5 * Math.cos(a + 1.3));
-        knife.rotation.x = Math.sin(this.flipT * 9) * 0.6;
-      } else {
-        A.rotation.z *= 0.6; B.rotation.z *= 0.6; knife.rotation.x *= 0.6;
+    if (knife) {
+      const v = { px: 0, py: 0, pz: 0, rx: 0, ry: 0, rz: 0, roll: 0, spin: 0, blade: 0, bfA: 0, bfB: 0 };
+      if (this.clip) {
+        this.clipT += dt;
+        for (const [name, keys] of Object.entries(this.clip.tracks)) v[name] = sampleTrack(keys, this.clipT);
+        if (this.clipT >= this.clip.dur) this.clip = null;
       }
+      x += v.px; y += v.py; z += v.pz; rx += v.rx; ry += v.ry; rz += v.rz;
+      knife.k.rotation.x = v.roll;
+      knife.spin.rotation.z = v.spin;
+      const P = knife.parts;
+      if (P.blade) P.blade.rotation.z = v.blade;
+      if (P.bfA) { P.bfA.rotation.z = v.bfA; P.bfB.rotation.z = v.bfB; }
     }
     this.root.position.set(x, y, z);
     this.root.rotation.set(rx, ry, rz);

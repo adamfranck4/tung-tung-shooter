@@ -325,6 +325,7 @@ window.__sim = (seconds = 1, fps = 60) => {
   render();
 };
 
+window.__renderer = renderer; // debug: lets test scripts render frames to a contact sheet
 // debug helper: average milliseconds per frame (simulation + rendering, waiting for the GPU)
 window.__bench = (frames = 120) => {
   const gl = renderer.getContext();

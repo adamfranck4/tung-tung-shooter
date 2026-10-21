@@ -305,61 +305,61 @@ export function treeRingsTexture() {
   return toTexture(c, false);
 }
 
-// Painted face for the Tung Tung Tung Sahur log: brows, eye sockets, nose and a big open smile.
-// Wraps around the front of the log (u = left->right as seen from the front, v = bottom->top).
-// The 3D eyeballs sit on top of this at the socket positions.
+// Smooth, polished wood for the Tung Tung body (light; tinted per team by the material color).
+// Darker toward the bottom like the reference character.
+export function tungSkinTexture() {
+  const W = 256, H = 512, r = rng(131);
+  const [c, ctx] = makeCanvas(W, H);
+  ctx.fillStyle = '#f4d08a'; ctx.fillRect(0, 0, W, H);
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, 'rgba(255,245,215,0.25)');
+  g.addColorStop(0.45, 'rgba(255,240,200,0)');
+  g.addColorStop(1, 'rgba(90,45,10,0.55)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  for (let i = 0; i < 40; i++) {   // faint grain
+    const x0 = r() * W, wob = 2 + r() * 5, ph = r() * 6;
+    ctx.strokeStyle = `rgba(140,85,30,${0.04 + r() * 0.07})`; ctx.lineWidth = 1 + r() * 2;
+    ctx.beginPath();
+    for (let y = 0; y <= H; y += 8) { const x = x0 + Math.sin(y / 70 + ph) * wob; if (y === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
+    ctx.stroke();
+  }
+  blotches(ctx, W, H, 14, '150,90,30', 0.08, 70, r);
+  noise(ctx, W, H, 8, r);
+  const t = toTexture(c);
+  t.wrapT = THREE.ClampToEdgeWrapping;
+  return t;
+}
+
+// Painted details for the face (the eyes, brow ridges and nose are 3D on top of this):
+// soft eye sockets, a shadow under the nose and a small closed smile.
+// Covers the front of the log from 0.62 m to 1.08 m above the hips.
 export function tungFaceTexture() {
   const W = 512, H = 384;
   const [c, ctx] = makeCanvas(W, H);
   ctx.clearRect(0, 0, W, H);
-  const ex = [167, 345], ey = 92;
-  // eye sockets (darker wood around the eyes)
-  for (const x of ex) {
-    const g = ctx.createRadialGradient(x, ey, 20, x, ey, 70);
-    g.addColorStop(0, 'rgba(70,40,15,0.55)'); g.addColorStop(1, 'rgba(70,40,15,0)');
+  const ex = [161, 351], ey = 75;
+  for (const x of ex) {               // eye sockets
+    const g = ctx.createRadialGradient(x, ey, 30, x, ey, 72);
+    g.addColorStop(0, 'rgba(70,35,10,0.42)'); g.addColorStop(1, 'rgba(70,35,10,0)');
     ctx.fillStyle = g; ctx.fillRect(x - 80, ey - 80, 160, 160);
   }
-  // thick eyebrows
-  ctx.strokeStyle = '#3d220d'; ctx.lineCap = 'round'; ctx.lineWidth = 20;
-  for (const [x, dir] of [[ex[0], 1], [ex[1], -1]]) {
-    ctx.beginPath();
-    ctx.moveTo(x - 50 * dir, 30);
-    ctx.quadraticCurveTo(x, 6, x + 52 * dir, 28);
-    ctx.stroke();
+  const ns = ctx.createRadialGradient(256, 250, 4, 256, 250, 46);  // shadow under the nose
+  ns.addColorStop(0, 'rgba(60,28,8,0.5)'); ns.addColorStop(1, 'rgba(60,28,8,0)');
+  ctx.fillStyle = ns; ctx.fillRect(200, 210, 112, 80);
+  for (const x of [150, 362]) {       // a little warmth in the cheeks
+    const g = ctx.createRadialGradient(x, 215, 5, x, 215, 55);
+    g.addColorStop(0, 'rgba(190,70,40,0.18)'); g.addColorStop(1, 'rgba(190,70,40,0)');
+    ctx.fillStyle = g; ctx.fillRect(x - 60, 160, 120, 110);
   }
-  // nose: soft carved bump shading
-  const ng = ctx.createRadialGradient(256, 190, 4, 256, 190, 34);
-  ng.addColorStop(0, 'rgba(90,52,20,0.15)'); ng.addColorStop(0.7, 'rgba(90,52,20,0.45)'); ng.addColorStop(1, 'rgba(90,52,20,0)');
-  ctx.fillStyle = ng; ctx.fillRect(210, 150, 92, 80);
-  ctx.fillStyle = 'rgba(60,32,10,0.7)';
-  ctx.beginPath(); ctx.ellipse(244, 204, 7, 5, 0, 0, 7); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(268, 204, 7, 5, 0, 0, 7); ctx.fill();
-  // big open smile
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(150, 250);
-  ctx.quadraticCurveTo(256, 280, 362, 250);
-  ctx.quadraticCurveTo(340, 360, 256, 362);
-  ctx.quadraticCurveTo(172, 360, 150, 250);
-  ctx.closePath();
-  ctx.fillStyle = '#3a120a'; ctx.fill();
-  ctx.clip();
-  ctx.fillStyle = '#f3ecdc'; // teeth
-  ctx.beginPath(); ctx.moveTo(150, 250); ctx.quadraticCurveTo(256, 282, 362, 250); ctx.lineTo(362, 284); ctx.quadraticCurveTo(256, 312, 150, 284); ctx.fill();
-  ctx.strokeStyle = 'rgba(120,100,80,0.6)'; ctx.lineWidth = 3;
-  for (let x = 190; x <= 322; x += 33) { ctx.beginPath(); ctx.moveTo(x, 262); ctx.lineTo(x, 300); ctx.stroke(); }
-  ctx.fillStyle = '#c4534a'; // tongue
-  ctx.beginPath(); ctx.ellipse(256, 352, 62, 30, 0, 0, 7); ctx.fill();
-  ctx.restore();
-  ctx.strokeStyle = '#2a1206'; ctx.lineWidth = 7; ctx.lineJoin = 'round';
-  ctx.beginPath();
-  ctx.moveTo(150, 250); ctx.quadraticCurveTo(256, 280, 362, 250);
-  ctx.quadraticCurveTo(340, 360, 256, 362); ctx.quadraticCurveTo(172, 360, 150, 250);
-  ctx.stroke();
-  // smile creases
-  ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(70,38,14,0.75)';
-  ctx.beginPath(); ctx.moveTo(138, 236); ctx.quadraticCurveTo(132, 252, 142, 266); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(374, 236); ctx.quadraticCurveTo(380, 252, 370, 266); ctx.stroke();
+  // small closed smile
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = 'rgba(255,230,190,0.35)'; ctx.lineWidth = 10;   // lower lip highlight
+  ctx.beginPath(); ctx.moveTo(206, 292); ctx.quadraticCurveTo(256, 322, 306, 292); ctx.stroke();
+  ctx.strokeStyle = '#3a1806'; ctx.lineWidth = 7;
+  ctx.beginPath(); ctx.moveTo(200, 280); ctx.quadraticCurveTo(256, 314, 312, 280); ctx.stroke();
+  ctx.lineWidth = 5;                                                     // dimples
+  ctx.beginPath(); ctx.moveTo(194, 272); ctx.quadraticCurveTo(190, 282, 198, 290); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(318, 272); ctx.quadraticCurveTo(322, 282, 314, 290); ctx.stroke();
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 8;

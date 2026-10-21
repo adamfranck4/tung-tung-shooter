@@ -172,14 +172,18 @@ class Zombie extends Combatant {
     m.torso.position.y = 0.6 + Math.abs(Math.cos(this.walkPhase)) * 0.04 * amp;
     m.torso.rotation.z = Math.sin(this.walkPhase) * 0.07 * amp;
     m.torso.rotation.x = this.speed > 4.5 ? -0.3 : -0.14; // hunched forward
-    let armX = 0.25 + Math.sin(this.walkPhase * 0.5) * 0.08;
+    // bat held low at the side while walking (like the reference), raised over the shoulder to swing
+    let armX = -0.35 + Math.sin(this.walkPhase * 0.5) * 0.08, batX = 0.35 + Math.sin(this.walkPhase) * 0.12;
     if (this.attackT > 0) {
       const k = 1 - this.attackT / 0.75;
-      armX = k < 0.55 ? 0.25 + (k / 0.55) * 1.25 : 1.5 - ((k - 0.55) / 0.45) * 2.1;
+      if (k < 0.55) { const e = k / 0.55; armX = -0.35 + e * 1.25; batX = 0.35 - e * 2.6; }
+      else { const e = (k - 0.55) / 0.45; armX = 0.9 - e * 1.35; batX = -2.25 + e * 3.2; }
     } else if (this.state === 'tear') {
       armX = 0.5 + Math.sin(this.game.time * 9 + this.walkPhase) * 0.6;
+      batX = -0.6 + Math.sin(this.game.time * 9 + this.walkPhase) * 0.9;
     }
     m.arms.rotation.x = armX;
+    m.bat.rotation.x = batX;
   }
 
   updateDead(dt) {
