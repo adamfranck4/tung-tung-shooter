@@ -1,23 +1,33 @@
 // The human player: reads keyboard/mouse input and drives a Combatant.
 import { Combatant } from './combatant.js';
 
+// CS2's m_yaw / m_pitch: 0.022 degrees per mouse count, times the sensitivity setting.
+export const CS_DEG_PER_COUNT = 0.022 * Math.PI / 180;
+const MAX_PITCH = 89 * Math.PI / 180;
+const NOISY_SPEED = 3.6; // m/s; shift-walking stays below this and is silent, like CS2
+
 export class Player extends Combatant {
   constructor(game, team) {
     super(game, 'You', team);
     this.stepT = 0;
     this.buyOpen = false;
+    this.jumpBuffer = 0;
   }
 
+  // Aim. Called once per rendered frame (not per physics tick) so the view never lags the mouse.
+  look() {
+    const g = this.game, inp = g.input;
+    if (!this.alive) return;
+    const zoom = this.scoped ? g.scopeFov / g.baseFov : 1;
+    const k = CS_DEG_PER_COUNT * g.settings.sens * zoom;
+    this.yaw -= inp.dx * k;
+    this.pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, this.pitch - inp.dy * k));
+  }
+
+  // Everything else. Called once per physics tick.
   update(dt) {
     const g = this.game, inp = g.input;
     if (!this.alive) return;
-
-    // ----- look -----
-    const fovScale = this.scoped ? g.scopeFov / g.baseFov : 1;
-    const sens = 0.0022 * g.settings.sens * fovScale;
-    this.yaw -= inp.dx * sens;
-    this.pitch -= inp.dy * sens;
-    this.pitch = Math.max(-1.55, Math.min(1.55, this.pitch));
 
     // ----- buy menu -----
     if (inp.pressed('KeyB')) {
@@ -66,16 +76,47 @@ export class Player extends Combatant {
     }
     this.setCrouch(inp.down('KeyC') || inp.down('ControlLeft') || inp.down('ControlRight'), dt);
     const walking = inp.down('ShiftLeft') || inp.down('ShiftRight');
-    const jump = !frozen && inp.down('Space') && this.body.onGround;
-    const wasAir = !this.body.onGround;
-    this.applyMovement(dt, wx, wz, walking ? 0.52 : 1, jump);
-    if (wasAir && this.body.onGround) g.sound.land();
+    // press to jump (holding doesn't auto-hop); a short buffer catches presses just before landing
+    if (inp.pressed('Space')) this.jumpBuffer = 0.1;
+    this.jumpBuffer = Math.max(0, this.jumpBuffer - dt);
+    const ladder = !frozen && g.map.ladderAt ? g.map.ladderAt(this.body.pos) : null;
+    if (ladder) {
+      // ladders work like CS2: W climbs the way you're looking (look down to go down), S the opposite
+      if (this.jumpBuffer > 0) {          // jump off, away from the wall
+        this.jumpBuffer = 0;
+        this.body.vel.set(ladder.out[0] * 3, 3, ladder.out[1] * 3);
+        this.applyMovement(dt, 0, 0, 1, false);
+      } else {
+        // stay on the ladder: only sideways movement along the wall, except stepping off
+        // at the bottom (walking away while standing) or at the top (onto the platform)
+        const [ox, oz] = ladder.out;
+        const along = wx * ox + wz * oz;
+        let hx = wx - along * ox, hz = wz - along * oz;
+        const atTop = this.body.pos.y > ladder.top - 0.3;
+        const stepOff = (this.body.onGround && along > 0) || (atTop && along < 0);
+        if (stepOff) { hx = wx; hz = wz; }
+        else {
+          // grabbing the ladder cancels momentum that would carry you away from the wall
+          const v = this.body.vel, vAlong = v.x * ox + v.z * oz;
+          if (vAlong > 0) { v.x -= vAlong * ox; v.z -= vAlong * oz; }
+        }
+        const climb = fwd ? (this.pitch > -0.35 ? fwd : -fwd) * 3.2 : 0;
+        this.applyMovement(dt, hx, hz, 1, false, atTop && along < 0 ? Math.max(climb, 0) : climb);
+        if (climb) { this.ladderStepT = (this.ladderStepT || 0) - dt; if (this.ladderStepT <= 0) { this.ladderStepT = 0.32; g.sound.step(null, true); } }
+      }
+    } else {
+      const jump = !frozen && this.jumpBuffer > 0 && this.body.onGround;
+      if (jump) this.jumpBuffer = 0;
+      const wasAir = !this.body.onGround;
+      this.applyMovement(dt, wx, wz, walking ? 0.52 : 1, jump);
+      if (wasAir && this.body.onGround) g.sound.land();
+    }
 
-    // footsteps
+    // footsteps (only when running, like CS2)
     const sp = this.horizSpeed();
-    if (this.body.onGround && sp > 3.0 && !this.crouching) {
-      this.stepT -= dt * sp / 5;
-      if (this.stepT <= 0) { this.stepT = 0.38; g.sound.step(null, true); g.emitNoise(this.body.pos, 14, this); }
+    if (this.body.onGround && sp > NOISY_SPEED && !this.crouching) {
+      this.stepT -= dt * sp / 6;
+      if (this.stepT <= 0) { this.stepT = 0.36; g.sound.step(null, true); g.emitNoise(this.body.pos, 14, this); }
     }
 
     // ----- shooting -----

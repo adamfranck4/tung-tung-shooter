@@ -440,24 +440,38 @@ export class Game {
     return pool[(i + 1) % pool.length];
   }
 
-  updateCamera(dt) {
+  updateSpectate() {
+    if (this.player.alive) return;
+    if (this.input.mouseHit(0) || (this.spectateSwitchAt && this.time >= this.spectateSwitchAt) || (this.spectating && !this.spectating.alive && !this.spectateSwitchAt)) {
+      this.spectating = this.nextSpectate(this.spectating);
+      this.spectateSwitchAt = 0;
+    }
+  }
+
+  // Per rendered frame: aim with the mouse.
+  frame() { this.player?.look(); }
+
+  // Per rendered frame: place the camera and models between the last two physics ticks.
+  interpolate(alpha) {
+    for (const b of this.bots) if (b.alive) b.renderPos(b.model.root.position, alpha);
+    this.updateCamera(alpha);
+    this.sound.setListener(this.camera.position, this.player.alive ? this.player.yaw : this.camera.rotation.y);
+  }
+
+  updateCamera(alpha = 1) {
     const p = this.player, cam = this.camera;
     if (p.alive) {
-      p.eyePos(cam.position);
+      p.renderEye(cam.position, alpha);
       cam.rotation.set(p.pitch + p.punch, p.yaw, 0);
       const fov = p.scoped ? this.scopeFov : this.baseFov;
       if (cam.fov !== fov) { cam.fov = fov; cam.updateProjectionMatrix(); }
       return;
     }
     if (cam.fov !== this.baseFov) { cam.fov = this.baseFov; cam.updateProjectionMatrix(); }
-    if (this.input.mouseHit(0) || (this.spectateSwitchAt && this.time >= this.spectateSwitchAt) || (this.spectating && !this.spectating.alive && !this.spectateSwitchAt)) {
-      this.spectating = this.nextSpectate(this.spectating);
-      this.spectateSwitchAt = 0;
-    }
     const s = this.spectating;
     if (!s) return;
     // third-person chase camera
-    s.eyePos(_v);
+    s.renderEye(_v, alpha);
     dirFrom(s.yaw, s.pitch * 0.5, _d);
     const back = _v2.copy(_d).negate();
     back.y += 0.25; back.normalize();
@@ -468,9 +482,11 @@ export class Game {
   }
 
   // ---------- main update ----------
+  // One physics tick.
   update(dt) {
     if (!this.running) return;
     this.time += dt;
+    for (const c of this.combatants) c.prevPos.copy(c.body.pos);
     if (this.phase === 'freeze' && this.time >= this.phaseEnd) {
       this.phase = 'live';
       this.hud.center('GO GO GO', 1.2);
@@ -484,8 +500,7 @@ export class Game {
     this.separate();
     this.updateBomb(dt);
     this.checkWin();
-    this.updateCamera(dt);
-    this.sound.setListener(this.camera.position, this.player.alive ? this.player.yaw : this.camera.rotation.y);
+    this.updateSpectate();
     this.player.updateWeapon(dt);
   }
 

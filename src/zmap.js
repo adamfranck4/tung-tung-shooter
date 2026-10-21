@@ -3,12 +3,14 @@
 // (spawning in small pockets outside) or rise out of the ground.
 import * as THREE from 'three';
 import { BoxBuilder } from './map.js';
-import { rng } from './textures.js';
+import { surfaceMaterial } from './textures.js';
+import { solidDistance, mergeBands, blockHash, addEdgeTrims, buildContactShadows } from './mapkit.js';
 import { WEAPONS } from './weapons.js';
 
 const C = 2;                 // cell size in meters
-const GW = 40, GH = 40;
-export const ZWORLD = GW * C;
+const GW = 60, GH = 40;
+export const ZW = GW * C, ZH = GH * C;   // 120 m x 80 m
+export const ZWORLD = ZW;
 
 // [x0, z0, x1, z1] in cells, end exclusive
 export const AREAS = {
@@ -17,15 +19,34 @@ export const AREAS = {
   C: { name: 'Kitchen', rect: [27, 25, 37, 37], indoor: true },
   D: { name: 'Drum Tower', rect: [14, 2, 26, 8], indoor: true },
   E: { name: 'Garden', rect: [4, 13, 9, 27] },
+  F: { name: 'Sahur Hill', rect: [40, 4, 56, 22] },
 };
-const CORRIDORS = [[19, 24, 21, 27], [25, 30, 27, 32], [27, 24, 29, 25], [19, 8, 21, 11], [9, 17, 10, 19]];
+const CORRIDORS = [[19, 24, 21, 27], [25, 30, 27, 32], [27, 24, 29, 25], [19, 8, 21, 11], [9, 17, 10, 19],
+  [30, 18, 40, 20],               // Courtyard -> Sahur Hill
+  [37, 33, 44, 35], [42, 22, 44, 35]]; // Kitchen -> Sahur Hill (alley)
 const DOORS = [
   { id: 'd1', cells: [19, 25, 21, 26], cost: 750, areas: ['A', 'B'] },
   { id: 'd2', cells: [26, 30, 27, 32], cost: 1000, areas: ['A', 'C'] },
   { id: 'd3', cells: [27, 24, 29, 25], cost: 1000, areas: ['B', 'C'] },
   { id: 'd4', cells: [19, 9, 21, 10], cost: 1250, areas: ['B', 'D'] },
   { id: 'd5', cells: [9, 17, 10, 19], cost: 1000, areas: ['B', 'E'] },
+  { id: 'd6', cells: [39, 18, 40, 20], cost: 1250, areas: ['B', 'F'] },
+  { id: 'd7', cells: [37, 33, 38, 35], cost: 1000, areas: ['C', 'F'] },
 ];
+// Smooth hills (cosine bumps): [x, z, radius, height] in meters
+const HILLS = [[104, 15, 7.5, 2.6], [88, 39, 6, 1.8]];
+// Walk-in huts with thin walls. rect = world meters on cell lines; `skip` = sides that already
+// are map walls; doors/windows = [side, cell index along that side].
+const HUTS = [
+  { rect: [80, 8, 88, 16], skip: ['n', 'w'], doors: [['e', 6]], windows: [['s', 41]], h: 3.2, lantern: [84, 2.6, 12] },
+  { rect: [48, 36, 56, 44], skip: [], doors: [['w', 19], ['e', 20]], windows: [['n', 25], ['s', 26]], h: 3.2, lantern: [52, 2.6, 40] },
+];
+// Watchtower ("pos ronda") with a hanging kentongan: stairs on the west, ladder on the east.
+const TOWER = {
+  x0: 96, z0: 30, x1: 102, z1: 36, top: 4.0,
+  stairs: { x0: 90, x1: 96, z0: 32, z1: 34, steps: 10 },
+  ladder: { x0: 102, x1: 103, z0: 32.4, z1: 33.6, y0: -0.2, y1: 4.6, top: 4.0, out: [1, 0] },
+};
 // boarded windows: wall cell, outward direction, and the spawn pocket carved outside
 const WINDOWS = [
   { cell: [14, 30], dir: [-1, 0], pocket: [11, 29, 14, 32], area: 'A' },
@@ -42,6 +63,9 @@ const WINDOWS = [
   { cell: [3, 20], dir: [-1, 0], pocket: [1, 19, 3, 22], area: 'E' },
   { cell: [6, 27], dir: [0, 1], pocket: [5, 28, 8, 31], area: 'E' },
   { cell: [6, 12], dir: [0, -1], pocket: [5, 9, 8, 12], area: 'E' },
+  { cell: [47, 3], dir: [0, -1], pocket: [46, 1, 49, 3], area: 'F' },
+  { cell: [56, 12], dir: [1, 0], pocket: [57, 11, 59, 14], area: 'F' },
+  { cell: [50, 22], dir: [0, 1], pocket: [49, 23, 52, 26], area: 'F' },
 ];
 // world-space obstacles [x0, y0, z0, x1, y1, z1]
 const OBSTACLES = [
@@ -60,6 +84,7 @@ export const WALLBUYS = [
   { weapon: 'ak', cost: 1800, pos: [74, 1.5, 68], n: [-1, 0, 0], area: 'C' },
   { weapon: 'm4', cost: 1800, pos: [32, 1.5, 16], n: [0, 0, -1], area: 'D' },
   { weapon: 'sniper', cost: 2000, pos: [18, 1.5, 46], n: [-1, 0, 0], area: 'E' },
+  { weapon: 'lmg', cost: 3000, pos: [112, 1.5, 38], n: [-1, 0, 0], area: 'F' },
 ];
 export const PERKS = [
   { id: 'quick', name: 'Quick Revive', short: 'QR', cost: 500, color: 0x3aa8ff, pos: [49.5, 0, 57], face: [-1, 0, 0], area: 'A' },
@@ -70,9 +95,10 @@ export const PERKS = [
 export const PAP = { pos: [44, 0, 4.7], cost: 5000, area: 'D' };
 export const BOX = { pos: [24, 0, 45.5], cost: 950, area: 'B' };
 const GROUND_SPAWNS = [
-  { pos: [26, 0, 29], area: 'B' }, { pos: [56, 0, 44], area: 'B' }, { pos: [30, 0, 41], area: 'B' },
+  { pos: [26, 0, 29], area: 'B' }, { pos: [44, 0, 26], area: 'B' }, { pos: [30, 0, 41], area: 'B' },
   { pos: [34, 0, 8], area: 'D' }, { pos: [48, 0, 8], area: 'D' },
   { pos: [13, 0, 34], area: 'E' }, { pos: [66, 0, 70], area: 'C' }, { pos: [58, 0, 56], area: 'C' },
+  { pos: [108, 0, 40], area: 'F' }, { pos: [93, 0, 24], area: 'F' }, { pos: [84, 0, 22], area: 'F' }, { pos: [104, 0, 15], area: 'F' },
 ];
 export const PLAYER_START = new THREE.Vector3(40, 0, 62);
 const LIGHTS = [
@@ -83,6 +109,8 @@ const LIGHTS = [
   { pos: [36, 3.6, 10], color: 0xffb36b, intensity: 100, dist: 26 },
   { pos: [44, 1.8, 6.6], color: 0xb050ff, intensity: 30, dist: 9 },
   { pos: [13, 3.4, 39], color: 0xffa860, intensity: 90, dist: 24, post: true },
+  { pos: [92, 3.4, 22], color: 0xffa860, intensity: 90, dist: 24, post: true },
+  { pos: [99, 6.1, 33], color: 0xffb36b, intensity: 80, dist: 22 },          // tower lantern
 ];
 
 // ---------- small canvas helpers for signs ----------
@@ -173,16 +201,18 @@ export class ZMap {
     this.obstacles.push({ x0: BOX.pos[0] - 0.9, y0: 0, z0: BOX.pos[2] - 0.4, x1: BOX.pos[0] + 0.9, y1: 0.9, z1: BOX.pos[2] + 0.4 });
     for (const l of LIGHTS) if (l.post) this.obstacles.push({ x0: l.pos[0] - 0.15, y0: 0, z0: l.pos[2] - 0.15, x1: l.pos[0] + 0.15, y1: 3.3, z1: l.pos[2] + 0.15 });
 
-    // walls: merge solid cells into boxes of varying height
-    const rects = this.mergeSolids();
-    const r = rng(19);
-    const heights = [5, 5.5, 6, 6.5, 7.5];
-    const tints = [[0.95, 0.93, 0.88], [0.86, 0.84, 0.8], [0.92, 0.88, 0.8], [0.8, 0.8, 0.8], [0.9, 0.86, 0.84]];
+    // walls: layered heights (street walls share a height per block, taller buildings behind)
+    const isSolid = (x, z) => this.solid(x, z);
+    const dist = solidDistance(isSolid, GW, GH);
+    const rects = mergeBands(isSolid, (x, z) => Math.min(3, dist[z * GW + x]), GW, GH, 10);
+    const bandH = [0, 5, 6.5, 8];
+    const tints = [[0.95, 0.93, 0.88], [0.88, 0.86, 0.82], [0.93, 0.89, 0.82], [0.9, 0.87, 0.85]];
     this.cellH = new Float32Array(GW * GH);
     this.staticColliders = [];
     for (const rc of rects) {
-      rc.y = heights[Math.floor(r() * heights.length)];
-      rc.tint = tints[Math.floor(r() * tints.length)];
+      const cx = rc.x + rc.w / 2, cz = rc.z + rc.d / 2;
+      rc.y = bandH[rc.band] + Math.floor(blockHash(cx, cz, 5) * 3) * 0.5;
+      rc.tint = tints[Math.floor(blockHash(cx + 50, cz, 7) * tints.length)];
       for (let z = rc.z; z < rc.z + rc.d; z++) for (let x = rc.x; x < rc.x + rc.w; x++) this.cellH[z * GW + x] = rc.y;
       this.staticColliders.push({ x0: rc.x * C, z0: rc.z * C, x1: (rc.x + rc.w) * C, z1: (rc.z + rc.d) * C, y0: 0, y1: rc.y });
     }
@@ -196,15 +226,135 @@ export class ZMap {
       this.roofs.push(roof); this.staticColliders.push(roof);
     }
 
+    // elevation + walk-in buildings
+    this.hills = HILLS;
+    this.hillTop = Math.max(...HILLS.map((h) => h[3]));
+    this.edgeX = new Uint8Array(GW * GH);   // wall between cell (x,z) and (x+1,z)
+    this.edgeZ = new Uint8Array(GW * GH);   // wall between cell (x,z) and (x,z+1)
+    this.navHOverride = new Map();          // cells whose walkable surface isn't the ground (tower, stairs)
+    this.ladders = [];
+    this.struct = { walls: [], wood: [], stone: [], roofs: [], tiles: [], shadow: [] };
+    for (const h of HUTS) this.buildHut(h);
+    this.buildTower(TOWER);
+
     this.buildWindows(tex);
     this.buildDoors();
     this.colliders = [...this.staticColliders, ...this.windowFrames, ...this.doors.map((d) => d.collider)];
     this.playerColliders = [...this.colliders, ...this.windows.map((w) => w.blocker)];
     this.buildMeshes(tex, rects);
+    this.buildStructureMeshes(tex);
+    this.buildHillMeshes(tex);
     this.buildProps();
     this.buildNav();
     this.dist = new Float32Array(GW * GH).fill(Infinity);
-    this.groundSpawns = GROUND_SPAWNS.map((s) => ({ pos: new THREE.Vector3(...s.pos), area: s.area }));
+    this.groundSpawns = GROUND_SPAWNS.map((s) => ({ pos: new THREE.Vector3(s.pos[0], this.groundAt(s.pos[0], s.pos[2]), s.pos[2]), area: s.area }));
+  }
+
+  // ---------- terrain ----------
+  groundAt(x, z) {
+    let h = 0;
+    for (const [hx, hz, r, height] of this.hills) {
+      const dx = x - hx, dz = z - hz;
+      if (Math.abs(dx) > r || Math.abs(dz) > r) continue;
+      const d = Math.hypot(dx, dz) / r;
+      if (d < 1) h += height * (0.5 + 0.5 * Math.cos(Math.PI * d));
+    }
+    return h;
+  }
+
+  // Ray vs the hills (bullets). Returns distance or null.
+  rayGround(o, d, maxT) {
+    const stepLen = 0.35;
+    let prevT = 0;
+    for (let t = stepLen; t <= maxT + stepLen; t += stepLen) {
+      const tt = Math.min(t, maxT);
+      const y = o.y + d.y * tt;
+      if (y > this.hillTop + 0.1 && d.y >= 0) return null;
+      if (y < this.groundAt(o.x + d.x * tt, o.z + d.z * tt)) {
+        let lo = prevT, hi = tt;
+        for (let i = 0; i < 8; i++) {
+          const mid = (lo + hi) / 2;
+          if (o.y + d.y * mid < this.groundAt(o.x + d.x * mid, o.z + d.z * mid)) hi = mid; else lo = mid;
+        }
+        return hi > 0.05 ? hi : null;
+      }
+      prevT = tt;
+      if (tt >= maxT) break;
+    }
+    return null;
+  }
+
+  ladderAt(p) {
+    for (const l of this.ladders) {
+      if (p.x >= l.x0 && p.x <= l.x1 && p.z >= l.z0 && p.z <= l.z1 && p.y >= l.y0 && p.y <= l.y1) return l;
+    }
+    return null;
+  }
+
+  // ---------- walk-in huts ----------
+  buildHut(h) {
+    const [x0, z0, x1, z1] = h.rect, T = 0.3, H = h.h;
+    const S = this.struct;
+    const add = (list, b, shadow) => { list.push(b); this.staticColliders.push(b); if (shadow) S.shadow.push(b); };
+    const isDoor = (side, i) => h.doors.some(([s, c]) => s === side && c === i);
+    const isWin = (side, i) => h.windows.some(([s, c]) => s === side && c === i);
+    for (const side of ['n', 's', 'w', 'e']) {
+      if (h.skip.includes(side)) continue;
+      const horiz = side === 'n' || side === 's';
+      const line = side === 'n' ? z0 : side === 's' ? z1 : side === 'w' ? x0 : x1;
+      const a0 = horiz ? x0 : z0, a1 = horiz ? x1 : z1;
+      for (let i = a0 / C; i < a1 / C; i++) {
+        const s0 = i * C - (i * C === a0 ? T / 2 : 0), s1 = (i + 1) * C + ((i + 1) * C === a1 ? T / 2 : 0);
+        const box = (y0, y1) => (horiz
+          ? { x0: s0, y0, z0: line - T / 2, x1: s1, y1, z1: line + T / 2 }
+          : { x0: line - T / 2, y0, z0: s0, x1: line + T / 2, y1, z1: s1 });
+        if (isDoor(side, i)) add(S.walls, box(2.4, H), false);
+        else if (isWin(side, i)) { add(S.walls, box(0, 1.0), true); add(S.walls, box(2.1, H), false); }
+        else add(S.walls, box(0, H), true);
+        // block zombie pathing through this wall (doorways stay open)
+        if (!isDoor(side, i)) {
+          const l = line / C;
+          if (horiz) this.edgeZ[(l - 1) * GW + i] = 1;
+          else this.edgeX[i * GW + (l - 1)] = 1;
+        }
+      }
+    }
+    add(S.roofs, { x0: x0 - 0.35, y0: H, z0: z0 - 0.35, x1: x1 + 0.35, y1: H + 0.28, z1: z1 + 0.35 }, false);
+    S.tiles.push({ x0, y0: 0, z0, x1, y1: 0.02, z1 });
+    if (h.lantern) S.lanterns = [...(S.lanterns || []), h.lantern];
+  }
+
+  // ---------- watchtower with stairs and a ladder ----------
+  buildTower(t) {
+    const S = this.struct;
+    const add = (list, b, shadow) => { list.push(b); this.staticColliders.push(b); if (shadow) S.shadow.push(b); };
+    const { x0, z0, x1, z1, top } = t;
+    add(S.stone, { x0, y0: 0, z0, x1, y1: top - 0.15, z1 }, true);
+    add(S.wood, { x0, y0: top - 0.15, z0, x1, y1: top, z1 }, false); // flush deck: nothing to bump your head on from the ladder
+    // railings with gaps for the stairs (west) and the ladder (east)
+    const R = 0.12, RH = 1.0;
+    const rail = (ax0, az0, ax1, az1) => add(S.wood, { x0: ax0, y0: top, z0: az0, x1: ax1, y1: top + RH, z1: az1 }, false);
+    rail(x0, z0, x1, z0 + R); rail(x0, z1 - R, x1, z1);
+    rail(x0, z0, x0 + R, t.stairs.z0); rail(x0, t.stairs.z1, x0 + R, z1);
+    rail(x1 - R, z0, x1, t.ladder.z0 - 0.1); rail(x1 - R, t.ladder.z1 + 0.1, x1, z1);
+    // corner posts + roof
+    for (const [px, pz] of [[x0, z0], [x1, z0], [x0, z1], [x1, z1]]) {
+      add(S.wood, { x0: px - 0.14, y0: top, z0: pz - 0.14, x1: px + 0.14, y1: top + 2.6, z1: pz + 0.14 }, false);
+    }
+    add(S.roofs, { x0: x0 - 0.6, y0: top + 2.6, z0: z0 - 0.6, x1: x1 + 0.6, y1: top + 2.9, z1: z1 + 0.6 }, false);
+    S.kentongan = [(x0 + x1) / 2, top + 1.7, (z0 + z1) / 2];
+    // stairs: solid steps rising toward the tower
+    const st = t.stairs, tread = (st.x1 - st.x0) / st.steps, rise = top / st.steps;
+    for (let i = 0; i < st.steps; i++) add(S.stone, { x0: st.x0 + i * tread, y0: 0, z0: st.z0, x1: st.x1, y1: (i + 1) * rise, z1: st.z1 }, i === 0);
+    // pathing: tower cells sit at the top height; stair cells step up 1 m each; no stepping off the stair sides
+    for (let cz = z0 / C; cz < z1 / C; cz++) for (let cx = x0 / C; cx < x1 / C; cx++) this.navHOverride.set(cz * GW + cx, top);
+    const scz = st.z0 / C, n = (st.x1 - st.x0) / C;
+    for (let k = 0; k < n; k++) {
+      const cx = st.x0 / C + k;
+      this.navHOverride.set(scz * GW + cx, top * (k + 1) / (n + 1));
+      this.edgeZ[(scz - 1) * GW + cx] = 1; this.edgeZ[scz * GW + cx] = 1;
+    }
+    this.ladders.push({ ...t.ladder });
   }
 
   machineBox(pos, face, width, depth, height) {
@@ -214,23 +364,6 @@ export class ZMap {
   }
 
   solid(x, z) { return x < 0 || z < 0 || x >= GW || z >= GH || this.grid[z * GW + x] === 1; }
-
-  mergeSolids() {
-    const used = new Uint8Array(GW * GH), rects = [];
-    for (let z = 0; z < GH; z++) for (let x = 0; x < GW; x++) {
-      if (!this.solid(x, z) || used[z * GW + x]) continue;
-      let w = 1;
-      while (x + w < GW && this.solid(x + w, z) && !used[z * GW + x + w] && w < 10) w++;
-      let d = 1;
-      outer: while (z + d < GH && d < 10) {
-        for (let i = 0; i < w; i++) if (!this.solid(x + i, z + d) || used[(z + d) * GW + x + i]) break outer;
-        d++;
-      }
-      for (let j = 0; j < d; j++) for (let i = 0; i < w; i++) used[(z + j) * GW + x + i] = 1;
-      rects.push({ x, z, w, d });
-    }
-    return rects;
-  }
 
   // ---------- windows ----------
   buildWindows() {
@@ -362,32 +495,38 @@ export class ZMap {
 
   // ---------- meshes ----------
   buildMeshes(tex, rects) {
-    const walls = new BoxBuilder(), trims = new BoxBuilder();
+    const walls = new BoxBuilder(), trims = new BoxBuilder(), bases = new BoxBuilder();
     for (const rc of rects) {
       const x0 = rc.x * C, z0 = rc.z * C, x1 = (rc.x + rc.w) * C, z1 = (rc.z + rc.d) * C;
       walls.box(x0, 0, z0, x1, rc.y, z1, { uvScale: 4, tint: rc.tint, ao: true, noBottom: true });
-      trims.box(x0 - 0.1, rc.y, z0 - 0.1, x1 + 0.1, rc.y + 0.2, z1 + 0.1, { uvScale: 2, tint: [0.55, 0.42, 0.32] });
     }
     for (const w of this.windows) {
       const s = w.sill, l = w.lintel;
       walls.box(s.x0, s.y0, s.z0, s.x1, s.y1, s.z1, { uvScale: 4, tint: [0.88, 0.85, 0.8], ao: true });
       walls.box(l.x0, l.y0, l.z0, l.x1, l.y1, l.z1, { uvScale: 4, tint: [0.88, 0.85, 0.8] });
     }
-    const wallMat = new THREE.MeshLambertMaterial({ map: tex.wall, vertexColors: true });
-    for (const b of [walls, trims]) {
+    // dark-wood cornice + baseboard along walls facing walkable ground (not inside window openings)
+    const windowCells = new Set(this.windows.map((w) => w.def.cell[1] * GW + w.def.cell[0]));
+    addEdgeTrims(trims, bases, {
+      isSolid: (x, z) => this.solid(x, z),
+      isOpen: (x, z) => !this.solid(x, z) && !windowCells.has(z * GW + x),
+      cellH: this.cellH, gw: GW, gh: GH, cell: C, topTint: [0.5, 0.38, 0.28], baseTint: [0.45, 0.36, 0.3],
+    });
+    const wallMat = surfaceMaterial(tex, 'wall');
+    for (const b of [walls, trims, bases]) {
       const m = new THREE.Mesh(b.geometry(), wallMat);
       m.castShadow = m.receiveShadow = true;
       this.scene.add(m);
     }
     const roofs = new BoxBuilder();
     for (const r of this.roofs) roofs.box(r.x0, r.y0, r.z0, r.x1, r.y1, r.z1, { uvScale: 3, tint: [0.42, 0.32, 0.26] });
-    const roofMesh = new THREE.Mesh(roofs.geometry(), new THREE.MeshLambertMaterial({ map: tex.crate, vertexColors: true }));
+    const roofMesh = new THREE.Mesh(roofs.geometry(), surfaceMaterial(tex, 'crate'));
     roofMesh.castShadow = roofMesh.receiveShadow = true;
     this.scene.add(roofMesh);
 
     const floor = new BoxBuilder();
-    floor.box(-40, -1, -40, ZWORLD + 40, 0, ZWORLD + 40, { uvScale: 8, noBottom: true, tint: [0.75, 0.72, 0.68] });
-    const floorMesh = new THREE.Mesh(floor.geometry(), new THREE.MeshLambertMaterial({ map: tex.sand, vertexColors: true }));
+    floor.box(-40, -1, -40, ZW + 40, 0, ZH + 40, { uvScale: 8, noBottom: true, tint: [0.75, 0.72, 0.68] });
+    const floorMesh = new THREE.Mesh(floor.geometry(), surfaceMaterial(tex, 'sand', { roughness: 0.97 }));
     floorMesh.receiveShadow = true;
     this.scene.add(floorMesh);
     const tiles = new BoxBuilder();
@@ -396,9 +535,13 @@ export class ZMap {
       const [x0, z0, x1, z1] = a.rect;
       tiles.box(x0 * C, 0, z0 * C, x1 * C, 0.02, z1 * C, { uvScale: 4, noBottom: true });
     }
-    const tileMesh = new THREE.Mesh(tiles.geometry(), new THREE.MeshLambertMaterial({ map: tex.tile, vertexColors: true }));
+    const tileMesh = new THREE.Mesh(tiles.geometry(), surfaceMaterial(tex, 'tile', { roughness: 0.9 }));
     tileMesh.receiveShadow = true;
     this.scene.add(tileMesh);
+    buildContactShadows(this.scene, {
+      isSolid: (x, z) => this.solid(x, z) || windowCells.has(z * GW + x), gw: GW, gh: GH, cell: C,
+      boxes: [...this.obstacles, ...this.struct.shadow], strength: 0.5,
+    });
 
     // obstacles: crates / tables / fountain
     const crates = new BoxBuilder(), stone = new BoxBuilder();
@@ -406,12 +549,85 @@ export class ZMap {
       if (i < 2) stone.box(x0, y0, z0, x1, y1, z1, { uvScale: 2, tint: [0.7, 0.7, 0.72] });
       else crates.box(x0, y0, z0, x1, y1, z1, { faceUV: true, noBottom: true });
     });
-    const cm = new THREE.Mesh(crates.geometry(), new THREE.MeshLambertMaterial({ map: tex.crate, vertexColors: true }));
+    const cm = new THREE.Mesh(crates.geometry(), surfaceMaterial(tex, 'crate', { roughness: 0.9 }));
     cm.castShadow = cm.receiveShadow = true; this.scene.add(cm);
     const sm = new THREE.Mesh(stone.geometry(), wallMat);
     sm.castShadow = sm.receiveShadow = true; this.scene.add(sm);
     const water = new THREE.Mesh(new THREE.PlaneGeometry(7.4, 7.4), new THREE.MeshLambertMaterial({ color: 0x1e4a66, emissive: 0x0a2233 }));
     water.rotation.x = -Math.PI / 2; water.position.set(40, 0.915, 34); this.scene.add(water);
+  }
+
+  buildStructureMeshes(tex) {
+    const S = this.struct;
+    const mk = (boxes, material, opt = {}) => {
+      if (!boxes.length) return;
+      const b = new BoxBuilder();
+      for (const x of boxes) b.box(x.x0, x.y0, x.z0, x.x1, x.y1, x.z1, opt);
+      const m = new THREE.Mesh(b.geometry(), material);
+      m.castShadow = m.receiveShadow = true;
+      this.scene.add(m);
+    };
+    mk(S.walls, surfaceMaterial(tex, 'wall'), { uvScale: 4, tint: [0.97, 0.94, 0.88], ao: true });
+    mk(S.stone, surfaceMaterial(tex, 'wall'), { uvScale: 3, tint: [0.72, 0.7, 0.68], ao: true });
+    const plain = (color) => (tex.quality === 'high'
+      ? new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0, envMapIntensity: 0.45, vertexColors: true })
+      : new THREE.MeshLambertMaterial({ color, vertexColors: true }));
+    mk(S.wood, plain(0x7a5434), { uvScale: 2 });
+    mk(S.roofs, plain(0x4e3627), { uvScale: 2 });
+    mk(S.tiles, surfaceMaterial(tex, 'tile', { roughness: 0.9 }), { uvScale: 4, noBottom: true });
+    // ladder: two rails and rungs on the tower's east face
+    for (const l of this.ladders) {
+      const lb = new BoxBuilder(), x = l.x0 + 0.06;
+      lb.box(x - 0.04, 0, l.z0 + 0.06, x + 0.04, TOWER.top + 1.1, l.z0 + 0.14, { uvScale: 1 });
+      lb.box(x - 0.04, 0, l.z1 - 0.14, x + 0.04, TOWER.top + 1.1, l.z1 - 0.06, { uvScale: 1 });
+      for (let y = 0.3; y < TOWER.top + 1; y += 0.34) lb.box(x - 0.03, y, l.z0 + 0.1, x + 0.03, y + 0.05, l.z1 - 0.1, { uvScale: 1 });
+      const m = new THREE.Mesh(lb.geometry(), plain(0x9a6a3c));
+      m.castShadow = true; this.scene.add(m);
+    }
+    // the kentongan drum hanging under the watchtower roof
+    if (S.kentongan) {
+      const [kx, ky, kz] = S.kentongan;
+      const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 1.3, 16), lambert(0x8a5a30));
+      drum.position.set(kx, ky, kz); drum.castShadow = true; this.scene.add(drum);
+      const slit = new THREE.Mesh(box, lambert(0x24140a)); slit.scale.set(0.06, 0.8, 0.02); slit.position.set(kx, ky, kz + 0.3); this.scene.add(slit);
+      const rope = new THREE.Mesh(box, lambert(0x3a2a1a)); rope.scale.set(0.04, 0.6, 0.04); rope.position.set(kx, ky + 0.95, kz); this.scene.add(rope);
+    }
+    // hut lanterns: a small warm light so you can see zombies that follow you inside
+    const glow = new THREE.MeshBasicMaterial({ color: 0xffc77a });
+    for (const [lx, ly, lz] of S.lanterns || []) {
+      mesh(box, glow, lx, ly, lz, 0.22, 0.3, 0.22, this.scene).castShadow = false;
+      const light = new THREE.PointLight(0xffb36b, 18, 9, 2);
+      light.position.set(lx, ly - 0.2, lz);
+      this.scene.add(light);
+    }
+  }
+
+  buildHillMeshes(tex) {
+    const mat = surfaceMaterial(tex, 'sand', { roughness: 0.97, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    for (const [hx, hz, r] of this.hills) {
+      const step = 0.5, n = Math.ceil((r * 2) / step) + 1, x0 = hx - r, z0 = hz - r;
+      const pos = [], uv = [], col = [], idx = [];
+      for (let iz = 0; iz < n; iz++) for (let ix = 0; ix < n; ix++) {
+        const x = x0 + ix * step, z = z0 + iz * step, h = this.groundAt(x, z);
+        pos.push(x, h + 0.01, z);
+        uv.push(x / 8, -z / 8);
+        const k = Math.min(1, h / 2.5);                    // a little greener toward the top
+        col.push(0.75 - 0.12 * k, 0.72 - 0.02 * k, 0.68 - 0.2 * k);
+      }
+      for (let iz = 0; iz < n - 1; iz++) for (let ix = 0; ix < n - 1; ix++) {
+        const a = iz * n + ix, b = a + n, c = a + 1, d = b + 1;
+        idx.push(a, b, c, c, b, d);
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+      g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+      g.setIndex(idx);
+      g.computeVertexNormals();
+      const m = new THREE.Mesh(g, mat);
+      m.castShadow = m.receiveShadow = true;
+      this.scene.add(m);
+    }
   }
 
   buildProps() {
@@ -501,8 +717,10 @@ export class ZMap {
   // ---------- navigation (flow field toward the player) ----------
   buildNav() {
     this.walk = new Uint8Array(GW * GH);
+    this.navH = new Float32Array(GW * GH);   // height of the walkable surface in each cell
     for (let z = 0; z < GH; z++) for (let x = 0; x < GW; x++) {
       const i = z * GW + x;
+      this.navH[i] = this.navHOverride.has(i) ? this.navHOverride.get(i) : this.groundAt(x * C + 1, z * C + 1);
       if (this.grid[i] === 1 || this.navBlock[i]) continue;
       const cx0 = x * C + 0.4, cx1 = x * C + 1.6, cz0 = z * C + 0.4, cz1 = z * C + 1.6;
       let blocked = false;
@@ -515,6 +733,7 @@ export class ZMap {
   }
   walkable(x, z) { return x >= 0 && z >= 0 && x < GW && z < GH && this.walk[z * GW + x] === 1; }
   walkablePoint(x, z) { return this.walkable(Math.floor(x / C), Math.floor(z / C)); }
+  heightAtCell(x, z) { return this.navH[z * GW + x]; }
   nearestWalkable(cx, cz) {
     if (this.walkable(cx, cz)) return [cx, cz];
     for (let r = 1; r < 6; r++) {
@@ -529,6 +748,20 @@ export class ZMap {
     return null;
   }
 
+  // Can a zombie walk from cell a to its 4-neighbour b? (no wall between, small height change)
+  passOrth(ax, az, bx, bz) {
+    if (!this.walkable(bx, bz)) return false;
+    if (az === bz) { if (this.edgeX[az * GW + Math.min(ax, bx)]) return false; }
+    else if (this.edgeZ[Math.min(az, bz) * GW + ax]) return false;
+    return Math.abs(this.navH[az * GW + ax] - this.navH[bz * GW + bx]) <= 1.5;
+  }
+  // Any of the 8 neighbours; diagonals need both L-shaped routes to be open.
+  canStep(x, z, dx, dz) {
+    if (!dx || !dz) return this.passOrth(x, z, x + dx, z + dz);
+    return this.passOrth(x, z, x + dx, z) && this.passOrth(x + dx, z, x + dx, z + dz)
+      && this.passOrth(x, z, x, z + dz) && this.passOrth(x, z + dz, x + dx, z + dz);
+  }
+
   computeFlow(target) {
     const s = this.nearestWalkable(Math.floor(target.x / C), Math.floor(target.z / C));
     if (!s) return;
@@ -541,10 +774,9 @@ export class ZMap {
       const cd = dist[cur], cx = cur % GW, cz = (cur / GW) | 0;
       for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
         if (!dx && !dz) continue;
-        const nx = cx + dx, nz = cz + dz;
-        if (!this.walkable(nx, nz)) continue;
-        if (dx && dz && (!this.walkable(cx + dx, cz) || !this.walkable(cx, cz + dz))) continue;
-        const n = nz * GW + nx, nd = cd + (dx && dz ? 1.414 : 1);
+        // the field spreads outward from the player, so check the step a zombie would take (back toward cur)
+        if (!this.walkable(cx + dx, cz + dz) || !this.canStep(cx + dx, cz + dz, -dx, -dz)) continue;
+        const n = (cz + dz) * GW + cx + dx, nd = cd + (dx && dz ? 1.414 : 1);
         if (nd < dist[n]) { dist[n] = nd; heap.push(n, nd); }
       }
     }
@@ -552,7 +784,7 @@ export class ZMap {
 
   // Next point to walk to from `pos` following the flow field (or null if lost).
   flowTarget(pos, out) {
-    let cx = Math.floor(pos.x / C), cz = Math.floor(pos.z / C);
+    const cx = Math.floor(pos.x / C), cz = Math.floor(pos.z / C);
     if (!this.walkable(cx, cz)) {
       const n = this.nearestWalkable(cx, cz);
       if (!n) return null;
@@ -562,11 +794,9 @@ export class ZMap {
       let best = null, bd = this.dist[z * GW + x];
       for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
         if (!dx && !dz) continue;
-        const nx = x + dx, nz = z + dz;
-        if (!this.walkable(nx, nz)) continue;
-        if (dx && dz && (!this.walkable(x + dx, z) || !this.walkable(x, z + dz))) continue;
-        const d = this.dist[nz * GW + nx];
-        if (d < bd) { bd = d; best = [nx, nz]; }
+        if (!this.canStep(x, z, dx, dz)) continue;
+        const d = this.dist[(z + dz) * GW + x + dx];
+        if (d < bd) { bd = d; best = [x + dx, z + dz]; }
       }
       return best;
     };
@@ -581,14 +811,23 @@ export class ZMap {
     return out;
   }
 
+  // Straight walkable line from a to b: no blocked cells, no walls crossed, no big height jumps.
   clearLine(a, b, rad = 0.4) {
     const dx = b.x - a.x, dz = b.z - a.z, len = Math.hypot(dx, dz);
     if (len < 0.01) return true;
     const px = -dz / len * rad, pz = dx / len * rad;
     const steps = Math.ceil(len / 0.4);
+    let pcx = Math.floor(a.x / C), pcz = Math.floor(a.z / C);
     for (let i = 0; i <= steps; i++) {
       const x = a.x + dx * i / steps, z = a.z + dz * i / steps;
       if (!this.walkablePoint(x, z) || !this.walkablePoint(x + px, z + pz) || !this.walkablePoint(x - px, z - pz)) return false;
+      const cx = Math.floor(x / C), cz = Math.floor(z / C);
+      if (cx !== pcx || cz !== pcz) {
+        if (Math.abs(cx - pcx) > 1 || Math.abs(cz - pcz) > 1) return false;
+        if (!this.canStep(pcx, pcz, cx - pcx, cz - pcz)) return false;
+        if (Math.abs(this.navH[cz * GW + cx] - this.navH[pcz * GW + pcx]) > 1.0) return false;
+        pcx = cx; pcz = cz;
+      }
     }
     return true;
   }

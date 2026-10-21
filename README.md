@@ -14,16 +14,36 @@ No build step, no server code, no assets to download — every texture, model an
   Cross + Dot, Circle + Dot. Pro presets use the most commonly reported 2026 settings; pros change them often.
   Add or edit presets in `src/crosshair.js`.
 
+## Movement & feel (matched to CS2)
+
+- CS2's real movement values, converted from Source units: 250 u/s with the knife (215 AK, 225 M4, 200 sniper),
+  acceleration 5.5, friction 5.2, stop speed 80, air acceleration 12 with the 30 u/s air-strafe cap,
+  gravity 800, 57-unit jump, 18-unit steps. Shift-walk is 52% speed and silent; crouch is 34%.
+- Crates are CS2's 64-unit (1.6 m) boxes: you need a crouch-jump to get on top.
+- Jump is press-to-jump (no auto-bhop when holding Space), with a short buffer for presses just before landing.
+- Physics runs at a fixed 128 ticks per second and every frame is drawn between ticks, so movement is identical
+  at 30, 60, 144 or 240 fps and stays smooth on high-refresh screens.
+- Raw mouse input (no OS pointer acceleration) and CS2's sensitivity scale (0.022° × sensitivity per count),
+  so you can type in your CS2 sensitivity.
+- Graphics: **High quality** (detailed surfaces + soft sky lighting) or **Performance** for slower computers.
+
 ## Zombies mode
 
 Pick **Zombies** in the menu for solo survival in **Sahur Village**, a night-time map built for this mode.
 
 - Endless rounds of Tung Tung zombies with bats. They tear boards off the windows and climb in, or rise from
-  the ground. Each round has more of them, and they get tougher and faster (walkers → runners → sprinters).
+  the ground. Regular zombies have 100 HP (same as a player); each round brings more of them, and they get
+  faster (walkers → runners → sprinters).
+- **Big zombies** (from round 3): ~1.7x size, 400 + 80 × round HP, hit for 80, worth 250 points. They rise from
+  the ground (max 3 at once).
+- Between rounds, press **N** to start the next wave right away.
+- **Sahur Hill** (doors from the Courtyard 1250 / Kitchen 1000): two hills, a walk-in hut, and a watchtower
+  with a hanging kentongan, reached by stairs or a ladder (W climbs the way you look; S or look down to go down).
+  Zombies take the stairs. The Courtyard also has a walk-in hut you can run through.
 - Points: +10 per hit, +60 per kill, +100 headshot kill, +130 knife kill, +10 per board you rebuild (hold E).
 - Spend points on (press E):
-  - Doors: Courtyard 750, Kitchen 1000, Garden 1000, Drum Tower 1250
-  - Wall guns: SMG 1000, Shotgun 1500, AK 1800, M4 1800, Sniper 2000 (ammo = half price)
+  - Doors: Courtyard 750, Kitchen 1000, Garden 1000, Drum Tower 1250, Sahur Hill 1250 / 1000
+  - Wall guns: SMG 1000, Shotgun 1500, AK 1800, M4 1800, Sniper 2000, LMG 3000 (ammo = half price)
   - Perks: Quick Revive 500 (gets you back up once), Double Tap 2000, Juggernog 2500 (more health), Speed Cola 3000 (faster reloads)
   - Mystery Box 950: random gun, including the Drum LMG and the Tung Ray wonder weapon
   - Pack-a-Punch 5000 (Drum Tower): upgrades your gun (more damage, bigger mag)

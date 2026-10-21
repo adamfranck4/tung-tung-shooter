@@ -140,11 +140,11 @@ export class Sound {
       this.noiseBurst(o.node, { freq: 1400, type: 'bandpass', q: 3, decay: 0.03, vol: 0.7, delay: i * 0.21 });
     }
   }
-  groan(pos) {
-    const o = this.out(pos, 0.35, 30); if (!o) return;
+  groan(pos, pitch = 1) {
+    const o = this.out(pos, pitch < 1 ? 0.55 : 0.35, 30); if (!o) return;
     const ctx = this.ctx, t = ctx.currentTime;
     const osc = ctx.createOscillator(); osc.type = 'sawtooth';
-    const base = 70 + Math.random() * 40;
+    const base = (70 + Math.random() * 40) * pitch;
     osc.frequency.setValueAtTime(base, t);
     osc.frequency.linearRampToValueAtTime(base * 0.8, t + 0.9);
     const lfo = ctx.createOscillator(); lfo.frequency.value = 6 + Math.random() * 4;

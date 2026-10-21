@@ -3,7 +3,15 @@ import * as THREE from 'three';
 import { WEAPONS } from './weapons.js';
 import { moveBody, overlapsAny, raySphere, rayBox } from './physics.js';
 
-export const RUN_SPEED = 5.4;
+// CS2 movement values, converted from Source units (1 unit = 1 inch = 0.0254 m).
+const U = 0.0254;
+export const RUN_SPEED = 250 * U;      // knife-out max speed: 250 u/s = 6.35 m/s
+const ACCELERATE = 5.5;                // sv_accelerate
+const FRICTION = 5.2;                  // sv_friction
+const STOP_SPEED = 80 * U;             // sv_stopspeed
+const AIR_ACCELERATE = 12;             // sv_airaccelerate
+const AIR_WISH_CAP = 30 * U;           // air strafing cap (30 u/s)
+export const JUMP_SPEED = 301.993 * U; // sv_jump_impulse: ~57 units (1.45 m) high
 const _eye = new THREE.Vector3();
 const _dir = new THREE.Vector3();
 let nextId = 1;
@@ -13,11 +21,15 @@ export function dirFrom(yaw, pitch, out) {
   return out.set(-Math.sin(yaw) * cp, Math.sin(pitch), -Math.cos(yaw) * cp);
 }
 
-function accelerate(vel, wx, wz, wishSpeed, accel, dt) {
+// Source-engine acceleration: gain up to accel * base * dt per step, but never push the
+// speed along the wish direction past wishSpeed. `base` is the full (unscaled) speed, so
+// walking, crouching and air-strafing get CS2's brisk acceleration even though their
+// target speed is low.
+function accelerate(vel, wx, wz, wishSpeed, accel, dt, base = wishSpeed) {
   const cur = vel.x * wx + vel.z * wz;
   const add = wishSpeed - cur;
   if (add <= 0) return;
-  const a = Math.min(accel * dt * wishSpeed, add);
+  const a = Math.min(accel * dt * base, add);
   vel.x += wx * a; vel.z += wz * a;
 }
 
@@ -25,7 +37,10 @@ export class Combatant {
   constructor(game, name, team) {
     this.id = nextId++;
     this.game = game; this.name = name; this.team = team; this.isBot = false;
-    this.body = { pos: new THREE.Vector3(), vel: new THREE.Vector3(), halfW: 0.35, height: 1.8, onGround: true };
+    this.body = { pos: new THREE.Vector3(), vel: new THREE.Vector3(), halfW: 0.38, height: 1.8, onGround: true };
+    this.scale = 1;                     // body size multiplier (big zombies); scales the hitboxes
+    this.prevPos = new THREE.Vector3(); // position at the previous physics tick (for smooth rendering)
+    this.viewOffset = 0;                // eases the camera over steps instead of snapping
     this.yaw = 0; this.pitch = 0; this.crouching = false; this.eyeH = 1.65;
     this.health = 100; this.armor = 0; this.alive = true; this.money = 800;
     this.slots = { 1: null, 2: null, 3: null }; this.slot = 2; this.lastSlot = 3;
@@ -57,6 +72,7 @@ export class Combatant {
   spawn(pos, yaw) {
     const b = this.body;
     b.pos.copy(pos); b.vel.set(0, 0, 0); b.height = 1.8; b.onGround = true;
+    this.prevPos.copy(pos); this.viewOffset = 0;
     this.crouching = false; this.eyeH = 1.65;
     this.yaw = yaw; this.pitch = 0;
     if (!this.alive) { this.slots[1] = null; this.armor = 0; }
@@ -70,7 +86,10 @@ export class Combatant {
   }
 
   eyePos(out) { return out.set(this.body.pos.x, this.body.pos.y + this.eyeH, this.body.pos.z); }
-  headPos(out) { return out.set(this.body.pos.x, this.body.pos.y + this.body.height - 0.17, this.body.pos.z); }
+  // where to draw this combatant between two physics ticks (alpha 0..1)
+  renderPos(out, alpha) { return out.lerpVectors(this.prevPos, this.body.pos, alpha); }
+  renderEye(out, alpha) { this.renderPos(out, alpha); out.y += this.eyeH + this.viewOffset; return out; }
+  headPos(out) { return out.set(this.body.pos.x, this.body.pos.y + this.body.height - 0.17 * this.scale, this.body.pos.z); }
   chestPos(out) { return out.set(this.body.pos.x, this.body.pos.y + this.body.height * 0.68, this.body.pos.z); }
   horizSpeed() { return Math.hypot(this.body.vel.x, this.body.vel.z); }
 
@@ -89,8 +108,9 @@ export class Combatant {
     const w = this.weapon; if (!w || w.def.melee) return 0;
     const d = w.def, b = this.body;
     let s = (d.scope && this.scoped) ? d.scopedSpread : d.spread;
-    const sp = this.horizSpeed();
-    s += (d.moveSpread || 0) * Math.min(1, Math.max(0, (sp - 1.4) / 3.6));
+    // like CS2: accurate below ~34% of the weapon's max speed, fully inaccurate near full speed
+    const frac = this.horizSpeed() / (RUN_SPEED * (d.speed || 1));
+    s += (d.moveSpread || 0) * Math.min(1, Math.max(0, (frac - 0.34) / 0.5));
     if (!b.onGround) s += d.airSpread ?? 0.1;
     if (this.crouching && b.onGround) s *= 0.75;
     s += this.recoil * (d.recoilSpread || 0);
@@ -172,36 +192,56 @@ export class Combatant {
   }
 
   // wx, wz: unit direction of desired movement (or 0,0)
-  applyMovement(dt, wx, wz, speedMul, jump) {
+  // climbVel: when set, the body is on a ladder: vertical speed is fixed and gravity is off
+  applyMovement(dt, wx, wz, speedMul, jump, climbVel = null) {
     const b = this.body;
-    let maxSpeed = RUN_SPEED * (this.weapon?.def.speed || 1) * speedMul;
+    const map = this.game.map;
+    const groundAt = map.groundAt ? map.groundAt.bind(map) : null;
+    if (climbVel !== null) {
+      const sp = Math.hypot(b.vel.x, b.vel.z);
+      if (sp > 0) { const ns = Math.max(sp - Math.max(sp, STOP_SPEED) * FRICTION * dt, 0); b.vel.x *= ns / sp; b.vel.z *= ns / sp; }
+      if (wx || wz) accelerate(b.vel, wx, wz, RUN_SPEED * 0.4, ACCELERATE, dt, RUN_SPEED);
+      b.vel.y = climbVel;
+      moveBody(b, dt, this.colliders || map.colliders, groundAt, true);
+      return;
+    }
+    const runSpeed = RUN_SPEED * (this.weapon?.def.speed || 1);
+    let maxSpeed = runSpeed * speedMul;
     if (this.scoped) maxSpeed *= 0.55;
-    if (this.crouching) maxSpeed *= 0.36;
+    if (this.crouching) maxSpeed *= 0.34;
+    const startY = b.pos.y, wasGround = b.onGround;
     if (b.onGround) {
       const sp = Math.hypot(b.vel.x, b.vel.z);
       if (sp > 0) {
-        const drop = Math.max(sp, 1.6) * 7 * dt;
+        const drop = Math.max(sp, STOP_SPEED) * FRICTION * dt;
         const ns = Math.max(sp - drop, 0);
         b.vel.x *= ns / sp; b.vel.z *= ns / sp;
       }
-      if (wx || wz) accelerate(b.vel, wx, wz, maxSpeed, 9, dt);
-      if (jump) { b.vel.y = 6.4; b.onGround = false; this.onJump?.(); }
+      if (wx || wz) accelerate(b.vel, wx, wz, maxSpeed, ACCELERATE, dt, Math.max(maxSpeed, runSpeed));
+      if (jump) { b.vel.y = JUMP_SPEED; b.onGround = false; this.onJump?.(); }
     } else if (wx || wz) {
-      accelerate(b.vel, wx, wz, Math.min(maxSpeed, 0.9), 12, dt);
+      // air strafing: strong acceleration toward a tiny (30 u/s) wish speed, so turning in the air bends your path
+      accelerate(b.vel, wx, wz, Math.min(maxSpeed, AIR_WISH_CAP), AIR_ACCELERATE, dt, maxSpeed);
     }
-    moveBody(b, dt, this.colliders || this.game.map.colliders);
+    moveBody(b, dt, this.colliders || map.colliders, groundAt);
+    // stepping up a ledge moves the body instantly; let the camera catch up smoothly instead
+    const rise = b.pos.y - startY;
+    if (wasGround && b.onGround && rise > 0.02 && rise < 0.6) this.viewOffset -= rise;
+    this.viewOffset *= Math.exp(-dt * 16);
+    if (Math.abs(this.viewOffset) < 0.001) this.viewOffset = 0;
   }
 
   // Bullet vs this combatant's hitboxes. Returns {t, part} or null.
   rayHit(o, d, maxT) {
-    const p = this.body.pos, h = this.body.height;
+    const p = this.body.pos, h = this.body.height, s = this.scale;
     let best = null;
-    const tHead = raySphere(o, d, p.x, p.y + h - 0.17, p.z, 0.19);
+    const tHead = raySphere(o, d, p.x, p.y + h - 0.17 * s, p.z, 0.19 * s);
     if (tHead !== null && tHead < maxT) best = { t: tHead, part: 'head' };
-    const tBody = rayBox(o, d, p.x - 0.28, p.y, p.z - 0.28, p.x + 0.28, p.y + h - 0.33, p.z + 0.28);
+    const w = 0.28 * s;
+    const tBody = rayBox(o, d, p.x - w, p.y, p.z - w, p.x + w, p.y + h - 0.33 * s, p.z + w);
     if (tBody !== null && tBody < (best ? best.t : maxT)) {
       const y = o.y + d.y * tBody;
-      best = { t: tBody, part: y < p.y + (this.crouching ? 0.45 : 0.62) ? 'leg' : 'body' };
+      best = { t: tBody, part: y < p.y + (this.crouching ? 0.45 : 0.62 * s) ? 'leg' : 'body' };
     }
     return best;
   }

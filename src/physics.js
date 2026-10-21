@@ -1,7 +1,7 @@
 // Axis-aligned box collision and ray casting. The whole map is made of boxes.
-export const GRAVITY = 20;
+export const GRAVITY = 800 * 0.0254; // CS2 sv_gravity 800 u/s²
 const EPS = 1e-4;
-const STEP = 0.55;
+const STEP = 18 * 0.0254;            // CS2 step height: 18 units
 
 function overlap(p, hw, h, c) {
   return p.x + hw > c.x0 && p.x - hw < c.x1 &&
@@ -36,7 +36,9 @@ function resolveHorizontal(b, cols, axis, wasGround) {
 }
 
 // b: { pos, vel, halfW, height, onGround }   pos = feet position
-export function moveBody(b, dt, cols) {
+// groundAt(x, z): optional terrain height (hills); flat ground at y = 0 otherwise.
+// noGravity: used while climbing a ladder.
+export function moveBody(b, dt, cols, groundAt = null, noGravity = false) {
   const p = b.pos;
   const wasGround = b.onGround;
 
@@ -45,11 +47,14 @@ export function moveBody(b, dt, cols) {
   p.z += b.vel.z * dt;
   resolveHorizontal(b, cols, 2, wasGround);
 
-  b.vel.y -= GRAVITY * dt;
+  if (!noGravity) b.vel.y -= GRAVITY * dt;
   const prevY = p.y;
   p.y += b.vel.y * dt;
   b.onGround = false;
-  if (p.y <= 0) { p.y = 0; if (b.vel.y < 0) b.vel.y = 0; b.onGround = true; }
+  const gy = groundAt ? groundAt(p.x, p.z) : 0;
+  if (p.y <= gy) { p.y = gy; if (b.vel.y < 0) b.vel.y = 0; b.onGround = true; }
+  // walking down a slope: stay glued to the ground instead of bouncing off it
+  else if (wasGround && !noGravity && b.vel.y <= 0 && p.y - gy < 0.3 && gy > 0.001) { p.y = gy; b.vel.y = 0; b.onGround = true; }
   for (const c of cols) {
     if (!overlap(p, b.halfW, b.height, c)) continue;
     if (prevY >= c.y1 - 0.06 || (b.vel.y <= 0 && c.y1 - p.y < 0.3)) {

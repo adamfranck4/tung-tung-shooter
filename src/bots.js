@@ -432,7 +432,7 @@ export class Bot extends Combatant {
     this.applyMovement(dt, wx, wz, speedMul, jump);
 
     const sp = this.horizSpeed();
-    if (b.onGround && sp > 3.2) {
+    if (b.onGround && sp > 3.6) {
       this.stepT -= dt * sp / 5;
       if (this.stepT <= 0) { this.stepT = 0.38; g.sound.step(b.pos, false); g.emitNoise(b.pos, 14, this); }
     }

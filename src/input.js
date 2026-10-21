@@ -36,11 +36,13 @@ export class Input {
     });
   }
 
+  // Ask for raw mouse input (no OS pointer acceleration), like CS2's raw input; fall back if unsupported.
   lock() {
+    const plain = () => { try { const r = this.el.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (_) { /* ignored */ } };
     try {
-      const r = this.el.requestPointerLock();
-      if (r && r.catch) r.catch(() => {});
-    } catch (_) { /* ignored */ }
+      const r = this.el.requestPointerLock({ unadjustedMovement: true });
+      if (r && r.catch) r.catch(plain);
+    } catch (_) { plain(); }
   }
   unlock() { if (document.pointerLockElement) document.exitPointerLock(); }
 
@@ -49,5 +51,8 @@ export class Input {
   mouseDown(b) { return this.buttons.has(b); }
   mouseHit(b) { return this.clicks.has(b); }
 
-  endFrame() { this.hits.clear(); this.clicks.clear(); this.dx = 0; this.dy = 0; this.wheel = 0; }
+  // Mouse movement is used once per rendered frame (aim); key/click presses are used once per
+  // physics tick, so a press is never handled twice or lost when frames and ticks don't line up.
+  endFrame() { this.dx = 0; this.dy = 0; }
+  endTick() { this.hits.clear(); this.clicks.clear(); this.wheel = 0; }
 }

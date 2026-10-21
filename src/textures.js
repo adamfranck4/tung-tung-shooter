@@ -49,11 +49,41 @@ function toTexture(c, repeat = true) {
   return t;
 }
 
-// Sandstone blocks. One tile = 4m x 4m.
-function wallTexture() {
+// Turns a grayscale height canvas into a tileable tangent-space normal map.
+function normalFromHeight(hc, strength, repeat = true) {
+  const W = hc.width, H = hc.height;
+  const src = hc.getContext('2d').getImageData(0, 0, W, H).data;
+  const [c, ctx] = makeCanvas(W, H);
+  const out = ctx.createImageData(W, H), d = out.data;
+  const h = (x, y) => src[((((y % H) + H) % H) * W + (((x % W) + W) % W)) * 4] / 255;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const nx = -(h(x + 1, y) - h(x - 1, y)) * strength;
+    const ny = (h(x, y + 1) - h(x, y - 1)) * strength; // canvas y points down, texture v points up
+    const l = Math.hypot(nx, ny, 1);
+    const i = (y * W + x) * 4;
+    d[i] = (nx / l * 0.5 + 0.5) * 255; d[i + 1] = (ny / l * 0.5 + 0.5) * 255; d[i + 2] = (1 / l * 0.5 + 0.5) * 255; d[i + 3] = 255;
+  }
+  ctx.putImageData(out, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = 8;
+  return t;
+}
+function blurInPlace(c, px) {
+  const [t, tctx] = makeCanvas(c.width, c.height);
+  tctx.filter = `blur(${px}px)`;
+  // draw a 3x3 tiling so the blur wraps around the edges
+  for (const ox of [-c.width, 0, c.width]) for (const oy of [-c.height, 0, c.height]) tctx.drawImage(c, ox, oy);
+  const ctx = c.getContext('2d'); ctx.clearRect(0, 0, c.width, c.height); ctx.drawImage(t, 0, 0);
+}
+
+// Sandstone blocks. One tile = 4m x 4m. Returns { map, normal }.
+function wallTexture(withNormal) {
   const S = 512, r = rng(11);
   const [c, ctx] = makeCanvas(S);
+  const [hc, hctx] = makeCanvas(S);
   ctx.fillStyle = '#b89668'; ctx.fillRect(0, 0, S, S);
+  hctx.fillStyle = '#3a3a3a'; hctx.fillRect(0, 0, S, S);       // mortar sits low
   const rows = 8, rh = S / rows;
   for (let y = 0; y < rows; y++) {
     let x = -(y % 2) * 60 - r() * 30;
@@ -61,70 +91,113 @@ function wallTexture() {
       const w = 90 + r() * 80;
       const v = 0.88 + r() * 0.2;
       ctx.fillStyle = `rgb(${210 * v | 0},${178 * v | 0},${126 * v | 0})`;
-      ctx.fillRect(x + 2, y * rh + 2, w - 4, rh - 4);
-      if (x + w > S) ctx.fillRect(x + 2 - S, y * rh + 2, w - 4, rh - 4);
+      const hv = 170 + (r() * 40 | 0);
+      hctx.fillStyle = `rgb(${hv},${hv},${hv})`;
+      for (const ox of [0, -S]) {
+        if (ox && x + w <= S) continue;
+        ctx.fillRect(x + 2 + ox, y * rh + 2, w - 4, rh - 4);
+        hctx.fillRect(x + 3 + ox, y * rh + 3, w - 6, rh - 6);
+      }
       x += w;
     }
   }
   blotches(ctx, S, S, 30, '120,90,50', 0.25, 90, r);
   blotches(ctx, S, S, 20, '255,240,210', 0.18, 70, r);
   noise(ctx, S, S, 34, r);
-  return toTexture(c);
+  let normal = null;
+  if (withNormal) {
+    blurInPlace(hc, 1.5);
+    blotches(hctx, S, S, 40, '0,0,0', 0.12, 40, r);   // pitted, worn stone
+    noise(hctx, S, S, 26, r);
+    normal = normalFromHeight(hc, 3.2);
+  }
+  return { map: toTexture(c), normal };
 }
 
 // Sand / packed dirt floor. One tile = 8m.
-function sandTexture() {
+function sandTexture(withNormal) {
   const S = 512, r = rng(23);
   const [c, ctx] = makeCanvas(S);
   ctx.fillStyle = '#cdb184'; ctx.fillRect(0, 0, S, S);
   blotches(ctx, S, S, 50, '150,115,70', 0.22, 110, r);
   blotches(ctx, S, S, 40, '240,220,180', 0.2, 80, r);
+  const pebbles = [];
   for (let i = 0; i < 500; i++) {
     const v = r() < 0.5 ? 'rgba(90,70,45,0.35)' : 'rgba(255,245,220,0.3)';
-    ctx.fillStyle = v; const s = 1 + r() * 3;
-    ctx.fillRect(r() * S, r() * S, s, s);
+    ctx.fillStyle = v; const s = 1 + r() * 3, x = r() * S, y = r() * S;
+    ctx.fillRect(x, y, s, s);
+    pebbles.push([x, y, s]);
   }
   noise(ctx, S, S, 40, r);
-  return toTexture(c);
+  let normal = null;
+  if (withNormal) {
+    const [hc, hctx] = makeCanvas(S);
+    hctx.fillStyle = '#808080'; hctx.fillRect(0, 0, S, S);
+    blotches(hctx, S, S, 60, '255,255,255', 0.18, 90, r);
+    blotches(hctx, S, S, 60, '0,0,0', 0.18, 90, r);
+    hctx.fillStyle = '#d0d0d0';
+    for (const [x, y, s] of pebbles) hctx.fillRect(x, y, s + 1, s + 1);
+    noise(hctx, S, S, 30, r);
+    blurInPlace(hc, 1);
+    normal = normalFromHeight(hc, 2.2);
+  }
+  return { map: toTexture(c), normal };
 }
 
-// Stone floor tiles for bomb sites. One tile = 4m (4x4 tiles).
-function tileTexture() {
+// Stone floor tiles. One tile = 4m (4x4 tiles).
+function tileTexture(withNormal) {
   const S = 512, r = rng(37);
   const [c, ctx] = makeCanvas(S);
+  const [hc, hctx] = makeCanvas(S);
   ctx.fillStyle = '#7d6c55'; ctx.fillRect(0, 0, S, S);
+  hctx.fillStyle = '#303030'; hctx.fillRect(0, 0, S, S);
   const n = 4, ts = S / n;
   for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
     const v = 0.85 + r() * 0.22;
     ctx.fillStyle = `rgb(${196 * v | 0},${178 * v | 0},${146 * v | 0})`;
     ctx.fillRect(x * ts + 3, y * ts + 3, ts - 6, ts - 6);
+    const hv = 175 + (r() * 30 | 0);
+    hctx.fillStyle = `rgb(${hv},${hv},${hv})`;
+    hctx.fillRect(x * ts + 4, y * ts + 4, ts - 8, ts - 8);
   }
   blotches(ctx, S, S, 25, '90,70,45', 0.25, 80, r);
   noise(ctx, S, S, 30, r);
-  return toTexture(c);
+  let normal = null;
+  if (withNormal) { blurInPlace(hc, 1.5); noise(hctx, S, S, 14, r); normal = normalFromHeight(hc, 3); }
+  return { map: toTexture(c), normal };
 }
 
 // Wooden crate face (whole texture per face).
-function crateTexture() {
+function crateTexture(withNormal) {
   const S = 256, r = rng(51);
   const [c, ctx] = makeCanvas(S);
+  const [hc, hctx] = makeCanvas(S);
   ctx.fillStyle = '#9c6d3c'; ctx.fillRect(0, 0, S, S);
+  hctx.fillStyle = '#404040'; hctx.fillRect(0, 0, S, S);
   for (let i = 0; i < 6; i++) {
     const v = 0.85 + r() * 0.25;
     ctx.fillStyle = `rgb(${160 * v | 0},${112 * v | 0},${62 * v | 0})`;
     ctx.fillRect(0, i * S / 6 + 1, S, S / 6 - 2);
+    hctx.fillStyle = '#909090'; hctx.fillRect(0, i * S / 6 + 2, S, S / 6 - 4); // plank seams
   }
   ctx.strokeStyle = 'rgba(60,35,15,0.35)'; ctx.lineWidth = 1;
   for (let i = 0; i < 40; i++) { const y = r() * S; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(S, y + (r() - 0.5) * 6); ctx.stroke(); }
-  ctx.fillStyle = '#6e4723';
   const b = 24;
-  ctx.fillRect(0, 0, S, b); ctx.fillRect(0, S - b, S, b); ctx.fillRect(0, 0, b, S); ctx.fillRect(S - b, 0, b, S);
-  ctx.save(); ctx.translate(S / 2, S / 2); ctx.rotate(Math.PI / 4);
-  ctx.fillRect(-S * 0.68, -b / 2, S * 1.36, b); ctx.restore();
-  ctx.fillStyle = '#3b2a1a';
-  for (const [x, y] of [[12, 12], [S - 12, 12], [12, S - 12], [S - 12, S - 12]]) { ctx.beginPath(); ctx.arc(x, y, 4, 0, 7); ctx.fill(); }
+  for (const [g, color] of [[ctx, '#6e4723'], [hctx, '#e0e0e0']]) {   // raised frame + cross brace
+    g.fillStyle = color;
+    g.fillRect(0, 0, S, b); g.fillRect(0, S - b, S, b); g.fillRect(0, 0, b, S); g.fillRect(S - b, 0, b, S);
+    g.save(); g.translate(S / 2, S / 2); g.rotate(Math.PI / 4);
+    g.fillRect(-S * 0.68, -b / 2, S * 1.36, b); g.restore();
+  }
+  ctx.fillStyle = '#3b2a1a'; hctx.fillStyle = '#ffffff';
+  for (const [x, y] of [[12, 12], [S - 12, 12], [12, S - 12], [S - 12, S - 12]]) {
+    ctx.beginPath(); ctx.arc(x, y, 4, 0, 7); ctx.fill();
+    hctx.beginPath(); hctx.arc(x, y, 4, 0, 7); hctx.fill();
+  }
   noise(ctx, S, S, 28, r);
-  return toTexture(c, false);
+  let normal = null;
+  if (withNormal) { blurInPlace(hc, 1.2); noise(hctx, S, S, 18, r); normal = normalFromHeight(hc, 3, false); }
+  return { map: toTexture(c, false), normal };
 }
 
 // Spray-painted site letter.
@@ -293,11 +366,26 @@ export function tungFaceTexture() {
   return t;
 }
 
-export function makeTextures() {
+export function makeTextures(quality = 'high') {
+  const hi = quality === 'high';
+  const wall = wallTexture(hi), sand = sandTexture(hi), tile = tileTexture(hi), crate = crateTexture(hi);
   return {
-    wall: wallTexture(),
-    sand: sandTexture(),
-    tile: tileTexture(),
-    crate: crateTexture(),
+    quality,
+    wall: wall.map, wallN: wall.normal,
+    sand: sand.map, sandN: sand.normal,
+    tile: tile.map, tileN: tile.normal,
+    crate: crate.map, crateN: crate.normal,
   };
+}
+
+// Map surface material. High quality: physically based with surface detail (normal map).
+// Performance: cheap matte shading.
+export function surfaceMaterial(tex, name, extra = {}) {
+  if (tex.quality !== 'high' || !tex[name + 'N']) {
+    return new THREE.MeshLambertMaterial({ map: tex[name], vertexColors: true, ...extra });
+  }
+  return new THREE.MeshStandardMaterial({
+    map: tex[name], normalMap: tex[name + 'N'], normalScale: new THREE.Vector2(0.9, 0.9),
+    roughness: 0.95, metalness: 0, envMapIntensity: 0.45, vertexColors: true, ...extra,
+  });
 }

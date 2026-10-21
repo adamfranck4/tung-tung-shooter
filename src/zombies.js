@@ -18,8 +18,11 @@ const POWERUPS = {
   carpenter: { label: 'CARPENTER', short: 'FIX', color: '#8ad0ff' },
 };
 const BASE_HEALTH = 150, JUGG_HEALTH = 250;
-
-export const zombieHealth = (r) => (r < 10 ? 150 + 100 * (r - 1) : Math.round(950 * Math.pow(1.1, r - 9)));
+export const ZOMBIE_HP = 100;                            // regular zombies: same health as a player
+export const bigZombieHealth = (r) => 400 + 80 * r;      // big zombies: a real bullet sponge
+const BIG_SCALE = 1.7;
+// chance that a spawn is a big zombie (from round 3, up to 1 in 4), max 3 alive at once
+const bigChance = (r) => (r < 3 ? 0 : clamp(0.06 + (r - 3) * 0.02, 0, 0.25));
 export const zombieCount = (r) => (r <= 5 ? [6, 8, 13, 18, 24][r - 1] : Math.floor(24 + (r - 5) * 4.5));
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
@@ -39,29 +42,35 @@ class Zombie extends Combatant {
     this.body.halfW = 0.3;
   }
 
-  spawn(sp, round) {
-    this.active = true; this.alive = true;
-    this.health = zombieHealth(round);
+  spawn(sp, round, big = false) {
+    this.active = true; this.alive = true; this.big = big;
+    const s = this.scale = big ? BIG_SCALE : 1;
+    this.health = big ? bigZombieHealth(round) : ZOMBIE_HP;
     const roll = Math.random();
     const sprint = clamp((round - 6) * 0.12, 0, 0.8), run = clamp((round - 2) * 0.2, 0, 0.95);
-    this.speed = roll < sprint ? 5.0 : roll < run ? 3.6 : 1.3 + Math.random() * 0.4;
+    // scaled to CS2 player speed (6.35 m/s with a knife): sprinters stay just slower than you
+    if (big) this.speed = round >= 8 ? 3.4 : 1.8 + Math.random() * 0.3;
+    else this.speed = roll < sprint ? 5.9 : roll < run ? 4.25 : 1.55 + Math.random() * 0.45;
     const b = this.body;
-    b.vel.set(0, 0, 0); b.height = 1.8; b.onGround = true;
+    b.vel.set(0, 0, 0); b.height = 1.8 * s; b.halfW = 0.3 * s; b.onGround = true;
     this.attackT = 0; this.attackCd = 0.6; this.stuckT = 0; this.deathT = 0; this.tearT = 0.8;
     this.soundT = 1 + Math.random() * 5; this.walkPhase = Math.random() * 6;
     this.win = sp.win || null;
     if (this.win) {
       b.pos.copy(this.win.spawn);
+      this.prevPos.copy(b.pos);
       this.state = 'toWindow';
       this.yaw = Math.atan2(this.win.dir.x, this.win.dir.z); // face into the building
     } else {
-      b.pos.copy(sp.pos); b.pos.y = -1.9;
+      this.riseBase = this.game.map.groundAt(sp.pos.x, sp.pos.z); // rise out of hills too
+      b.pos.set(sp.pos.x, this.riseBase - 1.9 * s, sp.pos.z);
+      this.prevPos.copy(b.pos);
       this.state = 'rise'; this.riseT = 0;
       this.yaw = Math.random() * Math.PI * 2;
     }
     const m = this.model;
     m.root.visible = true;
-    m.root.scale.setScalar(0.95 + Math.random() * 0.1);
+    m.root.scale.setScalar(big ? BIG_SCALE : 0.95 + Math.random() * 0.1);
     this.animate(0);
   }
 
@@ -77,10 +86,10 @@ class Zombie extends Combatant {
 
     if (this.state === 'rise') {
       this.riseT += dt;
-      const k = Math.min(1, this.riseT / 1.5);
-      b.pos.y = -1.9 * (1 - k);
+      const k = Math.min(1, this.riseT / (this.big ? 2.2 : 1.5));
+      b.pos.y = this.riseBase - 1.9 * this.scale * (1 - k);
       this.turnTo(Math.atan2(-(g.player.body.pos.x - b.pos.x), -(g.player.body.pos.z - b.pos.z)), dt, 3);
-      if (k >= 1) { b.pos.y = 0; this.state = 'chase'; }
+      if (k >= 1) { b.pos.y = this.riseBase; this.state = 'chase'; }
       this.animate(dt, 0.6);
       return;
     }
@@ -117,17 +126,23 @@ class Zombie extends Combatant {
     const tp = p.body.pos;
     const dx = tp.x - b.pos.x, dz = tp.z - b.pos.z, dist = Math.hypot(dx, dz);
     const canAttack = p.alive && !p.downed && g.phase !== 'over';
+    const dy = tp.y - b.pos.y;
+    // big zombies reach further and hit harder
+    const reach = this.big ? 1.9 : 1.3, hitReach = this.big ? 2.5 : 1.8, dmg = this.big ? 80 : 50;
     if (this.attackT > 0) {
       const prev = this.attackT;
       this.attackT -= dt;
-      if (prev > 0.32 && this.attackT <= 0.32 && canAttack && dist < 1.8 && Math.abs(b.pos.y - tp.y) < 1.4) g.hurtPlayer(50, this);
+      if (prev > 0.32 && this.attackT <= 0.32 && canAttack && dist < hitReach && dy > -0.5 && dy < 1.4 * this.scale) g.hurtPlayer(dmg, this);
     } else {
       this.attackCd -= dt;
-      if (canAttack && dist < 1.3 && this.attackCd <= 0) { this.attackT = 0.75; this.attackCd = 1.1; g.sound.swing(b.pos); }
+      if (canAttack && dist < reach && dy > -0.5 && dy < 1.4 * this.scale && this.attackCd <= 0) {
+        this.attackT = 0.75; this.attackCd = this.big ? 1.4 : 1.1; g.sound.swing(b.pos);
+      }
     }
     let wx = 0, wz = 0, jump = false;
-    if (canAttack && dist > 0.85) {
-      if (dist < 14 && map.clearLine(b.pos, tp, 0.3)) { wx = dx / dist; wz = dz / dist; }
+    if (canAttack && dist > 0.85 * this.scale) {
+      // run straight at you only when you're on the same level and nothing is in the way
+      if (dist < 14 && Math.abs(dy) < 1.2 && map.clearLine(b.pos, tp, 0.3 * this.scale)) { wx = dx / dist; wz = dz / dist; }
       else {
         const t = map.flowTarget(b.pos, _t);
         if (t) { const tx = t.x - b.pos.x, tz = t.z - b.pos.z, l = Math.hypot(tx, tz) || 1; wx = tx / l; wz = tz / l; }
@@ -254,11 +269,12 @@ export class ZombiesGame {
     this.hud.center(`Round ${this.round} survived`, 3);
   }
 
-  pickSpawn() {
+  pickSpawn(big = false) {
     const p = this.player.body.pos;
     const all = [];
-    for (const w of this.map.windows) if (this.activeAreas.has(w.area)) all.push({ win: w, pos: w.spawn, weight: 2 });
-    if (this.round >= 2) for (const s of this.map.groundSpawns) if (this.activeAreas.has(s.area)) all.push({ pos: s.pos, weight: 1 });
+    if (!big) for (const w of this.map.windows) if (this.activeAreas.has(w.area)) all.push({ win: w, pos: w.spawn, weight: 2 });
+    if (this.round >= 2 || big) for (const s of this.map.groundSpawns) if (this.activeAreas.has(s.area)) all.push({ pos: s.pos, weight: 1 });
+    if (!all.length) return null;
     let pool = all.filter((s) => { const d = flat(s.pos, p); return d > 7 && d < 42; });
     if (!pool.length) pool = all.filter((s) => flat(s.pos, p) > 5);
     if (!pool.length) pool = all;
@@ -279,7 +295,9 @@ export class ZombiesGame {
     const range = 250;
     const wall = raycast(origin, dir, range, this.map.colliders, _hit);
     let hitT = wall ? wall.t : range;
-    const wallInfo = wall ? { nx: wall.nx, ny: wall.ny, nz: wall.nz } : null;
+    let wallInfo = wall ? { nx: wall.nx, ny: wall.ny, nz: wall.nz } : null;
+    const gt = this.map.rayGround(origin, dir, hitT);
+    if (gt !== null && gt < hitT) { hitT = gt; wallInfo = { nx: 0, ny: 1, nz: 0 }; }
     let victim = null, part = null;
     for (const z of this.zombies) {
       if (!z.active || !z.alive) continue;
@@ -350,7 +368,7 @@ export class ZombiesGame {
     this.kills++;
     if (head) this.headshots++;
     if (!nuked) {
-      this.addPoints(melee ? 130 : head ? 100 : 60);
+      this.addPoints(z.big ? 250 : melee ? 130 : head ? 100 : 60);
       this.maybeDropPowerup(z.body.pos);
     }
   }
@@ -456,7 +474,13 @@ export class ZombiesGame {
 
   hintText() {
     const it = this.interaction, p = this.player;
-    if (!it) return '';
+    if (!it) {
+      if (this.betweenRounds && this.phase !== 'over') {
+        const left = Math.max(0, Math.ceil(this.nextRoundAt - this.time));
+        return `Next wave in ${left}s — press N to start it now`;
+      }
+      return '';
+    }
     switch (it.type) {
       case 'door': return `Press E to open the door [${it.d.cost}]`;
       case 'window': return 'Hold E to rebuild the barrier';
@@ -621,7 +645,7 @@ export class ZombiesGame {
     sprite.scale.set(0.9, 0.9, 1);
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({ color: POWERUPS[type].color, map: this.glowTex(), transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false }));
     glow.scale.set(1.8, 1.8, 1);
-    const p = new THREE.Vector3(pos.x, 1.1, pos.z);
+    const p = new THREE.Vector3(pos.x, pos.y + 1.1, pos.z);
     sprite.position.copy(p); glow.position.copy(p);
     this.scene.add(glow, sprite);
     this.powerups.push({ type, pos: p, sprite, glow, t: 0 });
@@ -648,11 +672,11 @@ export class ZombiesGame {
     for (let i = this.powerups.length - 1; i >= 0; i--) {
       const pu = this.powerups[i];
       pu.t += dt;
-      const y = 1.1 + Math.sin(pu.t * 3) * 0.12;
+      const y = pu.pos.y + Math.sin(pu.t * 3) * 0.12;
       pu.sprite.position.y = y; pu.glow.position.y = y;
       const blink = pu.t > 20 && Math.floor(pu.t * 6) % 2 === 0;
       pu.sprite.visible = pu.glow.visible = !blink;
-      const take = p.alive && !p.downed && flat(pu.pos, p.body.pos) < 1.4;
+      const take = p.alive && !p.downed && flat(pu.pos, p.body.pos) < 1.4 && Math.abs(pu.pos.y - 1.1 - p.body.pos.y) < 2;
       if (take || pu.t > 27) {
         if (take) this.applyPowerup(pu.type);
         this.scene.remove(pu.sprite, pu.glow);
@@ -666,7 +690,7 @@ export class ZombiesGame {
     if (this.time - this.lastZSound < 0.35) return;
     if (flat(z.body.pos, this.player.body.pos) > 32) return;
     this.lastZSound = this.time;
-    if (Math.random() < 0.35) this.sound.tung(z.body.pos, 0.45); else this.sound.groan(z.body.pos);
+    if (Math.random() < 0.35) this.sound.tung(z.body.pos, z.big ? 0.7 : 0.45); else this.sound.groan(z.body.pos, z.big ? 0.55 : 1);
   }
 
   separate() {
@@ -676,8 +700,9 @@ export class ZombiesGame {
       for (let j = i + 1; j < zs.length; j++) {
         const b = zs[j].body.pos;
         const dx = b.x - a.x, dz = b.z - a.z, d = Math.hypot(dx, dz);
-        if (d > 0.001 && d < 0.65) {
-          const push = (0.65 - d) / 2, nx = dx / d, nz = dz / d;
+        const minD = 0.33 * (zs[i].scale + zs[j].scale);
+        if (d > 0.001 && d < minD) {
+          const push = (minD - d) / 2, nx = dx / d, nz = dz / d;
           a.x -= nx * push; a.z -= nz * push; b.x += nx * push; b.z += nz * push;
         }
       }
@@ -688,17 +713,28 @@ export class ZombiesGame {
     for (const z of zs) {
       const zp = z.body.pos;
       const dx = zp.x - pp.x, dz = zp.z - pp.z, d = Math.hypot(dx, dz);
-      if (d > 0.001 && d < 0.75) {
-        const push = 0.75 - d, nx = dx / d, nz = dz / d;
+      const minD = 0.4 + 0.35 * z.scale;
+      if (d > 0.001 && d < minD && Math.abs(zp.y - pp.y) < 1.5) {
+        const push = minD - d, nx = dx / d, nz = dz / d;
         zp.x += nx * push * 0.7; zp.z += nz * push * 0.7;
         if (!p.downed) { pp.x -= nx * push * 0.3; pp.z -= nz * push * 0.3; }
       }
     }
   }
 
-  updateCamera() {
+  // Per rendered frame: aim with the mouse (also while downed).
+  frame() { if (this.player && this.phase !== 'over') this.player.look(); }
+
+  // Per rendered frame: place the camera and zombie models between the last two physics ticks.
+  interpolate(alpha) {
+    for (const z of this.zombies) if (z.active && z.alive) z.renderPos(z.model.root.position, alpha);
+    this.updateCamera(alpha);
+    this.sound.setListener(this.camera.position, this.player.yaw);
+  }
+
+  updateCamera(alpha = 1) {
     const p = this.player, cam = this.camera;
-    p.eyePos(cam.position);
+    p.renderEye(cam.position, alpha);
     let roll = 0;
     if (this.phase === 'over') { cam.position.y = p.body.pos.y + 0.4; roll = 0.5; }
     cam.rotation.set(p.pitch + p.punch, p.yaw, roll);
@@ -707,10 +743,7 @@ export class ZombiesGame {
   }
 
   updateDowned(dt) {
-    const p = this.player, inp = this.input;
-    const sens = 0.0022 * this.settings.sens;
-    p.yaw -= inp.dx * sens;
-    p.pitch = clamp(p.pitch - inp.dy * sens, -1.4, 1.4);
+    const p = this.player;
     p.eyeH += (0.55 - p.eyeH) * Math.min(1, dt * 6);
     p.applyMovement(dt, 0, 0, 1, false);
     this.downT -= dt;
@@ -721,15 +754,17 @@ export class ZombiesGame {
   }
 
   // ----- main update -----
+  // One physics tick.
   update(dt) {
     if (!this.running) return;
     this.time += dt;
     const p = this.player;
+    p.prevPos.copy(p.body.pos);
+    for (const z of this.zombies) if (z.active) z.prevPos.copy(z.body.pos);
 
     if (this.phase === 'over') {
       this.overT -= dt;
       for (const z of this.zombies) if (z.active) { if (z.alive) z.animate(dt, 0.4); else z.updateDead(dt); }
-      this.updateCamera();
       if (this.overT <= 0) {
         this.running = false;
         this.onGameOver?.({ round: this.round, kills: this.kills, headshots: this.headshots, points: this.points });
@@ -737,12 +772,15 @@ export class ZombiesGame {
       return;
     }
 
+    if (this.betweenRounds && this.input.pressed('KeyN') && this.time < this.nextRoundAt) this.nextRoundAt = this.time;
     if (this.betweenRounds && this.time >= this.nextRoundAt) this.startRound(this.round + 1);
     if (!this.betweenRounds) {
       this.spawnT -= dt;
       if (this.toSpawn > 0 && this.spawnT <= 0 && this.aliveZombies() < MAX_ALIVE) {
-        const sp = this.pickSpawn();
-        if (sp) { this.getZombie().spawn(sp, this.round); this.toSpawn--; }
+        const bigAlive = this.zombies.reduce((n, z) => n + (z.active && z.alive && z.big ? 1 : 0), 0);
+        const big = bigAlive < 3 && Math.random() < bigChance(this.round);
+        const sp = this.pickSpawn(big) || this.pickSpawn(false);
+        if (sp) { this.getZombie().spawn(sp, this.round, big && !sp.win); this.toSpawn--; }
         this.spawnT = Math.max(0.35, 2.0 - this.round * 0.12) * (0.6 + Math.random() * 0.8);
       }
     }
@@ -762,8 +800,5 @@ export class ZombiesGame {
     this.map.updateDoors(dt);
 
     if (!this.betweenRounds && this.toSpawn === 0 && this.aliveZombies() === 0) this.endRound();
-
-    this.updateCamera();
-    this.sound.setListener(this.camera.position, p.yaw);
   }
 }

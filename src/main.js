@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { makeTextures } from './textures.js';
 import { GameMap, WORLD } from './map.js';
-import { ZMap, ZWORLD } from './zmap.js';
+import { ZMap, ZW, ZH } from './zmap.js';
 import { Input } from './input.js';
 import { Hud } from './hud.js';
 import { Sound } from './audio.js';
@@ -10,15 +10,21 @@ import { ViewModel, KNIFE_SKINS } from './viewmodel.js';
 import { Game } from './game.js';
 import { ZombiesGame } from './zombies.js';
 import { CROSSHAIRS, getCrosshair, drawCrosshair } from './crosshair.js';
+import { CS_DEG_PER_COUNT } from './player.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
-const lowShadows = params.has('low');
+const load = (k) => { try { return localStorage.getItem(k); } catch (_) { return null; } };
+const save = (k, v) => { try { localStorage.setItem(k, v); } catch (_) { /* storage unavailable */ } };
+// Graphics: 'high' = detailed surfaces + soft environment light; 'low' = performance mode
+const quality = params.has('low') || load('defuse.quality') === 'low' ? 'low' : 'high';
+const lowShadows = quality === 'low';
+const TICK = 1 / 128; // physics rate (CS2 runs 64 tick + sub-tick input; 128 keeps input tight)
 
 // ---------- renderer ----------
 const canvas = $('game');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+renderer.setPixelRatio(Math.min(devicePixelRatio, quality === 'high' ? 1.5 : 1));
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -44,13 +50,30 @@ function makeSky(top, horizon) {
   return sky;
 }
 
-const tex = makeTextures();
+// Soft sky lighting for physically based materials (high quality only).
+const pmrem = new THREE.PMREMGenerator(renderer);
+function makeEnvironment(top, horizon, ground) {
+  const s = new THREE.Scene();
+  s.add(makeSky(top, horizon));
+  const g = new THREE.Mesh(new THREE.CircleGeometry(400, 32), new THREE.MeshBasicMaterial({ color: ground }));
+  g.rotation.x = -Math.PI / 2; g.position.y = -5;
+  s.add(g);
+  return pmrem.fromScene(s, 0.04, 0.1, 1000).texture;
+}
+
+const tex = makeTextures(quality);
 const input = new Input(canvas);
 const hud = new Hud();
 const sound = new Sound();
 const vm = new ViewModel();
-const settings = { sens: 1 };
-try { const s = parseFloat(localStorage.getItem('defuse.sens')); if (s > 0) settings.sens = s; } catch (_) { /* storage unavailable */ }
+// Sensitivity uses the CS2 scale (0.022° per mouse count × sens), so your CS2 number works here.
+// Older saves used a different scale and are converted so aim feels the same.
+const settings = { sens: parseFloat(load('defuse.sens2')) };
+if (!(settings.sens > 0)) {
+  const old = parseFloat(load('defuse.sens'));
+  settings.sens = old > 0 ? Math.min(8, Math.max(0.2, Math.round(old * 0.0022 / CS_DEG_PER_COUNT * 20) / 20)) : 2;
+  save('defuse.sens2', String(settings.sens));
+}
 
 // ---------- world 1: Dunes (5v5 Classic), daytime ----------
 function buildClassicWorld() {
@@ -58,7 +81,8 @@ function buildClassicWorld() {
   scene.fog = new THREE.Fog(0xe6d2ad, 70, 280);
   const sky = makeSky(0x4d8fd6, 0xf0dcb6);
   scene.add(sky);
-  scene.add(new THREE.HemisphereLight(0xd8e8ff, 0xb08a5c, 1.5));
+  if (quality === 'high') scene.environment = makeEnvironment(0x5b8fcf, 0xe9d6b3, 0x9a8160);
+  scene.add(new THREE.HemisphereLight(0xd8e8ff, 0xb08a5c, quality === 'high' ? 0.6 : 1.5));
   const sun = new THREE.DirectionalLight(0xfff0d0, 3.2);
   sun.position.set(WORLD / 2 + 55, 95, WORLD / 2 + 35);
   sun.target.position.set(WORLD / 2, 0, WORLD / 2);
@@ -103,13 +127,14 @@ function buildZombiesWorld() {
   moon.position.set(-40, 90, -30).normalize().multiplyScalar(440); moon.scale.set(70, 70, 1);
   sky.add(moon);
 
-  scene.add(new THREE.HemisphereLight(0x6a7cae, 0x2a1e14, 1.15));
+  if (quality === 'high') scene.environment = makeEnvironment(0x0a1020, 0x26324f, 0x1a1510);
+  scene.add(new THREE.HemisphereLight(0x6a7cae, 0x2a1e14, quality === 'high' ? 0.75 : 1.15));
   const moonLight = new THREE.DirectionalLight(0xa8bcff, 1.4);
-  moonLight.position.set(ZWORLD / 2 - 40, 90, ZWORLD / 2 - 30);
-  moonLight.target.position.set(ZWORLD / 2, 0, ZWORLD / 2);
+  moonLight.position.set(ZW / 2 - 40, 90, ZH / 2 - 30);
+  moonLight.target.position.set(ZW / 2, 0, ZH / 2);
   moonLight.castShadow = true;
   moonLight.shadow.mapSize.set(lowShadows ? 1024 : 2048, lowShadows ? 1024 : 2048);
-  Object.assign(moonLight.shadow.camera, { left: -60, right: 60, top: 60, bottom: -60, near: 10, far: 220 });
+  Object.assign(moonLight.shadow.camera, { left: -78, right: 78, top: 78, bottom: -78, near: 10, far: 260 });
   moonLight.shadow.bias = -0.0005; moonLight.shadow.normalBias = 0.04;
   scene.add(moonLight, moonLight.target);
 
@@ -122,20 +147,20 @@ function buildZombiesWorld() {
     $('end-score').textContent = `You survived ${s.round} round${s.round === 1 ? '' : 's'} · ${s.kills} kills · ${s.headshots} headshots`;
     setState('over');
   };
-  return { scene, sky, fx, game, map, exposure: 1.3, orbit: { cx: ZWORLD / 2, cz: ZWORLD / 2, r: 46, h: 30 } };
+  return { scene, sky, fx, game, map, exposure: 1.3, orbit: { cx: ZW / 2, cz: ZH / 2, r: 58, h: 34 } };
 }
 
-const classic = buildClassicWorld();
+// compile every shader up front so the first shot / first zombie doesn't cause a hitch
+const precompile = (w) => { try { renderer.compile(w.scene, camera); } catch (_) { /* best effort */ } return w; };
+const classic = precompile(buildClassicWorld());
 let zombies = null;
-const getZombies = () => (zombies = zombies || buildZombiesWorld());
+const getZombies = () => (zombies = zombies || precompile(buildZombiesWorld()));
 let world = classic;
 Object.defineProperty(window, '__game', { get: () => world.game }); // handy for debugging in the console
 window.__worlds = { classic, getZombies };
 
 // ---------- menu ----------
-const choice = { mode: 'classic', team: 'T', difficulty: 'normal', rounds: 8, knife: 'knife', crosshair: 'classic' };
-const load = (k) => { try { return localStorage.getItem(k); } catch (_) { return null; } };
-const save = (k, v) => { try { localStorage.setItem(k, v); } catch (_) { /* storage unavailable */ } };
+const choice = { mode: 'classic', team: 'T', difficulty: 'normal', rounds: 8, knife: 'knife', crosshair: 'classic', gfx: quality };
 choice.knife = load('defuse.knife') || choice.knife;
 choice.crosshair = load('defuse.crosshair') || choice.crosshair;
 choice.mode = load('defuse.mode') === 'zombies' ? 'zombies' : 'classic';
@@ -182,12 +207,14 @@ segment('mode-seg', 'mode', String, showMode);
 segment('team-seg', 'team');
 segment('diff-seg', 'difficulty');
 segment('rounds-seg', 'rounds', Number);
+// graphics quality is applied when the page loads, so changing it reloads the page
+segment('gfx-seg', 'gfx', String, (q) => { if (q !== quality) { save('defuse.quality', q); location.reload(); } });
 const sens = $('sens');
 sens.value = settings.sens; $('sens-val').textContent = settings.sens.toFixed(2);
 sens.addEventListener('input', () => {
   settings.sens = parseFloat(sens.value);
   $('sens-val').textContent = settings.sens.toFixed(2);
-  save('defuse.sens', String(settings.sens));
+  save('defuse.sens2', String(settings.sens));
 });
 if (matchMedia('(pointer: coarse)').matches && !matchMedia('(pointer: fine)').matches) $('mobile-warn').classList.remove('hidden');
 
@@ -201,6 +228,7 @@ function setState(s) {
   $('endscreen').classList.toggle('hidden', s !== 'over');
   hud.show(s === 'playing' || s === 'paused');
   input.active = s === 'playing';
+  if (s === 'playing') { input.endTick(); tickAcc = 0; } // drop key presses made in menus
 }
 
 $('play').addEventListener('click', () => {
@@ -246,13 +274,27 @@ function render() {
 
 let last = performance.now();
 let menuT = 0;
+let tickAcc = 0;
+// Fixed-timestep physics + interpolated rendering: the game always simulates in exact
+// 1/128 s steps (consistent movement at any frame rate), and each frame is drawn between
+// the last two steps, so motion stays smooth on 60, 144 or 240 Hz screens.
+function step(dt) {
+  const g = world.game;
+  g.frame?.();                      // aim with the mouse every frame
+  tickAcc += dt;
+  let n = 0;
+  while (tickAcc >= TICK && n < 16) { g.update(TICK); input.endTick(); tickAcc -= TICK; n++; }
+  if (n === 16) tickAcc = 0;        // fell far behind (e.g. tab was hidden): skip the backlog
+  g.interpolate?.(tickAcc / TICK);
+}
+
 function frame(now) {
   requestAnimationFrame(frame);
-  const dt = Math.min(0.05, (now - last) / 1000);
+  const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   const g = world.game;
   if (state === 'playing') {
-    g.update(dt);
+    step(dt);
     if (g.player?.alive && !g.player.downed) vm.update(dt, g.player, g, input.dx, input.dy);
     hud.update(dt, g);
   } else if (state === 'menu') {
@@ -268,18 +310,33 @@ function frame(now) {
 }
 
 // debug helper: advance the simulation without relying on requestAnimationFrame
-window.__sim = (seconds = 1) => {
+window.__sim = (seconds = 1, fps = 60) => {
   const g = world.game;
-  const steps = Math.round(seconds * 60);
-  for (let i = 0; i < steps; i++) {
-    g.update(1 / 60);
-    if (g.player?.alive && !g.player.downed) vm.update(1 / 60, g.player, g, 0, 0);
-    world.fx.update(1 / 60);
+  const frames = Math.round(seconds * fps);
+  for (let i = 0; i < frames; i++) {
+    step(1 / fps);
+    if (g.player?.alive && !g.player.downed) vm.update(1 / fps, g.player, g, 0, 0);
+    world.fx.update(1 / fps);
     input.endFrame();
     if (!g.running) break;
   }
+  g.interpolate?.(1);
   if (g.player) hud.update(1 / 60, g);
   render();
+};
+
+// debug helper: average milliseconds per frame (simulation + rendering, waiting for the GPU)
+window.__bench = (frames = 120) => {
+  const gl = renderer.getContext();
+  const g = world.game;
+  const t0 = performance.now();
+  for (let i = 0; i < frames; i++) {
+    if (g.running) step(1 / 60);
+    world.fx.update(1 / 60);
+    render();
+    gl.finish();
+  }
+  return +((performance.now() - t0) / frames).toFixed(2);
 };
 
 setState('menu');
