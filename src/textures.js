@@ -1,0 +1,303 @@
+// Procedural textures drawn on canvases, so the game needs no image files.
+import * as THREE from 'three';
+
+export function rng(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function makeCanvas(w, h = w) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  return [c, c.getContext('2d')];
+}
+
+function noise(ctx, w, h, amount, r) {
+  const img = ctx.getImageData(0, 0, w, h);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const n = (r() - 0.5) * amount;
+    d[i] += n; d[i + 1] += n * 0.95; d[i + 2] += n * 0.85;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+function blotches(ctx, w, h, count, rgb, alpha, maxR, r) {
+  for (let i = 0; i < count; i++) {
+    const x = r() * w, y = r() * h, rad = maxR * (0.3 + r() * 0.7);
+    const g = ctx.createRadialGradient(x, y, 0, x, y, rad);
+    g.addColorStop(0, `rgba(${rgb},${alpha * (0.4 + r() * 0.6)})`);
+    g.addColorStop(1, `rgba(${rgb},0)`);
+    ctx.fillStyle = g;
+    // draw wrapped so the texture tiles
+    for (const ox of [-w, 0, w]) for (const oy of [-h, 0, h]) {
+      ctx.save(); ctx.translate(ox, oy); ctx.fillRect(x - rad, y - rad, rad * 2, rad * 2); ctx.restore();
+    }
+  }
+}
+
+function toTexture(c, repeat = true) {
+  const t = new THREE.CanvasTexture(c);
+  if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  return t;
+}
+
+// Sandstone blocks. One tile = 4m x 4m.
+function wallTexture() {
+  const S = 512, r = rng(11);
+  const [c, ctx] = makeCanvas(S);
+  ctx.fillStyle = '#b89668'; ctx.fillRect(0, 0, S, S);
+  const rows = 8, rh = S / rows;
+  for (let y = 0; y < rows; y++) {
+    let x = -(y % 2) * 60 - r() * 30;
+    while (x < S) {
+      const w = 90 + r() * 80;
+      const v = 0.88 + r() * 0.2;
+      ctx.fillStyle = `rgb(${210 * v | 0},${178 * v | 0},${126 * v | 0})`;
+      ctx.fillRect(x + 2, y * rh + 2, w - 4, rh - 4);
+      if (x + w > S) ctx.fillRect(x + 2 - S, y * rh + 2, w - 4, rh - 4);
+      x += w;
+    }
+  }
+  blotches(ctx, S, S, 30, '120,90,50', 0.25, 90, r);
+  blotches(ctx, S, S, 20, '255,240,210', 0.18, 70, r);
+  noise(ctx, S, S, 34, r);
+  return toTexture(c);
+}
+
+// Sand / packed dirt floor. One tile = 8m.
+function sandTexture() {
+  const S = 512, r = rng(23);
+  const [c, ctx] = makeCanvas(S);
+  ctx.fillStyle = '#cdb184'; ctx.fillRect(0, 0, S, S);
+  blotches(ctx, S, S, 50, '150,115,70', 0.22, 110, r);
+  blotches(ctx, S, S, 40, '240,220,180', 0.2, 80, r);
+  for (let i = 0; i < 500; i++) {
+    const v = r() < 0.5 ? 'rgba(90,70,45,0.35)' : 'rgba(255,245,220,0.3)';
+    ctx.fillStyle = v; const s = 1 + r() * 3;
+    ctx.fillRect(r() * S, r() * S, s, s);
+  }
+  noise(ctx, S, S, 40, r);
+  return toTexture(c);
+}
+
+// Stone floor tiles for bomb sites. One tile = 4m (4x4 tiles).
+function tileTexture() {
+  const S = 512, r = rng(37);
+  const [c, ctx] = makeCanvas(S);
+  ctx.fillStyle = '#7d6c55'; ctx.fillRect(0, 0, S, S);
+  const n = 4, ts = S / n;
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const v = 0.85 + r() * 0.22;
+    ctx.fillStyle = `rgb(${196 * v | 0},${178 * v | 0},${146 * v | 0})`;
+    ctx.fillRect(x * ts + 3, y * ts + 3, ts - 6, ts - 6);
+  }
+  blotches(ctx, S, S, 25, '90,70,45', 0.25, 80, r);
+  noise(ctx, S, S, 30, r);
+  return toTexture(c);
+}
+
+// Wooden crate face (whole texture per face).
+function crateTexture() {
+  const S = 256, r = rng(51);
+  const [c, ctx] = makeCanvas(S);
+  ctx.fillStyle = '#9c6d3c'; ctx.fillRect(0, 0, S, S);
+  for (let i = 0; i < 6; i++) {
+    const v = 0.85 + r() * 0.25;
+    ctx.fillStyle = `rgb(${160 * v | 0},${112 * v | 0},${62 * v | 0})`;
+    ctx.fillRect(0, i * S / 6 + 1, S, S / 6 - 2);
+  }
+  ctx.strokeStyle = 'rgba(60,35,15,0.35)'; ctx.lineWidth = 1;
+  for (let i = 0; i < 40; i++) { const y = r() * S; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(S, y + (r() - 0.5) * 6); ctx.stroke(); }
+  ctx.fillStyle = '#6e4723';
+  const b = 24;
+  ctx.fillRect(0, 0, S, b); ctx.fillRect(0, S - b, S, b); ctx.fillRect(0, 0, b, S); ctx.fillRect(S - b, 0, b, S);
+  ctx.save(); ctx.translate(S / 2, S / 2); ctx.rotate(Math.PI / 4);
+  ctx.fillRect(-S * 0.68, -b / 2, S * 1.36, b); ctx.restore();
+  ctx.fillStyle = '#3b2a1a';
+  for (const [x, y] of [[12, 12], [S - 12, 12], [12, S - 12], [S - 12, S - 12]]) { ctx.beginPath(); ctx.arc(x, y, 4, 0, 7); ctx.fill(); }
+  noise(ctx, S, S, 28, r);
+  return toTexture(c, false);
+}
+
+// Spray-painted site letter.
+export function letterTexture(letter) {
+  const S = 256;
+  const [c, ctx] = makeCanvas(S);
+  ctx.clearRect(0, 0, S, S);
+  ctx.font = '700 210px Rajdhani, Arial, sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(200,40,20,0.8)'; ctx.shadowBlur = 12;
+  ctx.fillStyle = 'rgba(205,48,28,0.85)';
+  ctx.fillText(letter, S / 2, S / 2 + 10);
+  const t = toTexture(c, false);
+  return t;
+}
+
+export function bulletHoleTexture() {
+  const S = 64;
+  const [c, ctx] = makeCanvas(S);
+  const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 30);
+  g.addColorStop(0, 'rgba(10,8,6,1)');
+  g.addColorStop(0.25, 'rgba(25,20,15,0.95)');
+  g.addColorStop(0.5, 'rgba(60,45,30,0.5)');
+  g.addColorStop(1, 'rgba(60,45,30,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, S, S);
+  return toTexture(c, false);
+}
+
+export function flashTexture() {
+  const S = 128;
+  const [c, ctx] = makeCanvas(S);
+  ctx.translate(S / 2, S / 2);
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, S / 2);
+  g.addColorStop(0, 'rgba(255,255,230,1)');
+  g.addColorStop(0.2, 'rgba(255,210,120,0.9)');
+  g.addColorStop(0.5, 'rgba(255,140,40,0.35)');
+  g.addColorStop(1, 'rgba(255,100,20,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  const spikes = 7;
+  for (let i = 0; i <= spikes * 2; i++) {
+    const a = (i / (spikes * 2)) * Math.PI * 2;
+    const rr = i % 2 === 0 ? S / 2 : S / 6;
+    ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+  }
+  ctx.fill();
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+export function markerTexture(color) {
+  const S = 64;
+  const [c, ctx] = makeCanvas(S);
+  ctx.fillStyle = color; ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(10, 14); ctx.lineTo(54, 14); ctx.lineTo(32, 50); ctx.closePath();
+  ctx.stroke(); ctx.fill();
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+// Light wood grain running lengthwise (for the log characters' bodies).
+export function woodGrainTexture() {
+  const W = 256, H = 512, r = rng(77);
+  const [c, ctx] = makeCanvas(W, H);
+  ctx.fillStyle = '#c99d68'; ctx.fillRect(0, 0, W, H);
+  for (let i = 0; i < 70; i++) {
+    const x0 = r() * W, w = 1 + r() * 3, wob = 2 + r() * 6, ph = r() * 6;
+    ctx.strokeStyle = r() < 0.7 ? `rgba(120,78,38,${0.12 + r() * 0.25})` : `rgba(255,230,190,${0.12 + r() * 0.2})`;
+    ctx.lineWidth = w;
+    ctx.beginPath();
+    for (let y = 0; y <= H; y += 8) {
+      const x = x0 + Math.sin(y / 60 + ph) * wob;
+      if (y === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+  for (let i = 0; i < 3; i++) { // knots
+    const x = r() * W, y = r() * H;
+    for (let k = 4; k > 0; k--) {
+      ctx.strokeStyle = `rgba(95,58,25,${0.25 + k * 0.08})`; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.ellipse(x, y, k * 4, k * 9, 0, 0, 7); ctx.stroke();
+    }
+  }
+  noise(ctx, W, H, 18, r);
+  const t = toTexture(c);
+  t.wrapT = THREE.ClampToEdgeWrapping;
+  return t;
+}
+
+// Tree rings for the top of the log.
+export function treeRingsTexture() {
+  const S = 256, r = rng(91);
+  const [c, ctx] = makeCanvas(S);
+  ctx.fillStyle = '#e2bf88'; ctx.fillRect(0, 0, S, S);
+  for (let k = 1; k < 16; k++) {
+    ctx.strokeStyle = `rgba(150,100,50,${0.25 + r() * 0.3})`;
+    ctx.lineWidth = 1 + r() * 2.5;
+    ctx.beginPath(); ctx.arc(S / 2 + (r() - 0.5) * 4, S / 2 + (r() - 0.5) * 4, k * 8, 0, 7); ctx.stroke();
+  }
+  ctx.strokeStyle = '#8a5a2b'; ctx.lineWidth = 10;
+  ctx.beginPath(); ctx.arc(S / 2, S / 2, S / 2 - 5, 0, 7); ctx.stroke();
+  noise(ctx, S, S, 16, r);
+  return toTexture(c, false);
+}
+
+// Painted face for the Tung Tung Tung Sahur log: brows, eye sockets, nose and a big open smile.
+// Wraps around the front of the log (u = left->right as seen from the front, v = bottom->top).
+// The 3D eyeballs sit on top of this at the socket positions.
+export function tungFaceTexture() {
+  const W = 512, H = 384;
+  const [c, ctx] = makeCanvas(W, H);
+  ctx.clearRect(0, 0, W, H);
+  const ex = [167, 345], ey = 92;
+  // eye sockets (darker wood around the eyes)
+  for (const x of ex) {
+    const g = ctx.createRadialGradient(x, ey, 20, x, ey, 70);
+    g.addColorStop(0, 'rgba(70,40,15,0.55)'); g.addColorStop(1, 'rgba(70,40,15,0)');
+    ctx.fillStyle = g; ctx.fillRect(x - 80, ey - 80, 160, 160);
+  }
+  // thick eyebrows
+  ctx.strokeStyle = '#3d220d'; ctx.lineCap = 'round'; ctx.lineWidth = 20;
+  for (const [x, dir] of [[ex[0], 1], [ex[1], -1]]) {
+    ctx.beginPath();
+    ctx.moveTo(x - 50 * dir, 30);
+    ctx.quadraticCurveTo(x, 6, x + 52 * dir, 28);
+    ctx.stroke();
+  }
+  // nose: soft carved bump shading
+  const ng = ctx.createRadialGradient(256, 190, 4, 256, 190, 34);
+  ng.addColorStop(0, 'rgba(90,52,20,0.15)'); ng.addColorStop(0.7, 'rgba(90,52,20,0.45)'); ng.addColorStop(1, 'rgba(90,52,20,0)');
+  ctx.fillStyle = ng; ctx.fillRect(210, 150, 92, 80);
+  ctx.fillStyle = 'rgba(60,32,10,0.7)';
+  ctx.beginPath(); ctx.ellipse(244, 204, 7, 5, 0, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(268, 204, 7, 5, 0, 0, 7); ctx.fill();
+  // big open smile
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(150, 250);
+  ctx.quadraticCurveTo(256, 280, 362, 250);
+  ctx.quadraticCurveTo(340, 360, 256, 362);
+  ctx.quadraticCurveTo(172, 360, 150, 250);
+  ctx.closePath();
+  ctx.fillStyle = '#3a120a'; ctx.fill();
+  ctx.clip();
+  ctx.fillStyle = '#f3ecdc'; // teeth
+  ctx.beginPath(); ctx.moveTo(150, 250); ctx.quadraticCurveTo(256, 282, 362, 250); ctx.lineTo(362, 284); ctx.quadraticCurveTo(256, 312, 150, 284); ctx.fill();
+  ctx.strokeStyle = 'rgba(120,100,80,0.6)'; ctx.lineWidth = 3;
+  for (let x = 190; x <= 322; x += 33) { ctx.beginPath(); ctx.moveTo(x, 262); ctx.lineTo(x, 300); ctx.stroke(); }
+  ctx.fillStyle = '#c4534a'; // tongue
+  ctx.beginPath(); ctx.ellipse(256, 352, 62, 30, 0, 0, 7); ctx.fill();
+  ctx.restore();
+  ctx.strokeStyle = '#2a1206'; ctx.lineWidth = 7; ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(150, 250); ctx.quadraticCurveTo(256, 280, 362, 250);
+  ctx.quadraticCurveTo(340, 360, 256, 362); ctx.quadraticCurveTo(172, 360, 150, 250);
+  ctx.stroke();
+  // smile creases
+  ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(70,38,14,0.75)';
+  ctx.beginPath(); ctx.moveTo(138, 236); ctx.quadraticCurveTo(132, 252, 142, 266); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(374, 236); ctx.quadraticCurveTo(380, 252, 370, 266); ctx.stroke();
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  return t;
+}
+
+export function makeTextures() {
+  return {
+    wall: wallTexture(),
+    sand: sandTexture(),
+    tile: tileTexture(),
+    crate: crateTexture(),
+  };
+}

@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tung Tung Shooter</title>
+  <meta name="description" content="Tung Tung Shooter: a 5v5 CS-style tactical shooter in your browser, starring Tung Tung Tung Sahur. Plant the bomb, defuse it, or eliminate the enemy team.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+  </script>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <div id="hud" class="hidden">
+    <canvas id="radar" class="cs-only" width="220" height="220"></canvas>
+    <div id="money" class="cs-only">$800</div>
+    <div id="bomb-icon" class="hidden cs-only">C4</div>
+
+    <div id="topbar" class="cs-only">
+      <div class="side ct"><span class="alive" id="alive-ct">5</span><span class="score" id="score-ct">0</span></div>
+      <div id="timer">1:55</div>
+      <div class="side t"><span class="score" id="score-t">0</span><span class="alive" id="alive-t">5</span></div>
+    </div>
+
+    <div id="killfeed" class="cs-only"></div>
+
+    <div id="z-perks" class="z-only"></div>
+    <div id="z-round" class="z-only"></div>
+    <div id="z-points-wrap" class="z-only"><div id="z-pop"></div><div id="z-points">500</div></div>
+    <div id="z-powerups" class="z-only"></div>
+
+    <canvas id="crosshair"></canvas>
+    <div id="hitmarker"></div>
+    <div id="center-msg"></div>
+    <div id="banner"><div id="banner-title"></div><div id="banner-sub"></div></div>
+    <div id="hint"></div>
+
+    <div id="progress" class="hidden cs-only">
+      <div id="progress-label">Planting</div>
+      <div class="bar"><div id="progress-fill"></div></div>
+    </div>
+
+    <div id="vitals">
+      <div class="vital"><span class="ico">+</span><span id="hp">100</span></div>
+      <div class="vital cs-only"><span class="ico shield">&#9960;</span><span id="armor">0</span></div>
+    </div>
+
+    <div id="ammo">
+      <div id="weapon-name">Pistol</div>
+      <div><span id="ammo-mag">12</span><span id="ammo-res"> / 48</span></div>
+    </div>
+
+    <div id="scope" class="hidden"></div>
+    <div id="damage-flash"></div>
+    <div id="white-flash"></div>
+    <div id="spectate" class="hidden cs-only"></div>
+    <div id="buymenu" class="hidden cs-only"></div>
+    <div id="scoreboard" class="hidden cs-only"></div>
+  </div>
+
+  <div id="menu">
+    <div class="panel">
+      <h1>TUNG TUNG<span>SHOOTER</span></h1>
+      <p class="tag">Tactical shooter &mdash; runs entirely in your browser</p>
+
+      <label>Mode</label>
+      <div class="seg" id="mode-seg">
+        <button data-v="classic" class="on">5v5 Classic</button>
+        <button data-v="zombies">Zombies</button>
+      </div>
+      <p id="z-desc" class="mode-desc hidden">Solo survival in <b>Sahur Village</b>. Hold off endless rounds of Tung Tung zombies, rebuild the window boards, and spend points on doors, wall guns, perks, the Mystery Box and Pack-a-Punch.</p>
+
+      <div class="cs-opt">
+        <label>Team</label>
+        <div class="seg" id="team-seg">
+          <button data-v="T" class="on">Terrorists</button>
+          <button data-v="CT">Counter-Terrorists</button>
+        </div>
+      </div>
+
+      <div class="row2">
+        <div>
+          <label for="knife-select">Knives</label>
+          <select id="knife-select"></select>
+        </div>
+        <div>
+          <label for="crosshair-select">Crosshair</label>
+          <div class="xh-row">
+            <select id="crosshair-select"></select>
+            <canvas id="xh-preview" title="Crosshair preview"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="cs-opt">
+        <label>Bot difficulty</label>
+        <div class="seg" id="diff-seg">
+          <button data-v="easy">Easy</button>
+          <button data-v="normal" class="on">Normal</button>
+          <button data-v="hard">Hard</button>
+        </div>
+
+        <label>Rounds to win</label>
+        <div class="seg" id="rounds-seg">
+          <button data-v="5">5</button>
+          <button data-v="8" class="on">8</button>
+          <button data-v="13">13</button>
+        </div>
+      </div>
+
+      <label>Mouse sensitivity <span id="sens-val">1.0</span></label>
+      <input type="range" id="sens" min="0.2" max="3" step="0.05" value="1">
+
+      <button id="play">PLAY</button>
+      <p id="mobile-warn" class="hidden">Needs a keyboard and mouse. Open this on a desktop or laptop.</p>
+
+      <div class="controls">
+        <div><b>WASD</b> move</div><div><b>Mouse</b> aim / shoot</div>
+        <div><b>Space</b> jump</div><div><b>C / Ctrl</b> crouch</div>
+        <div><b>Shift</b> walk (quiet)</div><div><b>R</b> reload</div>
+        <div><b>1 2 3</b> weapons</div><div><b>Q</b> last weapon</div>
+        <div><b>B</b> buy menu</div><div><b>E</b> plant / defuse / buy</div>
+        <div><b>Right click</b> scope</div><div><b>Tab</b> scoreboard</div>
+        <div><b>F</b> inspect weapon</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="pause" class="hidden">
+    <div class="panel small">
+      <h2>PAUSED</h2>
+      <button id="resume">RESUME</button>
+      <button id="quit" class="ghost">QUIT TO MENU</button>
+    </div>
+  </div>
+
+  <div id="endscreen" class="hidden">
+    <div class="panel small">
+      <h2 id="end-title">VICTORY</h2>
+      <p id="end-score"></p>
+      <button id="again">BACK TO MENU</button>
+    </div>
+  </div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
