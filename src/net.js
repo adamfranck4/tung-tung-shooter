@@ -8,7 +8,7 @@
 const PEERJS_URL = 'https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js';
 const ID_PREFIX = 'tungtung-shooter-v1-';
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-export const PROTOCOL = 3;   // bump when host and players must run the same version (3: zombie types, shop, Pack-a-Punch levels)
+export const PROTOCOL = 4;   // bump when host and players must run the same version (4: bigger Zombies map)
 export const MAX_PLAYERS = { classic: 10, zombies: 4 };
 export const TEAM_SIZE = 5;
 export const BOT_NAMES = {

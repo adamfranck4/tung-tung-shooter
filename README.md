@@ -84,6 +84,16 @@ online with up to 3 friends.
 - **Sahur Hill** (doors from the Courtyard 1250 / Kitchen 1000): two hills, a walk-in hut, and a watchtower
   with a hanging kentongan, reached by stairs or a ladder (W climbs the way you look; S or look down to go down).
   Zombies take the stairs. The Courtyard also has a walk-in hut you can run through.
+- **The fountain** in the Courtyard sits on a round mound with a ramp all the way round, so zombies walk right
+  up to anyone standing on it (no camping).
+- **Night Market** (doors from the alley 1250, or up a zig-zag path from Sahur Hill 1000): striped market stalls
+  and a walk-through shop. Scout on the wall.
+- **Rice Barn** (doors from the Courtyard 1000, through a bending corridor, or Sahur Hill 1250): a big barn
+  whose stall walls make a winding path through it. M16 on the wall.
+- **Dead Orchard** (doors from the Spawn Room 1250, or down a winding path from the Garden 1000): dying trees,
+  fallen logs, a tool shed, and graves that zombies rise from. Desert Eagle on the wall.
+- Every roof and hut doorway is tall enough for the rainbow giant. The village also has bunting with paper
+  lanterns, painted shutters (some windows lit from inside), boarded-up doors, and dead trees and logs here and there.
 - Points: +10 per hit, +60 per kill, +100 headshot kill, +130 knife kill, +10 per board you rebuild (hold E).
 - **Shop (press B, anywhere):** buy guns and ammo with points. More guns unlock every two rounds:
   - Round 1: Desert Eagle 700, SMG 1000 · Round 3: Shotgun 1500, M16 1600 · Round 5: AK 1800, Scout 1700 ·
@@ -92,7 +102,8 @@ online with up to 3 friends.
     gun in your hands (half its price; 4500 / 6500 / 8500 / 10500 once it's upgraded to level I-IV).
   - The Tung Ray stays a Mystery Box exclusive.
 - Spend points on (press E):
-  - Doors: Courtyard 750, Kitchen 1000, Garden 1000, Drum Tower 1250, Sahur Hill 1250 / 1000
+  - Doors: Courtyard 750, Kitchen 1000, Garden 1000, Drum Tower 1250, Sahur Hill 1250 / 1000,
+    Night Market 1250 / 1000, Rice Barn 1000 / 1250, Dead Orchard 1250 / 1000
   - Wall guns: SMG 1000, Shotgun 1500, AK 1800, M4 1800, Sniper 2000, LMG 3000 (ammo = half price). They are
     available from round 1, before the shop unlocks them, if you open their area.
   - Perks: Quick Revive 500 (gets you back up once), Double Tap 2000, Juggernog 2500 (more health), Speed Cola 3000 (faster reloads)
