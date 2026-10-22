@@ -7,7 +7,7 @@ export class Input {
     this.keys = new Set(); this.hits = new Set();
     this.buttons = new Set(); this.clicks = new Set();
     this.dx = 0; this.dy = 0; this.wheel = 0;
-    this.locked = false; this.active = false;
+    this.locked = false; this.active = false; this.suspended = false;
 
     addEventListener('keydown', (e) => {
       if (this.active && GAME_KEYS.has(e.code)) e.preventDefault();
@@ -46,10 +46,11 @@ export class Input {
   }
   unlock() { if (document.pointerLockElement) document.exitPointerLock(); }
 
-  down(code) { return this.keys.has(code); }
-  pressed(code) { return this.hits.has(code); }
-  mouseDown(b) { return this.buttons.has(b); }
-  mouseHit(b) { return this.clicks.has(b); }
+  // suspended: a menu is open but the match keeps running (online), so the game sees no input
+  down(code) { return !this.suspended && this.keys.has(code); }
+  pressed(code) { return !this.suspended && this.hits.has(code); }
+  mouseDown(b) { return !this.suspended && this.buttons.has(b); }
+  mouseHit(b) { return !this.suspended && this.clicks.has(b); }
 
   // Mouse movement is used once per rendered frame (aim); key/click presses are used once per
   // physics tick, so a press is never handled twice or lost when frames and ticks don't line up.

@@ -31,6 +31,7 @@
 
     <div id="z-perks" class="z-only"></div>
     <div id="z-round" class="z-only"></div>
+    <div id="z-team" class="z-only"></div>
     <div id="z-points-wrap" class="z-only"><div id="z-pop"></div><div id="z-points">500</div></div>
     <div id="z-powerups" class="z-only"></div>
 
@@ -40,7 +41,7 @@
     <div id="banner"><div id="banner-title"></div><div id="banner-sub"></div></div>
     <div id="hint"></div>
 
-    <div id="progress" class="hidden cs-only">
+    <div id="progress" class="hidden">
       <div id="progress-label">Planting</div>
       <div class="bar"><div id="progress-fill"></div></div>
     </div>
@@ -58,7 +59,7 @@
     <div id="scope" class="hidden"></div>
     <div id="damage-flash"></div>
     <div id="white-flash"></div>
-    <div id="spectate" class="hidden cs-only"></div>
+    <div id="spectate" class="hidden"></div>
     <div id="buymenu" class="hidden cs-only"></div>
     <div id="scoreboard" class="hidden cs-only"></div>
   </div>
@@ -73,9 +74,28 @@
         <button data-v="classic" class="on">5v5 Classic</button>
         <button data-v="zombies">Zombies</button>
       </div>
-      <p id="z-desc" class="mode-desc hidden">Solo survival in <b>Sahur Village</b>. Hold off endless rounds of Tung Tung zombies, rebuild the window boards, and spend points on doors, wall guns, perks, the Mystery Box and Pack-a-Punch.</p>
+      <p id="z-desc" class="mode-desc hidden">Survival in <b>Sahur Village</b>. Hold off endless rounds of Tung Tung zombies, rebuild the window boards, and spend points on doors, wall guns, perks, the Mystery Box and Pack-a-Punch.</p>
 
-      <div class="cs-opt">
+      <label>Players</label>
+      <div class="seg" id="net-seg">
+        <button data-v="solo" class="on">Solo</button>
+        <button data-v="online">Online with friends</button>
+      </div>
+
+      <div id="online-opt" class="hidden">
+        <label for="net-name">Your name</label>
+        <input id="net-name" type="text" maxlength="14" autocomplete="off" spellcheck="false" placeholder="Name">
+        <div class="net-row">
+          <button id="host-btn" class="act">HOST A ROOM</button>
+          <span class="or">or join</span>
+          <input id="join-code" type="text" maxlength="5" autocomplete="off" spellcheck="false" placeholder="CODE" aria-label="Room code">
+          <button id="join-btn" class="act">JOIN</button>
+        </div>
+        <p id="net-msg" class="net-msg" role="status"></p>
+        <p class="mode-desc" id="online-desc"></p>
+      </div>
+
+      <div class="cs-opt solo-opt">
         <label>Team</label>
         <div class="seg" id="team-seg">
           <button data-v="T" class="on">Terrorists</button>
@@ -97,7 +117,7 @@
         </div>
       </div>
 
-      <div class="cs-opt">
+      <div class="cs-opt solo-opt">
         <label>Bot difficulty</label>
         <div class="seg" id="diff-seg">
           <button data-v="easy">Easy</button>
@@ -122,7 +142,7 @@
         <button data-v="low">Performance</button>
       </div>
 
-      <button id="play">PLAY</button>
+      <button id="play" class="solo-opt">PLAY</button>
       <p id="mobile-warn" class="hidden">Needs a keyboard and mouse. Open this on a desktop or laptop.</p>
 
       <div class="controls">
@@ -133,14 +153,72 @@
         <div><b>B</b> buy menu</div><div><b>E</b> plant / defuse / buy</div>
         <div><b>Right click</b> scope</div><div><b>Tab</b> scoreboard</div>
         <div><b>F</b> inspect weapon</div><div><b>N</b> next wave (Zombies)</div>
+        <div><b>E (hold)</b> revive a teammate</div>
       </div>
+    </div>
+  </div>
+
+  <div id="lobby" class="hidden">
+    <div class="panel">
+      <div class="lobby-head">
+        <h2>LOBBY</h2>
+        <div class="room"><span>ROOM CODE</span><b id="room-code">-----</b></div>
+      </div>
+      <div class="lobby-share">
+        <button id="copy-link" class="ghost-btn">Copy invite link</button>
+        <span id="copy-msg"></span>
+      </div>
+
+      <label>Mode</label>
+      <div class="seg" id="lobby-mode">
+        <button data-v="classic">5v5 Classic</button>
+        <button data-v="zombies">Zombies Co-op</button>
+      </div>
+
+      <div id="lobby-players"></div>
+
+      <div class="lb-classic">
+        <label>Your team</label>
+        <div class="seg" id="lobby-team">
+          <button data-v="T">Terrorists</button>
+          <button data-v="CT">Counter-Terrorists</button>
+        </div>
+      </div>
+
+      <div id="lobby-host-opts" class="lb-classic">
+        <label>Empty slots</label>
+        <div class="seg" id="lobby-bots">
+          <button data-v="1">Fill with bots</button>
+          <button data-v="0">No bots</button>
+        </div>
+        <label>Bot difficulty</label>
+        <div class="seg" id="lobby-diff">
+          <button data-v="easy">Easy</button>
+          <button data-v="normal">Normal</button>
+          <button data-v="hard">Hard</button>
+        </div>
+        <label>Rounds to win</label>
+        <div class="seg" id="lobby-rounds">
+          <button data-v="5">5</button>
+          <button data-v="8">8</button>
+          <button data-v="13">13</button>
+        </div>
+      </div>
+      <p id="lobby-summary" class="mode-desc"></p>
+
+      <button id="lobby-start">START MATCH</button>
+      <p id="lobby-wait" class="lobby-wait hidden">Waiting for the host to start the match&hellip;</p>
+      <p id="lobby-msg" class="net-msg" role="status"></p>
+      <button id="lobby-leave" class="ghost">LEAVE ROOM</button>
     </div>
   </div>
 
   <div id="pause" class="hidden">
     <div class="panel small">
-      <h2>PAUSED</h2>
+      <h2 id="pause-title">PAUSED</h2>
+      <p id="pause-note" class="pause-note hidden">The match keeps running while this menu is open.</p>
       <button id="resume">RESUME</button>
+      <button id="end-match" class="ghost hidden">END MATCH FOR EVERYONE</button>
       <button id="quit" class="ghost">QUIT TO MENU</button>
     </div>
   </div>
@@ -149,6 +227,7 @@
     <div class="panel small">
       <h2 id="end-title">VICTORY</h2>
       <p id="end-score"></p>
+      <div id="end-list"></div>
       <button id="again">BACK TO MENU</button>
     </div>
   </div>

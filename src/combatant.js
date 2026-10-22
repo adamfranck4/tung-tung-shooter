@@ -1,7 +1,7 @@
 // Shared logic for the player and bots: health, weapons, recoil, movement and hitboxes.
 import * as THREE from 'three';
 import { WEAPONS } from './weapons.js';
-import { moveBody, overlapsAny, raySphere, rayBox } from './physics.js';
+import { moveBody, overlapsAny, raySphere, rayBox, raycast } from './physics.js';
 
 // CS2 movement values, converted from Source units (1 unit = 1 inch = 0.0254 m).
 const U = 0.0254;
@@ -19,6 +19,18 @@ let nextId = 1;
 export function dirFrom(yaw, pitch, out) {
   const cp = Math.cos(pitch);
   return out.set(-Math.sin(yaw) * cp, Math.sin(pitch), -Math.cos(yaw) * cp);
+}
+
+// Third-person camera behind a fighter, pulled in when a wall is in the way (spectating).
+const _cv = new THREE.Vector3(), _cd = new THREE.Vector3(), _ch = {};
+export function chaseCamera(cam, s, alpha, colliders) {
+  s.renderEye(_cv, alpha);
+  dirFrom(s.yaw, s.pitch * 0.5, _cd).negate();
+  _cd.y += 0.25; _cd.normalize();
+  const hit = raycast(_cv, _cd, 3.2, colliders, _ch);
+  const dist = hit ? Math.max(0.3, hit.t - 0.3) : 3.2;
+  cam.position.copy(_cv).addScaledVector(_cd, dist);
+  cam.rotation.set(s.pitch * 0.5 - 0.08, s.yaw, 0);
 }
 
 // Source-engine acceleration: gain up to accel * base * dt per step, but never push the

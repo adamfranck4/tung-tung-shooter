@@ -3,12 +3,15 @@ import { makeTextures } from './textures.js';
 import { GameMap, WORLD } from './map.js';
 import { ZMap, ZW, ZH } from './zmap.js';
 import { Input } from './input.js';
-import { Hud } from './hud.js';
+import { Hud, esc } from './hud.js';
 import { Sound } from './audio.js';
 import { Effects } from './effects.js';
 import { ViewModel, KNIFE_SKINS } from './viewmodel.js';
 import { Game } from './game.js';
 import { ZombiesGame } from './zombies.js';
+import { ClassicClient } from './netclassic.js';
+import { ZombiesClient } from './netzombies.js';
+import { Session, NetLink, MAX_PLAYERS, TEAM_SIZE, cleanName, normalizeCode } from './net.js';
 import { CROSSHAIRS, getCrosshair, drawCrosshair } from './crosshair.js';
 import { CS_DEG_PER_COUNT } from './player.js';
 
@@ -93,14 +96,14 @@ function buildClassicWorld() {
   scene.add(sun, sun.target);
   const map = new GameMap(scene, tex);
   const fx = new Effects(scene);
-  const game = new Game({ scene, camera, map, hud, sound, fx, input, vm, settings });
-  game.onMatchOver = (winner) => {
-    input.unlock();
-    $('end-title').textContent = winner === game.player.team ? 'VICTORY' : 'DEFEAT';
-    $('end-score').textContent = `Counter-Terrorists ${game.score.CT} — ${game.score.T} Terrorists`;
-    setState('over');
-  };
-  return { scene, sky, fx, game, map, exposure: 1.05, orbit: { cx: WORLD / 2, cz: WORLD / 2, r: 75, h: 38 } };
+  const ctx = { scene, camera, map, hud, sound, fx, input, vm, settings };
+  // solo and hosting use Game; joining someone else's match uses ClassicClient
+  const solo = new Game(ctx), client = new ClassicClient(ctx);
+  for (const game of [solo, client]) {
+    game.onMatchOver = (winner) => showEnd(winner === game.player.team ? 'VICTORY' : 'DEFEAT',
+      `Counter-Terrorists ${game.score.CT} — ${game.score.T} Terrorists`);
+  }
+  return { scene, sky, fx, game: solo, solo, client, map, exposure: 1.05, orbit: { cx: WORLD / 2, cz: WORLD / 2, r: 75, h: 38 } };
 }
 
 // ---------- world 2: Sahur Village (Zombies), night ----------
@@ -140,14 +143,18 @@ function buildZombiesWorld() {
 
   const map = new ZMap(scene, tex);
   const fx = new Effects(scene);
-  const game = new ZombiesGame({ scene, camera, map, hud, sound, fx, input, vm, settings });
-  game.onGameOver = (s) => {
-    input.unlock();
-    $('end-title').textContent = 'GAME OVER';
-    $('end-score').textContent = `You survived ${s.round} round${s.round === 1 ? '' : 's'} · ${s.kills} kills · ${s.headshots} headshots`;
-    setState('over');
+  const ctx = { scene, camera, map, hud, sound, fx, input, vm, settings };
+  const solo = new ZombiesGame(ctx), client = new ZombiesClient(ctx);
+  const onGameOver = (s) => {
+    const rounds = `${s.round} round${s.round === 1 ? '' : 's'}`;
+    if (!s.coop) { showEnd('GAME OVER', `You survived ${rounds} · ${s.kills} kills · ${s.headshots} headshots`); return; }
+    const rows = s.players.slice().sort((a, b) => b.points - a.points).map((q) => `<tr class="${q.me ? 'me' : ''}"><td>${esc(q.name)}</td>`
+      + `<td class="num">${q.kills}</td><td class="num">${q.headshots}</td><td class="num">${q.downs}</td><td class="num">${q.points}</td></tr>`).join('');
+    showEnd('GAME OVER', `Your team survived ${rounds}`,
+      `<table><tr><th>Player</th><th class="num">Kills</th><th class="num">HS</th><th class="num">Downs</th><th class="num">Points</th></tr>${rows}</table>`);
   };
-  return { scene, sky, fx, game, map, exposure: 1.3, orbit: { cx: ZW / 2, cz: ZH / 2, r: 58, h: 34 } };
+  solo.onGameOver = client.onGameOver = onGameOver;
+  return { scene, sky, fx, game: solo, solo, client, map, exposure: 1.3, orbit: { cx: ZW / 2, cz: ZH / 2, r: 58, h: 34 } };
 }
 
 // compile every shader up front so the first shot / first zombie doesn't cause a hitch
@@ -156,14 +163,17 @@ const classic = precompile(buildClassicWorld());
 let zombies = null;
 const getZombies = () => (zombies = zombies || precompile(buildZombiesWorld()));
 let world = classic;
+let session = null;   // the online room you're in, if any
 Object.defineProperty(window, '__game', { get: () => world.game }); // handy for debugging in the console
+Object.defineProperty(window, '__session', { get: () => session });
 window.__worlds = { classic, getZombies };
 
 // ---------- menu ----------
-const choice = { mode: 'classic', team: 'T', difficulty: 'normal', rounds: 8, knife: 'knife', crosshair: 'classic', gfx: quality };
+const choice = { mode: 'classic', net: 'solo', team: 'T', difficulty: 'normal', rounds: 8, knife: 'knife', crosshair: 'classic', gfx: quality };
 choice.knife = load('defuse.knife') || choice.knife;
 choice.crosshair = load('defuse.crosshair') || choice.crosshair;
 choice.mode = load('defuse.mode') === 'zombies' ? 'zombies' : 'classic';
+choice.net = load('defuse.net') === 'online' || params.has('join') ? 'online' : 'solo';
 
 // dropdown helper: fills a <select> from a list of {id, name}
 function dropdown(id, items, key, onPick) {
@@ -197,13 +207,20 @@ function segment(id, key, parse = (v) => v, onPick = null) {
   });
 }
 function showMode(mode) {
-  const z = mode === 'zombies';
-  document.querySelectorAll('.cs-opt').forEach((e) => e.classList.toggle('hidden', z));
+  const z = mode === 'zombies', online = choice.net === 'online';
+  document.querySelectorAll('.cs-opt, .solo-opt').forEach((e) => {
+    e.classList.toggle('hidden', (z && e.classList.contains('cs-opt')) || (online && e.classList.contains('solo-opt')));
+  });
+  $('online-opt').classList.toggle('hidden', !online);
+  $('online-desc').innerHTML = z
+    ? `Co-op for up to ${MAX_PLAYERS.zombies} players: share the zombies, doors and power-ups, and hold <b>E</b> next to a downed teammate to revive them.`
+    : `Up to ${MAX_PLAYERS.classic} players. Pick teams in the lobby; bots can fill the empty slots.`;
   $('z-desc').classList.toggle('hidden', !z);
   world = z ? getZombies() : classic; // menu backdrop shows the selected map
   save('defuse.mode', mode);
 }
 segment('mode-seg', 'mode', String, showMode);
+segment('net-seg', 'net', String, (v) => { save('defuse.net', v); netMsg(''); showMode(choice.mode); });
 segment('team-seg', 'team');
 segment('diff-seg', 'difficulty');
 segment('rounds-seg', 'rounds', Number);
@@ -218,40 +235,238 @@ sens.addEventListener('input', () => {
 });
 if (matchMedia('(pointer: coarse)').matches && !matchMedia('(pointer: fine)').matches) $('mobile-warn').classList.remove('hidden');
 
-let state = 'menu'; // menu | playing | paused | over
+let state = 'menu'; // menu | lobby | playing | paused | over
 const noPause = params.has('nopause');
 
 function setState(s) {
   state = s;
   $('menu').classList.toggle('hidden', s !== 'menu');
+  $('lobby').classList.toggle('hidden', s !== 'lobby');
   $('pause').classList.toggle('hidden', s !== 'paused');
   $('endscreen').classList.toggle('hidden', s !== 'over');
   hud.show(s === 'playing' || s === 'paused');
   input.active = s === 'playing';
+  input.suspended = s !== 'playing';   // online matches keep running behind menus, without your input
   if (s === 'playing') { input.endTick(); tickAcc = 0; } // drop key presses made in menus
+}
+
+// kind: 'pause', or 'ready' when the host has just started a match (a click captures the mouse)
+function showPause(kind = 'pause') {
+  const online = !!session;
+  $('pause-title').textContent = kind === 'ready' ? 'MATCH STARTED' : online ? 'MENU' : 'PAUSED';
+  $('pause-note').classList.toggle('hidden', !online || kind === 'ready');
+  $('resume').textContent = kind === 'ready' ? 'PLAY' : 'RESUME';
+  $('end-match').classList.toggle('hidden', !(online && session.isHost));
+  $('quit').textContent = online ? (session.isHost ? 'CLOSE ROOM' : 'LEAVE ROOM') : 'QUIT TO MENU';
+  setState('paused');
+}
+
+function showEnd(title, score, list = '') {
+  input.unlock();
+  $('end-title').textContent = title;
+  $('end-score').textContent = score;
+  $('end-list').innerHTML = list;
+  $('again').textContent = session ? 'BACK TO LOBBY' : 'BACK TO MENU';
+  if (session?.isHost) session.matchOver();
+  setState('over');
 }
 
 $('play').addEventListener('click', () => {
   sound.init();
   if (choice.mode === 'zombies') {
     world = getZombies();
+    world.game = world.solo;
     world.game.start({ knife: choice.knife });
   } else {
     world = classic;
+    world.game = world.solo;
     world.game.start({ team: choice.team, difficulty: choice.difficulty, roundsToWin: choice.rounds, knife: choice.knife });
   }
   setState('playing');
   input.lock();
 });
-const toMenu = () => { world.game.stop(); setState('menu'); showMode(choice.mode); };
+const toMenu = () => { stopMatch(); setState('menu'); showMode(choice.mode); };
 $('resume').addEventListener('click', () => { sound.init(); setState('playing'); input.lock(); });
-$('quit').addEventListener('click', toMenu);
-$('again').addEventListener('click', toMenu);
+$('quit').addEventListener('click', () => { if (session) leaveRoom(); else toMenu(); });
+$('end-match').addEventListener('click', () => {
+  if (!session?.isHost) return;
+  session.abortMatch();
+  backToLobby();
+});
+$('again').addEventListener('click', () => { if (session) backToLobby(); else toMenu(); });
 canvas.addEventListener('click', () => { if (state === 'playing' && !input.locked) input.lock(); });
 input.onLockChange = (locked) => {
-  if (!locked && state === 'playing' && !noPause) setState('paused');
+  if (!locked && state === 'playing' && !noPause) showPause();
 };
-addEventListener('beforeunload', (e) => { if (state === 'playing') { e.preventDefault(); e.returnValue = ''; } });
+addEventListener('beforeunload', (e) => { if (state === 'playing' || session) { e.preventDefault(); e.returnValue = ''; } });
+addEventListener('pagehide', () => session?.leave());
+
+// ---------- online: rooms and the lobby ----------
+const nameEl = $('net-name'), codeEl = $('join-code');
+nameEl.value = load('defuse.name') || '';
+nameEl.addEventListener('input', () => save('defuse.name', nameEl.value));
+codeEl.value = normalizeCode(params.get('join') || '');
+codeEl.addEventListener('input', () => { codeEl.value = normalizeCode(codeEl.value); });
+codeEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') joinRoom(); });
+function myName() {
+  if (!nameEl.value.trim()) { nameEl.value = 'Player' + (10 + Math.floor(Math.random() * 90)); save('defuse.name', nameEl.value); }
+  return cleanName(nameEl.value);
+}
+function netMsg(text, bad = false) { $('net-msg').textContent = text || ''; $('net-msg').classList.toggle('bad', !!bad); }
+function lobbyMsg(text, bad = false) { $('lobby-msg').textContent = text || ''; $('lobby-msg').classList.toggle('bad', !!bad); }
+function netBusy(on) { for (const id of ['host-btn', 'join-btn']) $(id).disabled = on; }
+
+async function hostRoom() {
+  sound.init();
+  const s = new Session();
+  netBusy(true); netMsg('Creating a room...');
+  try { await s.host(myName(), { mode: choice.mode, difficulty: choice.difficulty, rounds: choice.rounds }); } catch (e) { netBusy(false); netMsg(e.message, true); return; }
+  netBusy(false); netMsg('');
+  enterRoom(s);
+}
+
+async function joinRoom() {
+  const code = normalizeCode(codeEl.value);
+  if (code.length !== 5) { netMsg('Type the 5-character room code from the host.', true); codeEl.focus(); return; }
+  sound.init();
+  const s = new Session();
+  netBusy(true); netMsg(`Joining room ${code}...`);
+  try { await s.join(code, myName()); } catch (e) { netBusy(false); netMsg(e.message, true); return; }
+  netBusy(false); netMsg('');
+  enterRoom(s);
+}
+$('host-btn').addEventListener('click', hostRoom);
+$('join-btn').addEventListener('click', joinRoom);
+
+function enterRoom(s) {
+  session = s;
+  s.onLobby = renderLobby;
+  s.onStart = startOnline;
+  s.onGame = (from, msg) => world.game.onNet?.(from, msg);
+  s.onAbort = () => { backToLobby(); lobbyMsg('The host ended the match.'); };
+  s.onClosed = (why) => leaveRoom(why);
+  s.onLeft = (pid) => { if (world.game.running) world.game.removePlayer?.(pid); };
+  lobbyMsg(''); $('copy-msg').textContent = '';
+  setState('lobby');
+  renderLobby(s.lobby);
+  syncBackgroundTicker();
+}
+
+function leaveRoom(why = '') {
+  const s = session;
+  session = null;
+  stopMatch();
+  s?.leave();
+  syncBackgroundTicker();
+  input.unlock();
+  setState('menu');
+  showMode(choice.mode);
+  netMsg(why, !!why);
+}
+
+// end whatever match is running (solo or online) and switch back to the solo games
+function stopMatch() {
+  for (const w of [classic, zombies]) {
+    if (!w) continue;
+    for (const g of [w.solo, w.client]) { if (g.running || g.net) g.stop(); g.net = null; }
+    w.game = w.solo;
+  }
+}
+
+function backToLobby() {
+  stopMatch();
+  input.unlock();
+  setState('lobby');
+  renderLobby(session?.lobby);
+}
+
+function startOnline(info) {
+  if (!session) return;
+  stopMatch();
+  lobbyMsg('');
+  const z = info.mode === 'zombies';
+  const w = world = z ? getZombies() : classic;
+  const net = new NetLink(session), st = info.settings || {};
+  if (session.isHost) {
+    w.game = w.solo;
+    if (z) w.game.start({ knife: choice.knife, net, roster: info.roster });
+    else w.game.start({ difficulty: st.difficulty, roundsToWin: st.rounds, knife: choice.knife, net, roster: info.roster });
+    setState('playing');
+    input.lock();
+  } else {
+    w.game = w.client;
+    w.game.startNet({ knife: choice.knife, net, roster: info.roster, roundsToWin: st.rounds });
+    showPause('ready');
+  }
+}
+
+function markSeg(id, value, enabled = true) {
+  for (const b of $(id).querySelectorAll('button')) { b.classList.toggle('on', b.dataset.v === String(value)); b.disabled = !enabled; }
+}
+
+function renderLobby(L) {
+  if (!L || !session) return;
+  const host = session.isHost, z = L.mode === 'zombies';
+  $('room-code').textContent = L.code;
+  markSeg('lobby-mode', L.mode, host && !L.inGame);
+  document.querySelectorAll('.lb-classic').forEach((e) => e.classList.toggle('hidden', z));
+  $('lobby-host-opts').classList.toggle('hidden', z || !host);
+  markSeg('lobby-bots', L.bots ? '1' : '0'); markSeg('lobby-diff', L.difficulty); markSeg('lobby-rounds', L.rounds);
+  const me = L.players.find((p) => p.id === session.myId);
+  markSeg('lobby-team', me?.team, !L.inGame);
+  const diff = { easy: 'Easy', normal: 'Normal', hard: 'Hard' }[L.difficulty] || L.difficulty;
+  $('lobby-summary').textContent = z ? 'Survive Sahur Village together. Zombies, doors and power-ups are shared; points and perks are your own.'
+    : host ? '' : `${L.bots ? `Bots (${diff}) fill the empty slots` : 'No bots'} · first to ${L.rounds} rounds`;
+  // who's here
+  const li = (p) => `<li class="${p.id === session.myId ? 'me' : ''}">${esc(p.name)}${p.host ? ' <em>HOST</em>' : ''}${p.id === session.myId ? ' <small>(you)</small>' : ''}</li>`;
+  if (z) {
+    $('lobby-players').innerHTML = `<div class="lb-teams one"><div class="lb-team z"><h4>Players <span>${L.players.length}/${MAX_PLAYERS.zombies}</span></h4><ul>${L.players.map(li).join('')}</ul></div></div>`;
+  } else {
+    const col = (t, label) => {
+      const list = L.players.filter((p) => p.team === t);
+      const bots = L.bots ? TEAM_SIZE - list.length : 0;
+      return `<div class="lb-team ${t.toLowerCase()}"><h4>${label} <span>${list.length}/${TEAM_SIZE}</span></h4><ul>${list.map(li).join('')}`
+        + `${bots > 0 ? `<li class="bot">+ ${bots} bot${bots === 1 ? '' : 's'}</li>` : ''}</ul></div>`;
+    };
+    $('lobby-players').innerHTML = `<div class="lb-teams">${col('T', 'Terrorists')}${col('CT', 'Counter-Terrorists')}</div>`;
+  }
+  $('lobby-start').classList.toggle('hidden', !host);
+  $('lobby-start').disabled = L.inGame;
+  $('lobby-wait').classList.toggle('hidden', host);
+  $('lobby-wait').textContent = L.inGame ? 'A match is in progress. You can play in the next one.' : 'Waiting for the host to start the match...';
+  $('lobby-leave').textContent = host ? 'CLOSE ROOM' : 'LEAVE ROOM';
+  if (state === 'lobby') world = z ? getZombies() : classic;   // the backdrop shows the map you'll play
+}
+
+function lobbySeg(id, apply) {
+  $(id).addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b || b.disabled || !session) return;
+    lobbyMsg('');
+    apply(b.dataset.v);
+  });
+}
+lobbySeg('lobby-mode', (v) => { if (session.isHost) { const err = session.setSettings({ mode: v }); if (err) lobbyMsg(err, true); } });
+lobbySeg('lobby-team', (v) => {
+  const L = session.lobby, me = L.players.find((p) => p.id === session.myId);
+  if (me?.team !== v && L.players.filter((p) => p.team === v).length >= TEAM_SIZE) { lobbyMsg('That team is full.', true); return; }
+  session.pickTeam(v);
+});
+lobbySeg('lobby-bots', (v) => session.isHost && session.setSettings({ bots: v === '1' }));
+lobbySeg('lobby-diff', (v) => session.isHost && session.setSettings({ difficulty: v }));
+lobbySeg('lobby-rounds', (v) => session.isHost && session.setSettings({ rounds: Number(v) }));
+$('lobby-start').addEventListener('click', () => { if (session?.isHost && !session.lobby.inGame) { sound.init(); session.start(); } });
+$('lobby-leave').addEventListener('click', () => leaveRoom());
+$('copy-link').addEventListener('click', () => {
+  if (!session) return;
+  const q = new URLSearchParams();
+  q.set('join', session.code);
+  if (params.get('net')) q.set('net', params.get('net'));   // keep the same-browser test mode
+  const url = `${location.origin}${location.pathname}?${q}`;
+  const done = (ok) => { $('copy-msg').textContent = ok ? 'Copied! Send it to your friends.' : url; };
+  if (navigator.clipboard) navigator.clipboard.writeText(url).then(() => done(true), () => done(false));
+  else done(false);
+});
 
 addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
@@ -288,16 +503,30 @@ function step(dt) {
   g.interpolate?.(tickAcc / TICK);
 }
 
-function frame(now) {
-  requestAnimationFrame(frame);
-  const dt = Math.min(0.1, (now - last) / 1000);
-  last = now;
+// Run the game for dt seconds. Returns true if a match is running.
+// Online matches keep running while a menu is open: nobody else can be paused.
+function advance(dt) {
   const g = world.game;
-  if (state === 'playing') {
+  const live = state === 'playing' || (!!session && g.running && (state === 'paused' || state === 'over'));
+  if (live) {
     step(dt);
     if (g.player?.alive && !g.player.downed) vm.update(dt, g.player, g, input.dx, input.dy);
     hud.update(dt, g);
-  } else if (state === 'menu') {
+  }
+  if (session) {
+    if (g.net && (g.running || g.net.pending())) g.netUpdate(dt);
+    session?.update();
+  }
+  return live;
+}
+
+let lastFrameAt = 0;   // when the browser last drew a frame
+function frame() {
+  requestAnimationFrame(frame);
+  const now = lastFrameAt = performance.now();
+  const dt = Math.max(0, Math.min(0.1, (now - last) / 1000));
+  last = now;
+  if (!advance(dt) && (state === 'menu' || state === 'lobby')) {
     menuT += dt * 0.05;
     const o = world.orbit;
     camera.position.set(o.cx + Math.cos(menuT) * o.r, o.h, o.cz + Math.sin(menuT) * o.r);
@@ -308,6 +537,26 @@ function frame(now) {
   world.fx.update(dt);
   render();
 }
+
+// Browsers stop drawing tabs and windows you can't see. While you're in a room, a small worker
+// keeps the match (and the connection) ticking whenever drawing stops, so the host can switch
+// tabs or windows without freezing the game for everyone.
+const bgWorker = (() => {
+  try {
+    const src = 'let t=0;onmessage=(e)=>{clearInterval(t);t=e.data>0?setInterval(()=>postMessage(0),e.data):0;};';
+    return new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+  } catch (_) { return null; }
+})();
+if (bgWorker) {
+  bgWorker.onmessage = () => {
+    const now = performance.now();
+    if (!session || now - lastFrameAt < 250) return;   // frames are being drawn: the normal loop runs the game
+    const dt = Math.min(0.1, (now - last) / 1000);
+    last = now;
+    if (dt > 0) { advance(dt); input.endFrame(); }
+  };
+}
+function syncBackgroundTicker() { bgWorker?.postMessage(session ? 33 : 0); }
 
 // debug helper: advance the simulation without relying on requestAnimationFrame
 window.__sim = (seconds = 1, fps = 60) => {
@@ -342,4 +591,5 @@ window.__bench = (frames = 120) => {
 
 setState('menu');
 showMode(choice.mode);
+if (params.has('join')) { netMsg('Type your name, then press JOIN.'); (nameEl.value ? $('join-btn') : nameEl).focus(); }
 requestAnimationFrame(frame);

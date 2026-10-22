@@ -4,7 +4,7 @@ A 5v5 Counter-Strike–style tactical shooter that runs entirely in the browser 
 No build step, no server code, no assets to download — every texture, model and sound is generated in code.
 
 - Original desert map with bomb sites A and B, mid, long and tunnels
-- You + 4 bot teammates vs 5 bots, three difficulty levels
+- You + 4 bot teammates vs 5 bots, three difficulty levels — or play **online with friends** (see below)
 - Buy menu and economy, recoil and spread, headshots, armor
 - Bomb plant / defuse, round timer, radar, kill feed, scoreboard, spectating
 - Every fighter is a "Tung Tung Tung Sahur" kentongan log: dome top, bulging eyes, toothy grin, bare feet,
@@ -27,9 +27,29 @@ No build step, no server code, no assets to download — every texture, model an
   so you can type in your CS2 sensitivity.
 - Graphics: **High quality** (detailed surfaces + soft sky lighting) or **Performance** for slower computers.
 
+## Online play
+
+Pick **Players: Online with friends** in the menu. One person clicks **HOST A ROOM** and gets a 5-letter room
+code (and a **Copy invite link** button); everyone else types the code and clicks **JOIN**, or just opens the link.
+
+- **5v5 Classic:** up to 10 players. Everyone picks a team in the lobby (5 per team); the host can fill the empty
+  slots with bots (and pick their difficulty) and set the rounds to win.
+- **Zombies Co-op:** up to 4 players. See *Co-op* below.
+- The host's browser runs the match: keep that tab open. Switching tabs is fine (the match keeps ticking in the
+  background), but if the host closes the tab or leaves, the room closes for everyone.
+- Pressing Esc opens a menu but doesn't pause an online match. The host can end the match from there and
+  everyone goes back to the lobby.
+- Players connect to each other directly (WebRTC, via [PeerJS](https://peerjs.com)). PeerJS's free public server
+  is only used to find each other, so there is still no server to deploy. Hosting a full 10-player room uses about
+  1 Mbps of upload.
+- Joining a match that has already started isn't supported: join in the lobby.
+- Testing on one computer: open two tabs with `?net=local` added to the URL (they connect without the internet;
+  `&lag=150` fakes a 150 ms round trip).
+
 ## Zombies mode
 
-Pick **Zombies** in the menu for solo survival in **Sahur Village**, a night-time map built for this mode.
+Pick **Zombies** in the menu for survival in **Sahur Village**, a night-time map built for this mode — alone or
+online with up to 3 friends.
 
 - Endless rounds of Tung Tung zombies with bats. They tear boards off the windows and climb in, or rise from
   the ground. Regular zombies have 100 HP (same as a player); each round brings more of them, and they get
@@ -50,6 +70,18 @@ Pick **Zombies** in the menu for solo survival in **Sahur Village**, a night-tim
 - Power-ups drop from zombies: Max Ammo, Insta-Kill, Double Points, Kaboom (nuke), Carpenter.
 - Health regenerates when you avoid hits for a few seconds. Without Quick Revive, going down ends the game.
 
+### Co-op
+
+- Zombies go for whoever is closest. Each round has more of them with more players (+50% per extra player).
+- Doors, windows, the Mystery Box, Pack-a-Punch and power-ups are shared; points, perks and guns are your own.
+  Only the player who paid for the Mystery Box can take its gun. Max Ammo refills everyone; Carpenter and
+  Kaboom give every player their points.
+- Going down doesn't end the game: you lose your perks and have 30 seconds. A teammate holds **E** next to you
+  for 3 seconds to revive you (1.5 with Quick Revive). Downed teammates show a red cross you can see through walls.
+- If nobody gets to you, you bleed out and watch your teammates until the next round, when you come back next
+  to a teammate with a pistol (you keep your points).
+- The game is over when everyone is down or out at the same time.
+
 ## Controls
 
 | Key | Action |
@@ -62,7 +94,7 @@ Pick **Zombies** in the menu for solo survival in **Sahur Village**, a night-tim
 | 1 / 2 / 3, Q, wheel | Switch weapons |
 | R | Reload |
 | B | Buy menu (in spawn during buy time) |
-| E (hold) | Plant / defuse |
+| E (hold) | Plant / defuse, rebuild boards, revive a teammate |
 | Tab | Scoreboard |
 | F | Inspect weapon |
 
@@ -104,4 +136,8 @@ vercel --prod
 - `src/player.js` — keyboard/mouse control
 - `src/bots.js`, `src/director.js` — bot AI and team strategy (and the Tung Tung model)
 - `src/zmap.js`, `src/zombies.js` — Zombies map (Sahur Village) and Zombies rules / zombie AI
+- `src/net.js` — online rooms, lobby and message batching (PeerJS)
+- `src/avatar.js` — other players' fighters, moved by network updates
+- `src/netclassic.js`, `src/netzombies.js` — 5v5 and Zombies on a joining player's browser (the host runs
+  `game.js` / `zombies.js` for everyone)
 - `src/viewmodel.js`, `src/effects.js`, `src/audio.js`, `src/hud.js`, `src/textures.js`

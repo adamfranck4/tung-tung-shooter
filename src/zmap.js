@@ -762,13 +762,19 @@ export class ZMap {
       && this.passOrth(x, z, x, z + dz) && this.passOrth(x, z + dz, x + dx, z + dz);
   }
 
-  computeFlow(target) {
-    const s = this.nearestWalkable(Math.floor(target.x / C), Math.floor(target.z / C));
-    if (!s) return;
+  // Distance field spreading out from the target(s): one position, or a list (co-op), in which
+  // case each zombie ends up heading for whichever player is closest along the paths.
+  computeFlow(targets) {
     const dist = this.dist; dist.fill(Infinity);
-    const start = s[1] * GW + s[0];
-    dist[start] = 0;
-    const heap = new Heap(); heap.push(start, 0);
+    const heap = new Heap();
+    for (const target of Array.isArray(targets) ? targets : [targets]) {
+      const s = this.nearestWalkable(Math.floor(target.x / C), Math.floor(target.z / C));
+      if (!s) continue;
+      const start = s[1] * GW + s[0];
+      if (dist[start] === 0) continue;
+      dist[start] = 0;
+      heap.push(start, 0);
+    }
     while (heap.size) {
       const cur = heap.pop();
       const cd = dist[cur], cx = cur % GW, cz = (cur / GW) | 0;

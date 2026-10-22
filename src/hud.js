@@ -5,6 +5,8 @@ import { drawCrosshair, crosshairScale } from './crosshair.js';
 import { PERKS } from './zmap.js';
 
 const $ = (id) => document.getElementById(id);
+// player names come from other people online: never put them in HTML unescaped
+export const esc = (t) => String(t).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 
 export class Hud {
   constructor() {
@@ -105,21 +107,12 @@ export class Hud {
     if (zm) { this.set('hint', g.hintText()); this.updateZombies(dt, g); return; }
 
     // plant / defuse progress
-    const prog = g.useInfo();
-    this.toggle('progress', !!prog);
-    if (prog) {
-      this.set('progress-label', prog.label);
-      $('progress-fill').style.width = (prog.frac * 100).toFixed(1) + '%';
-    }
+    this.progress(g.useInfo());
     this.set('hint', g.hintText());
 
     // spectating
     const spec = !p.alive && g.spectating;
-    this.toggle('spectate', !!spec);
-    if (spec) {
-      const html = `Spectating <b>${spec.name}</b><small>Click to switch player</small>`;
-      if (this.cache.spec !== html) { this.cache.spec = html; $('spectate').innerHTML = html; }
-    }
+    this.spectate(spec ? `Spectating <b>${esc(spec.name)}</b><small>Click to switch player</small>` : null);
 
     this.toggle('buymenu', p.buyOpen);
     if (p.buyOpen) this.renderBuy(g);
@@ -128,14 +121,29 @@ export class Hud {
     this.drawRadar(g);
   }
 
+  // progress bar: { label, frac } or null
+  progress(prog) {
+    this.toggle('progress', !!prog);
+    if (!prog) return;
+    this.set('progress-label', prog.label);
+    $('progress-fill').style.width = (Math.max(0, Math.min(1, prog.frac)) * 100).toFixed(1) + '%';
+    const warn = !!prog.warn;
+    if (this.cache.pwarn !== warn) { this.cache.pwarn = warn; $('progress').classList.toggle('warn', warn); }
+  }
+
+  spectate(html) {
+    this.toggle('spectate', !!html);
+    if (html && this.cache.spec !== html) { this.cache.spec = html; $('spectate').innerHTML = html; }
+  }
+
   // ---------- Zombies mode ----------
   updateZombies(dt, g) {
     const p = g.player;
-    this.set('z-points', String(g.points));
-    const perkKey = [...g.perks].join(',');
+    this.set('z-points', String(p.points));
+    const perkKey = [...p.perks].join(',');
     if (this.cache.perks !== perkKey) {
       this.cache.perks = perkKey;
-      $('z-perks').innerHTML = [...g.perks].map((id) => {
+      $('z-perks').innerHTML = [...p.perks].map((id) => {
         const pm = PERKS.find((x) => x.id === id);
         return `<span class="perk" style="background:#${pm.color.toString(16).padStart(6, '0')}" title="${pm.name}">${pm.short}</span>`;
       }).join('');
@@ -149,6 +157,27 @@ export class Hud {
     const op = Math.max(this.dmgT > 0 ? this.dmgT / 0.25 : 0, Math.min(0.9, missing * 1.2 - 0.2), p.downed ? 0.8 : 0);
     const ops = op.toFixed(2);
     if (this.cache.vig !== ops) { this.cache.vig = ops; $('damage-flash').style.opacity = ops; }
+
+    // co-op: teammates' points and status, revive / bleed-out bar, spectating
+    let team = '';
+    if (g.players.length > 1) {
+      team = g.players.map((q) => {
+        const st = !q.alive ? 'out' : q.downed ? 'down' : '';
+        return `<div class="zt ${q === p ? 'me' : ''} ${st}"><span class="n">${esc(q.name)}</span>`
+          + `<span class="s">${st === 'out' ? 'OUT' : st === 'down' ? 'DOWN' : ''}</span><span class="pts">${q.points}</span></div>`;
+      }).join('');
+    }
+    if (this.cache.team !== team) { this.cache.team = team; $('z-team').innerHTML = team; }
+    let prog = null;
+    const it = g.interaction;
+    if (g.phase !== 'over' && p.alive && p.downed && g.coop) {
+      prog = p.reviveFrac > 0 ? { label: 'BEING REVIVED', frac: p.reviveFrac } : { label: 'BLEEDING OUT', frac: p.downT / g.bleedTime, warn: true };
+    } else if (it?.type === 'revive' && it.who.reviveFrac > 0 && g.input.down('KeyE')) {
+      prog = { label: `REVIVING ${it.who.name.toUpperCase()}`, frac: it.who.reviveFrac };
+    }
+    this.progress(prog);
+    const spec = !p.alive && g.phase !== 'over' && g.spectating;
+    this.spectate(spec ? `Spectating <b>${esc(spec.name)}</b><small>You'll be back next round &middot; click to switch player</small>` : null);
   }
 
   zReset(g) {
@@ -156,7 +185,8 @@ export class Hud {
     this.centerT = 0; $('center-msg').style.opacity = 0;
     $('z-round').textContent = '';
     $('z-pop').innerHTML = '';
-    $('z-points').textContent = String(g.points);
+    $('z-points').textContent = String(g.player.points);
+    $('z-team').innerHTML = '';
   }
 
   zRound(r, pulse) {
@@ -195,7 +225,7 @@ export class Hud {
     const team = (t) => {
       const list = g.combatants.filter((c) => c.team === t).sort((a, b) => b.kills - a.kills);
       const rows = list.map((c) => `<tr class="${t.toLowerCase()} ${c.alive ? '' : 'dead'} ${c === g.player ? 'me' : ''}">
-        <td>${c.name}${c.hasBomb && g.player.team === 'T' ? ' &middot; C4' : ''}</td>
+        <td>${esc(c.name)}${g.net && (c.isBot || c.botSeat) ? ' <small>BOT</small>' : ''}${c.hasBomb && g.player.team === 'T' ? ' &middot; C4' : ''}</td>
         <td class="num">${c.team === g.player.team ? '$' + c.money : ''}</td>
         <td class="num">${c.kills}</td><td class="num">${c.deaths}</td></tr>`).join('');
       return `<div class="head ${t.toLowerCase()}">${t === 'CT' ? 'Counter-Terrorists' : 'Terrorists'} &mdash; ${g.score[t]}</div>
