@@ -24,7 +24,7 @@ export const POWERUPS = {
 };
 export const BASE_HEALTH = 150;
 const JUGG_HEALTH = 250;
-export const BLEED_TIME = 30;     // co-op: seconds a downed player lasts without a revive
+export const BLEED_TIME = 100;    // co-op: seconds a downed player lasts without a revive
 export const REVIVE_TIME = 3;     // holding E next to them (half with Quick Revive)
 export const ZOMBIE_HP = 100;                            // regular zombies: same health as a player
 export const bigZombieHealth = (r) => 400 + 80 * r;      // big zombies: a real bullet sponge
@@ -884,27 +884,57 @@ export class ZombiesGame {
     p.downed = true; p.health = 1; p.scoped = false; p.reloading = false; p.buyOpen = false;
     p.downs++; p.reviveT = 0; p.reviveFrac = 0; p.reviver = null;
     this.clearPerks(p);
+    this.startLastStand(p);
     if (!this.coop) {   // solo: Quick Revive gets you back up
       p.downT = 4.5;
       this.tell(p, { e: 'msg', s: 'DOWNED! Quick Revive is getting you up...', d: 4 });
       return;
     }
     p.downT = BLEED_TIME;
-    this.tell(p, { e: 'msg', s: "You're down! Hang on until a teammate revives you", d: 4 });
+    this.tell(p, { e: 'msg', s: "You're down! Hold them off with your pistol until a teammate revives you", d: 4 });
     this.announce(p, `${p.name} is down! Hold E next to them to revive`);
     this.checkWipe();
+  }
+
+  // Last stand: a downed player fights on from the ground with a pistol: the strongest one they
+  // carry, or a spare that takes the knife's place until they're back up. Always at least two
+  // magazines' worth of ammo.
+  startLastStand(p) {
+    p.preDownSlot = p.slot;
+    p.burstLeft = 0; p.autoReloadAt = 0; p.recoil = 0;
+    let slot = [1, 2].filter((s) => p.slots[s]?.def.slot === 2).sort((a, b) => p.slots[b].def.damage - p.slots[a].def.damage)[0];
+    if (!slot) { p.give('pistol', 3); p.sparePistol = true; slot = 3; }
+    const w = p.slots[slot];
+    w.reserve = Math.max(w.reserve, w.def.mag * 2 - w.mag);
+    if (p.slot === slot) { p.deployUntil = this.time + (w.def.deploy || 0.5); p.onSwitch?.(); }
+    else p.selectSlot(slot);
+    this.syncInv(p, 'switch');
+  }
+
+  // back up (or out): the knife comes back and, when revived, the gun you were holding
+  endLastStand(p, revived) {
+    p.reloading = false; p.burstLeft = 0; p.autoReloadAt = 0;
+    if (p.sparePistol) { p.give('knife', 3); p.sparePistol = false; }
+    if (revived) {
+      const slot = p.slots[p.preDownSlot] ? p.preDownSlot : p.slots[1] ? 1 : 2;
+      if (p.slot === slot) { p.deployUntil = this.time + (p.weapon.def.deploy || 0.5); p.onSwitch?.(); }
+      else p.selectSlot(slot);
+    }
+    this.syncInv(p, revived ? 'switch' : null);
   }
 
   revive(p, by) {
     p.downed = false; p.reviveT = 0; p.reviveFrac = 0; p.reviver = null;
     p.health = p.maxHealth; p.lastHurt = this.time;
     if (p === this.player) p.eyeH = 1.65;
+    this.endLastStand(p, true);
     this.tell(p, { e: 'msg', s: by ? `Revived by ${by.name}!` : 'Revived!', d: 1.5 });
     if (by) this.tell(by, { e: 'msg', s: `You revived ${p.name}`, d: 1.5 });
   }
 
   bleedOut(p) {
     p.downed = false; p.alive = false; p.health = 0; p.scoped = false; p.reviveT = 0; p.reviveFrac = 0;
+    this.endLastStand(p, false);
     p.onDeath?.();
     this.tell(p, { e: 'msg', s: "You bled out. You'll be back next round.", d: 4 });
     this.announce(p, `${p.name} bled out`);
@@ -1243,7 +1273,7 @@ export class ZombiesGame {
     if (type === 'maxammo') {
       for (const p of this.players) {
         if (!p.alive) continue;
-        for (const s of [1, 2]) { const w = p.slots[s]; if (w) w.reserve = w.def.reserve; }
+        for (const s of [1, 2, 3]) { const w = p.slots[s]; if (w && !w.def.melee) w.reserve = w.def.reserve; }   // 3: a last-stand spare pistol
         this.syncInv(p, 'ammo');
       }
     }
@@ -1486,7 +1516,7 @@ export class ZombiesGame {
     }
 
     if (p.alive) {
-      if (!p.downed) p.update(dt);
+      if (p.downed) p.lastStand(); else p.update(dt);
       p.updateWeapon(dt);
     }
     this.updateDowned(dt);
@@ -1589,13 +1619,13 @@ export class ZombiesGame {
     switch (ev?.e) {
       case 'zh': {   // "my bullet hit zombie #n"
         const z = this.zombies[ev.z];
-        if (!z || !z.active || !z.alive || !p.alive || p.downed) return;
+        if (!z || !z.active || !z.alive || !p.alive) return;   // downed players shoot back too
         const knock = Array.isArray(ev.k) ? _d.set(+ev.k[0] || 0, 0, +ev.k[1] || 0) : null;
         this.hitZombie(z, Math.min(3000, Math.max(0, +ev.d || 0)), !!ev.h, !!ev.m, !!ev.q, p, knock);
         break;
       }
       case 'shot':
-        if (!p.alive || p.downed) return;
+        if (!p.alive) return;
         showShot(this, p, ev);
         this.net.emit({ e: 'shot', n: p.nid, s: ev.s, d: ev.d, tc: ev.tc, sp: ev.sp }, p.pid);
         break;

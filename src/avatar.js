@@ -230,11 +230,11 @@ export class Avatar extends Bot {
   animate(dt) {
     super.animate(dt);
     const m = this.model;
-    if (this.downed) {               // sitting on the ground, leaning back
+    if (this.downed) {               // sitting on the ground, leaning back, aiming the pistol
       m.root.position.y -= 0.62;
       m.root.rotation.x = 0.5;
       m.legL.rotation.x = m.legR.rotation.x = 1.35;
-      m.arms.rotation.x = 0.2;
+      m.arms.rotation.x = this.pitch - 0.5;
       return;
     }
     this.crouchK += ((this.crouching ? 1 : 0) - this.crouchK) * Math.min(1, dt * 12);

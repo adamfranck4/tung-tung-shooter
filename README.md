@@ -120,7 +120,8 @@ online with up to 3 friends.
 
     Buying a new gun starts it back at level 0.
 - Power-ups drop from zombies: Max Ammo, Insta-Kill, Double Points, Kaboom (nuke), Carpenter.
-- Health regenerates when you avoid hits for a few seconds. Without Quick Revive, going down ends the game.
+- Health regenerates when you avoid hits for a few seconds. Without Quick Revive, going down ends the game
+  (with it, you shoot back with your pistol for a few seconds while it gets you up).
 
 ### Co-op
 
@@ -128,8 +129,11 @@ online with up to 3 friends.
 - Doors, windows, the Mystery Box, Pack-a-Punch and power-ups are shared; points, perks and guns are your own.
   Only the player who paid for the Mystery Box can take its gun. Max Ammo refills everyone; Carpenter and
   Kaboom give every player their points.
-- Going down doesn't end the game: you lose your perks and have 30 seconds. A teammate holds **E** next to you
+- Going down doesn't end the game: you lose your perks and have 100 seconds. A teammate holds **E** next to you
   for 3 seconds to revive you (1.5 with Quick Revive). Downed teammates show a red cross you can see through walls.
+- While down you're in last stand: you can't move, but you can aim, shoot and reload a pistol to cover whoever is
+  reviving you. You get the strongest pistol you carry (P-9 or Desert Eagle, upgrades included) or a spare P-9
+  if you have none, with at least two magazines of ammo. Your other gun comes back when you're revived.
 - If nobody gets to you, you bleed out and watch your teammates until the next round, when you come back next
   to a teammate with a pistol (you keep your points).
 - The game is over when everyone is down or out at the same time.

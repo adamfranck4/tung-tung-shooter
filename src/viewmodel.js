@@ -885,6 +885,8 @@ export class ViewModel {
       const k = (p.deployUntil - t) / (w.def.deploy || 0.5);
       y -= k * k * 0.3; rx -= k * 0.6;
     }
+    // last stand (Zombies, downed): the pistol is held low and canted, from the ground
+    if (p.downed) { x -= 0.03; y -= 0.03; rz += 0.25; }
     // gun inspect: turn the weapon to show it off
     if (this.inspectT > 0) {
       this.inspectT -= dt;

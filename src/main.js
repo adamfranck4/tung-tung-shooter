@@ -481,7 +481,7 @@ function render() {
   renderer.toneMappingExposure = world.exposure;
   renderer.clear();
   renderer.render(world.scene, camera);
-  if ((state === 'playing' || state === 'paused' || state === 'test') && p?.alive && !p.scoped && !p.downed) {
+  if ((state === 'playing' || state === 'paused' || state === 'test') && p?.alive && !p.scoped) {
     renderer.clearDepth();
     renderer.render(vm.scene, vm.camera);
   }
@@ -510,7 +510,7 @@ function advance(dt) {
   const live = state === 'playing' || (!!session && g.running && (state === 'paused' || state === 'over'));
   if (live) {
     step(dt);
-    if (g.player?.alive && !g.player.downed) vm.update(dt, g.player, g, input.dx, input.dy);
+    if (g.player?.alive) vm.update(dt, g.player, g, input.dx, input.dy);
     hud.update(dt, g);
   }
   if (session) {
@@ -564,7 +564,7 @@ window.__sim = (seconds = 1, fps = 60) => {
   const frames = Math.round(seconds * fps);
   for (let i = 0; i < frames; i++) {
     step(1 / fps);
-    if (g.player?.alive && !g.player.downed) vm.update(1 / fps, g.player, g, 0, 0);
+    if (g.player?.alive) vm.update(1 / fps, g.player, g, 0, 0);
     world.fx.update(1 / fps);
     input.endFrame();
     if (!g.running) break;

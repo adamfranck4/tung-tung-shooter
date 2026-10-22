@@ -89,7 +89,7 @@ export class Hud {
 
     // vitals + ammo
     this.set('hp', String(Math.max(0, Math.ceil(p.health))));
-    this.toggle('ammo', p.alive && !p.downed);
+    this.toggle('ammo', p.alive);
     const w = p.weapon;
     if (w) {
       this.set('weapon-name', w.def.melee ? p.meleeName : w.def.name);
@@ -101,7 +101,7 @@ export class Hud {
     const low = p.health <= 25;
     if (this.cache.low !== low) { this.cache.low = low; $('hp').parentElement.classList.toggle('low', low); }
 
-    this.toggle('crosshair', !!(p.alive && !p.scoped && w && !p.downed));
+    this.toggle('crosshair', !!(p.alive && !p.scoped && w));
     this.toggle('scope', p.alive && p.scoped);
 
     if (zm) { this.set('hint', g.hintText()); this.updateZombies(dt, g); return; }

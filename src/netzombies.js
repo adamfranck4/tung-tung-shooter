@@ -44,7 +44,7 @@ export class ZombiesClient extends ZombiesGame {
     }
     if (this.betweenRounds && this.input.pressed('KeyN') && this.time < this.nextRoundAt) this.net.emit({ e: 'next' });
     if (p.alive) {
-      if (p.downed) { p.eyeH += (0.55 - p.eyeH) * Math.min(1, dt * 6); p.applyMovement(dt, 0, 0, 1, false); }
+      if (p.downed) { p.eyeH += (0.55 - p.eyeH) * Math.min(1, dt * 6); p.applyMovement(dt, 0, 0, 1, false); p.lastStand(); }
       else p.update(dt);
       p.updateWeapon(dt);
     }

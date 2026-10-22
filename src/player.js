@@ -25,6 +25,17 @@ export class Player extends Combatant {
     this.pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, this.pitch - inp.dy * k));
   }
 
+  // Downed in Zombies (last stand): stuck on the ground, but you can still shoot and reload your
+  // pistol. Nothing else: no moving, switching weapons or buying. Once per physics tick.
+  lastStand() {
+    const g = this.game, inp = g.input, w = this.weapon;
+    if (!this.alive) return;
+    this.buyOpen = false; this.wantsUse = false;
+    if (w?.def.slot !== 2) return;   // online, the pistol can take a moment to arrive from the host
+    if (inp.pressed('KeyR')) this.startReload();
+    if (inp.mouseDown(0)) this.tryFire(inp.mouseHit(0));
+  }
+
   // Everything else. Called once per physics tick.
   update(dt) {
     const g = this.game, inp = g.input;
