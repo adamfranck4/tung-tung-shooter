@@ -67,17 +67,47 @@ online with up to 3 friends.
   faster (walkers → runners → sprinters).
 - **Big zombies** (from round 3): ~1.7x size, 400 + 80 × round HP, hit for 80, worth 250 points. They rise from
   the ground (max 3 at once).
+- **Zombie types.** Regular (red) zombies stay the most common (at least 40% of each round). The first time a
+  type is due, one comes early in the round and a message tells you what it is:
+  - **Yellow speedster** (round 2+): runs faster than you (~6.7 m/s), but only 70 HP. Hits for 35, often.
+  - **Brown crawler** (round 2+): drags itself along the floor on its hands, face first. Low and hard to hit
+    (aim low, the face out front is its head). 90 HP, bites for 30.
+  - **Pink thrower** (round 3+): stops about 10 m away when it can see you and lobs coconuts (30 damage) in
+    an arc. Keep moving to dodge them. Swipes for 35 if you get close.
+  - **Purple flyer** (round 4+): bat wings. Swoops in from the sky (or the rafters indoors), cruises above
+    the others weaving side to side, then dives on you. Ducks under roofs and doorways. 80 HP, hits for 40.
+  - **Rainbow giant** (round 5+): 2.2x size, 900 + 120 × round HP, hits for 100. Slow, shakes the ground
+    as it walks, and ignores Insta-Kill and Kaboom. Worth 500 points and always drops a power-up.
+    One at a time (two from round 12); it only rises out of open ground.
+  - Kill points: the usual 60 / 100 headshot / 130 knife, +30 speedster, +20 crawler, +40 thrower or flyer.
 - Between rounds, press **N** to start the next wave right away.
 - **Sahur Hill** (doors from the Courtyard 1250 / Kitchen 1000): two hills, a walk-in hut, and a watchtower
   with a hanging kentongan, reached by stairs or a ladder (W climbs the way you look; S or look down to go down).
   Zombies take the stairs. The Courtyard also has a walk-in hut you can run through.
 - Points: +10 per hit, +60 per kill, +100 headshot kill, +130 knife kill, +10 per board you rebuild (hold E).
+- **Shop (press B, anywhere):** buy guns and ammo with points. More guns unlock every two rounds:
+  - Round 1: Desert Eagle 700, SMG 1000 · Round 3: Shotgun 1500, M16 1600 · Round 5: AK 1800, Scout 1700 ·
+    Round 7: M4 1800, Sniper 2000 · Round 9: Drum LMG 3000
+  - 1-9 buys a gun (it replaces the gun in your hands when you already carry two), 0 refills the ammo of the
+    gun in your hands (half its price; 4500 / 6500 / 8500 / 10500 once it's upgraded to level I-IV).
+  - The Tung Ray stays a Mystery Box exclusive.
 - Spend points on (press E):
   - Doors: Courtyard 750, Kitchen 1000, Garden 1000, Drum Tower 1250, Sahur Hill 1250 / 1000
-  - Wall guns: SMG 1000, Shotgun 1500, AK 1800, M4 1800, Sniper 2000, LMG 3000 (ammo = half price)
+  - Wall guns: SMG 1000, Shotgun 1500, AK 1800, M4 1800, Sniper 2000, LMG 3000 (ammo = half price). They are
+    available from round 1, before the shop unlocks them, if you open their area.
   - Perks: Quick Revive 500 (gets you back up once), Double Tap 2000, Juggernog 2500 (more health), Speed Cola 3000 (faster reloads)
   - Mystery Box 950: random gun, including the Drum LMG and the Tung Ray wonder weapon
-  - Pack-a-Punch 5000 (Drum Tower): upgrades your gun (more damage, bigger mag)
+  - **Pack-a-Punch, four levels.** Each station upgrades the gun in your hands one level, in order, so a gun
+    can keep up as the waves get harder. The hint at a station tells you where the next one is.
+
+    | Level | Station | Cost | Damage | Mag / reserve | Fire rate |
+    | --- | --- | --- | --- | --- | --- |
+    | I | Drum Tower (purple) | 5000 | x2.2 | x1.5 / x2 | same |
+    | II | Kitchen (cyan) | 10000 | x3.2 | x1.75 / x2.5 | +11% |
+    | III | Garden (gold) | 15000 | x4.6 | x2 / x3 | +22% |
+    | IV | Top of the watchtower (red) | 25000 | x6.6 | x2.5 / x3.5 | +35% |
+
+    Buying a new gun starts it back at level 0.
 - Power-ups drop from zombies: Max Ammo, Insta-Kill, Double Points, Kaboom (nuke), Carpenter.
 - Health regenerates when you avoid hits for a few seconds. Without Quick Revive, going down ends the game.
 
@@ -104,7 +134,7 @@ online with up to 3 friends.
 | Shift | Walk (quiet, more accurate) |
 | 1 / 2 / 3, Q, wheel | Switch weapons |
 | R | Reload |
-| B | Buy menu (in spawn during buy time), then 1-8 to buy |
+| B | Buy menu (in spawn during buy time), then 1-8 to buy. Zombies: the shop, anywhere (1-9 guns, 0 ammo) |
 | E (hold) | Plant / defuse, rebuild boards, revive a teammate |
 | Tab | Scoreboard |
 | F | Inspect weapon |

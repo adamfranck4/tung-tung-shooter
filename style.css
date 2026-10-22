@@ -127,6 +127,9 @@ input[type=range] { width: 100%; accent-color: #ffc65c; }
 .buy-row .c { font-size: 14px; letter-spacing: 1px; text-transform: uppercase; opacity: 0.45; }
 .buy-row.no { opacity: 0.35; }
 .buy-row.own .p { color: #aaa; }
+.buy-row.lock { opacity: 0.3; }
+.buy-row.lock .p { color: #ff9a7a; font-size: 15px; letter-spacing: 1px; }
+#buymenu h3 span.z { color: #ffe9a8; }
 .buy-foot { margin-top: 10px; font-size: 15px; opacity: 0.6; text-align: center; }
 
 #scoreboard { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(640px, 94vw);

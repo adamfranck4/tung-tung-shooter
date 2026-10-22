@@ -92,7 +92,14 @@ export const PERKS = [
   { id: 'dtap', name: 'Double Tap', short: 'DT', cost: 2000, color: 0xf2c230, pos: [17.5, 0, 29], face: [-1, 0, 0], area: 'E' },
   { id: 'jugg', name: 'Juggernog', short: 'JN', cost: 2500, color: 0xe03a2a, pos: [28.5, 0, 13], face: [1, 0, 0], area: 'D' },
 ];
-export const PAP = { pos: [44, 0, 4.7], cost: 5000, area: 'D' };
+// Pack-a-Punch stations: each upgrades a gun one level further (I -> IV, in order), deeper into the map.
+// The last one sits on top of the watchtower.
+export const PAP_STATIONS = [
+  { level: 1, pos: [44, 0, 4.7], face: [0, 0, 1], cost: 5000, area: 'D', color: 0xc070ff, ink: '#d9a6ff' },
+  { level: 2, pos: [70.5, 0, 73.3], face: [0, 0, -1], cost: 10000, area: 'C', color: 0x4fe3ff, ink: '#a8f3ff' },
+  { level: 3, pos: [8.7, 0, 31], face: [1, 0, 0], cost: 15000, area: 'E', color: 0xffc93a, ink: '#ffe49a' },
+  { level: 4, pos: [99, 4, 30.75], face: [0, 0, 1], cost: 25000, area: 'F', color: 0xff3b3b, ink: '#ffa0a0' },
+];
 export const BOX = { pos: [24, 0, 45.5], cost: 950, area: 'B' };
 const GROUND_SPAWNS = [
   { pos: [26, 0, 29], area: 'B' }, { pos: [44, 0, 26], area: 'B' }, { pos: [30, 0, 41], area: 'B' },
@@ -197,7 +204,7 @@ export class ZMap {
 
     this.obstacles = OBSTACLES.map(([x0, y0, z0, x1, y1, z1]) => ({ x0, y0, z0, x1, y1, z1 }));
     for (const p of PERKS) this.obstacles.push(this.machineBox(p.pos, p.face, 1.1, 0.9, 2.1));
-    this.obstacles.push(this.machineBox(PAP.pos, [0, 0, 1], 1.6, 1.2, 1.9));
+    for (const st of PAP_STATIONS) this.obstacles.push(this.machineBox(st.pos, st.face, 1.6, 1.2, 1.9));
     this.obstacles.push({ x0: BOX.pos[0] - 0.9, y0: 0, z0: BOX.pos[2] - 0.4, x1: BOX.pos[0] + 0.9, y1: 0.9, z1: BOX.pos[2] + 0.4 });
     for (const l of LIGHTS) if (l.post) this.obstacles.push({ x0: l.pos[0] - 0.15, y0: 0, z0: l.pos[2] - 0.15, x1: l.pos[0] + 0.15, y1: 3.3, z1: l.pos[2] + 0.15 });
 
@@ -246,6 +253,7 @@ export class ZMap {
     this.buildHillMeshes(tex);
     this.buildProps();
     this.buildNav();
+    this.buildCeilings();
     this.dist = new Float32Array(GW * GH).fill(Infinity);
     this.groundSpawns = GROUND_SPAWNS.map((s) => ({ pos: new THREE.Vector3(s.pos[0], this.groundAt(s.pos[0], s.pos[2]), s.pos[2]), area: s.area }));
   }
@@ -360,7 +368,7 @@ export class ZMap {
   machineBox(pos, face, width, depth, height) {
     const alongX = face[2] !== 0; // machine faces along z, so its width runs along x
     const hw = (alongX ? width : depth) / 2, hd = (alongX ? depth : width) / 2;
-    return { x0: pos[0] - hw, y0: 0, z0: pos[2] - hd, x1: pos[0] + hw, y1: height, z1: pos[2] + hd };
+    return { x0: pos[0] - hw, y0: pos[1], z0: pos[2] - hd, x1: pos[0] + hw, y1: pos[1] + height, z1: pos[2] + hd };
   }
 
   solid(x, z) { return x < 0 || z < 0 || x >= GW || z >= GH || this.grid[z * GW + x] === 1; }
@@ -667,23 +675,36 @@ export class ZMap {
       this.scene.add(g);
       return { ...p, at: new THREE.Vector3(p.pos[0] + p.face[0] * 1.0, 0, p.pos[2] + p.face[2] * 1.0) };
     });
-    // Pack-a-Punch
-    {
-      const g = new THREE.Group(); g.position.set(...PAP.pos);
-      mesh(box, lambert(0x2c2a38), 0, 0.6, 0, 1.6, 1.2, 1.2, g);
-      mesh(box, lambert(0x4a3f6a), 0, 1.45, 0, 1.3, 0.5, 1.0, g);
-      const glow = new THREE.MeshBasicMaterial({ color: 0xc070ff });
+    // Pack-a-Punch stations (one per upgrade level), each glowing its level's color
+    const rollGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.9, 12);
+    const haloTex = canvasTex(64, 64, (ctx) => {
+      const gr = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+      gr.addColorStop(0, 'rgba(255,255,255,0.9)'); gr.addColorStop(0.35, 'rgba(255,255,255,0.3)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = gr; ctx.fillRect(0, 0, 64, 64);
+    });
+    this.papStations = PAP_STATIONS.map((st) => {
+      const g = new THREE.Group(); g.position.set(...st.pos);
+      g.rotation.y = Math.atan2(st.face[0], st.face[2]);   // front (sign side) toward the room
+      const body = new THREE.Color(st.color).multiplyScalar(0.18).add(new THREE.Color(0x24222e)).getHex();
+      mesh(box, lambert(body), 0, 0.6, 0, 1.6, 1.2, 1.2, g);
+      mesh(box, lambert(new THREE.Color(st.color).multiplyScalar(0.35).getHex()), 0, 1.45, 0, 1.3, 0.5, 1.0, g);
+      const glow = new THREE.MeshBasicMaterial({ color: st.color });
       mesh(box, glow, 0, 0.9, 0.61, 1.3, 0.12, 0.02, g).castShadow = false;
       for (const x of [-0.4, 0, 0.4]) {
-        const roll = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.9, 12), glow);
+        const roll = new THREE.Mesh(rollGeo, glow);
         roll.rotation.x = Math.PI / 2; roll.position.set(x, 1.75, 0); g.add(roll);
       }
+      const name = st.level === 1 ? 'PACK-A-PUNCH' : `PACK-A-PUNCH ${['', 'I', 'II', 'III', 'IV'][st.level]}`;
       const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.4),
-        new THREE.MeshBasicMaterial({ map: signTex(['PACK-A-PUNCH', String(PAP.cost)], '#16121f', '#d9a6ff') }));
+        new THREE.MeshBasicMaterial({ map: signTex([name, String(st.cost)], '#16121f', st.ink, 352, 100) }));
       sign.position.set(0, 0.45, 0.61); g.add(sign);
+      // soft halo over the rollers so it can be spotted from across the area
+      const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, color: st.color, transparent: true, opacity: 0.55,
+        blending: THREE.AdditiveBlending, depthWrite: false }));
+      halo.scale.set(2.6, 2.6, 1); halo.position.set(0, 1.8, 0); g.add(halo);
       this.scene.add(g);
-      this.pap = { ...PAP, at: new THREE.Vector3(PAP.pos[0], 0, PAP.pos[2] + 1.4) };
-    }
+      return { ...st, at: new THREE.Vector3(st.pos[0] + st.face[0] * 1.4, st.pos[1], st.pos[2] + st.face[2] * 1.4) };
+    });
     // Mystery box with a light beam
     {
       const g = new THREE.Group(); g.position.set(...BOX.pos);
@@ -731,6 +752,28 @@ export class ZMap {
       this.walk[i] = blocked ? 0 : 1;
     }
   }
+  // Lowest thing overhead in each cell (roofs, hut doorways, window lintels), for flying zombies.
+  buildCeilings() {
+    this.ceil = new Float32Array(GW * GH).fill(99);
+    for (const c of [...this.staticColliders, ...this.windowFrames]) {
+      const x0 = Math.max(0, Math.floor(c.x0 / C)), x1 = Math.min(GW - 1, Math.floor((c.x1 - 0.001) / C));
+      const z0 = Math.max(0, Math.floor(c.z0 / C)), z1 = Math.min(GH - 1, Math.floor((c.z1 - 0.001) / C));
+      for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
+        const i = z * GW + x;
+        if (c.y0 > this.navH[i] + 0.3 && c.y0 < this.ceil[i]) this.ceil[i] = c.y0;
+      }
+    }
+  }
+  ceilAt(x, z) {
+    const cx = Math.floor(x / C), cz = Math.floor(z / C);
+    return cx >= 0 && cz >= 0 && cx < GW && cz < GH ? this.ceil[cz * GW + cx] : 99;
+  }
+  // height of the floor under a point: the ground, or the tower deck / stairs
+  surfaceAt(x, z) {
+    const cx = Math.floor(x / C), cz = Math.floor(z / C), i = cz * GW + cx;
+    return cx >= 0 && cz >= 0 && cx < GW && cz < GH && this.navHOverride.has(i) ? this.navH[i] : this.groundAt(x, z);
+  }
+
   walkable(x, z) { return x >= 0 && z >= 0 && x < GW && z < GH && this.walk[z * GW + x] === 1; }
   walkablePoint(x, z) { return this.walkable(Math.floor(x / C), Math.floor(z / C)); }
   heightAtCell(x, z) { return this.navH[z * GW + x]; }

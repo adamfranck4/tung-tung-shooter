@@ -3,7 +3,7 @@
 // replay the positions they are sent a moment behind real time, so movement stays smooth.
 import * as THREE from 'three';
 import { Bot } from './bots.js';
-import { WEAPONS, papDef } from './weapons.js';
+import { WEAPONS, papDef, MAX_PAP } from './weapons.js';
 import { wrapAngle } from './physics.js';
 
 // bit flags used in state updates and snapshots
@@ -43,16 +43,16 @@ export class Interp {
 function set(out, s) { out.x = s.x; out.y = s.y; out.z = s.z; out.yaw = s.yaw; out.pitch = s.pitch; return true; }
 
 // ---------------------------------------------------------------- inventory sync
-// [key, upgraded, mag, reserve] for slots 1..3 (0 = empty)
+// [key, upgrade level (0 = none), mag, reserve] for slots 1..3 (0 = empty)
 export function packSlots(c) {
-  return [1, 2, 3].map((s) => { const w = c.slots[s]; return w ? [w.key, w.def.pap ? 1 : 0, w.mag, w.reserve] : 0; });
+  return [1, 2, 3].map((s) => { const w = c.slots[s]; return w ? [w.key, w.def.pap || 0, w.mag, w.reserve] : 0; });
 }
 export function unpackSlots(c, arr) {
   [1, 2, 3].forEach((s, i) => {
     const a = arr[i];
     if (!Array.isArray(a) || !WEAPONS[a[0]]) { c.slots[s] = null; return; }
-    const [key, pap, mag, reserve] = a, old = c.slots[s];
-    const def = pap ? (old?.key === key && old.def.pap ? old.def : papDef(WEAPONS[key])) : WEAPONS[key];
+    const [key, , mag, reserve] = a, old = c.slots[s], pap = Math.max(0, Math.min(MAX_PAP, a[1] | 0));
+    const def = pap ? (old?.key === key && old.def.pap === pap ? old.def : papDef(WEAPONS[key], pap)) : WEAPONS[key];
     c.slots[s] = { key, def, mag: Math.max(0, mag | 0), reserve: Math.max(0, reserve | 0) };
   });
 }
@@ -145,7 +145,8 @@ export class Avatar extends Bot {
   get weapon() { return this.shown || this.slots[this.slot]; }
   show(key, pap = 0) {
     if (!WEAPONS[key]) return;
-    if (this.shown?.key !== key || !!this.shown.def.pap !== !!pap) this.shown = { key, def: pap ? papDef(WEAPONS[key]) : WEAPONS[key] };
+    pap = Math.max(0, Math.min(MAX_PAP, pap | 0));
+    if (this.shown?.key !== key || (this.shown.def.pap || 0) !== pap) this.shown = { key, def: pap ? papDef(WEAPONS[key], pap) : WEAPONS[key] };
   }
 
   // name floating over the head (seen through walls, like a teammate marker)

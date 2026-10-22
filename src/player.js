@@ -38,7 +38,9 @@ export class Player extends Combatant {
     }
     if (this.buyOpen && !g.canBuy(this)) this.buyOpen = false;
     if (this.buyOpen) {
-      for (let i = 1; i <= BUY_ITEMS.length; i++) if (inp.pressed('Digit' + i)) g.buy(this, i - 1);
+      // keys 1-9, then 0 for a tenth item (the Zombies shop's ammo)
+      const n = g.buyCount?.() ?? BUY_ITEMS.length;
+      for (let i = 1; i <= n; i++) if (inp.pressed('Digit' + (i % 10))) g.buy(this, i - 1);
       if (inp.pressed('Escape')) this.buyOpen = false;
     } else {
       // ----- weapon switching -----

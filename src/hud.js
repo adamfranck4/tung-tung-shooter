@@ -1,6 +1,6 @@
 // DOM-based heads-up display: vitals, ammo, radar, kill feed, menus.
 import { WORLD } from './map.js';
-import { BUY_ITEMS, WEAPONS } from './weapons.js';
+import { BUY_ITEMS, WEAPONS, ZOMBIE_SHOP, ZOMBIE_PRICES, ammoCost } from './weapons.js';
 import { drawCrosshair, crosshairScale } from './crosshair.js';
 import { PERKS } from './zmap.js';
 
@@ -178,6 +178,30 @@ export class Hud {
     this.progress(prog);
     const spec = !p.alive && g.phase !== 'over' && g.spectating;
     this.spectate(spec ? `Spectating <b>${esc(spec.name)}</b><small>You'll be back next round &middot; click to switch player</small>` : null);
+    const shop = !!p.buyOpen && g.canBuy(p);
+    this.toggle('buymenu', shop);
+    if (shop) this.renderZShop(g);
+  }
+
+  // Zombies shop: guns (keys 1-9) unlock as the rounds go by; 0 refills the gun in your hands
+  renderZShop(g) {
+    const p = g.player, r = Math.max(1, g.round);
+    const row = (k, name, cat, right, cls) => `<div class="buy-row ${cls}"><span class="k">${k}</span><span class="n">${name}</span>`
+      + `<span class="c">${cat}</span><span class="p">${right}</span></div>`;
+    let rows = ZOMBIE_SHOP.map((it, i) => {
+      const price = ZOMBIE_PRICES[it.key], locked = r < it.round, owned = !locked && !!g.ownedSlot(p, it.key);
+      const cls = locked ? 'lock' : owned ? 'own' : p.points < price ? 'no' : '';
+      return row(i + 1, WEAPONS[it.key].name, it.cat, locked ? `ROUND ${it.round}` : owned ? 'OWNED' : price, cls);
+    }).join('');
+    const w = g.ammoTarget(p);
+    if (w) {
+      const full = w.reserve >= w.def.reserve, cost = ammoCost(w);
+      rows += row(0, `Ammo: ${esc(w.def.name)}`, 'Ammo', full ? 'FULL' : cost, full ? 'own' : p.points < cost ? 'no' : '');
+    }
+    const next = ZOMBIE_SHOP.find((it) => it.round > r);
+    const html = `<h3>SHOP <span class="z">${p.points}</span></h3>${rows}<div class="buy-foot">1-9 buy a gun &middot; 0 ammo &middot; B to close`
+      + `${next ? ` &middot; more guns at round ${next.round}` : ''}</div>`;
+    if (this.cache.buy !== html) { this.cache.buy = html; $('buymenu').innerHTML = html; }
   }
 
   zReset(g) {

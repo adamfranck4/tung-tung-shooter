@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { Combatant } from './combatant.js';
 import { wrapAngle } from './physics.js';
-import { flashTexture, markerTexture, tungSkinTexture, tungFaceTexture } from './textures.js';
+import { flashTexture, markerTexture, tungSkinTexture, tungFaceTexture, rainbowSkin } from './textures.js';
 
 export const DIFF = {
   easy:   { reaction: 0.7,  turn: 3.0, aimErr: 0.09,  settle: 1.4, head: 0.12, comp: 0.3,  spray: 4,  fov: 2.0, jitter: 0.016 },
@@ -37,21 +37,45 @@ function stick(parent, from, to, thick, color) {
   return m;
 }
 
-// Colors by side. 5v5: your teammates are green, enemies red. Zombies are a darker red.
+// Colors by side. 5v5: your teammates are green, enemies red. Zombies are a darker red, and the
+// other zombie types each have their own color. pale: tint a pale wood instead of the tan one, so
+// strong colors show. legs / arms: one color per limb (the rainbow giant).
 export const LOOKS = {
   default: { body: 0xffd27a, limb: 0xb0682c, hand: 0xd08a48 },
   friend:  { body: 0x9ee072, limb: 0x5d9236, hand: 0x8cc45a },
   enemy:   { body: 0xff7354, limb: 0xb0412a, hand: 0xd8664a },
   zombie:  { body: 0xc8503e, limb: 0x7a2a20, hand: 0x9a3a2c },
+  zfast:   { body: 0xffd81a, limb: 0x9a7c08, hand: 0xd2aa10, pale: true },
+  zcrawl:  { body: 0x8a5530, limb: 0x4a2c16, hand: 0x6a4224, pale: true },
+  zfly:    { body: 0x7446f0, limb: 0x3e1a80, hand: 0x5c30b8, pale: true },
+  zthrow:  { body: 0xff82c8, limb: 0xb4447e, hand: 0xe062a6, pale: true },
+  zgiant:  { body: 0xffffff, limb: 0xffffff, hand: 0xffd23a, rainbow: true, legs: [0xff4a3a, 0x3a86ff], arms: [0x3ad06a, 0xb05ae6] },
 };
+// which look each zombie type uses (see VARIANTS in zombies.js)
+const ZOMBIE_LOOK = { normal: 'zombie', big: 'zombie', fast: 'zfast', crawler: 'zcrawl', flyer: 'zfly', thrower: 'zthrow', giant: 'zgiant' };
 const bodyMats = {}, faceMats = {};
-let skinTex = null, faceTex = null;
+let skinTex = null, paleTex = null, faceTex = null, rainbow = null, rainbowAt = 0;
 function getBodyMat(look) {
   if (!bodyMats[look]) {
-    skinTex = skinTex || tungSkinTexture();
-    bodyMats[look] = new THREE.MeshLambertMaterial({ map: skinTex, color: LOOKS[look].body });
+    const L = LOOKS[look];
+    if (L.rainbow) {
+      rainbow = rainbow || rainbowSkin(logHeightAt);
+      bodyMats[look] = new THREE.MeshLambertMaterial({ map: rainbow.tex });
+    } else {
+      if (L.pale) paleTex = paleTex || tungSkinTexture('#f6eee2');
+      else skinTex = skinTex || tungSkinTexture();
+      bodyMats[look] = new THREE.MeshLambertMaterial({ map: L.pale ? paleTex : skinTex, color: L.body });
+    }
   }
   return bodyMats[look];
+}
+// slide the rainbow giant's colors up its body (redrawn ~15 times a second while one is around)
+export function tickRainbow() {
+  if (!rainbow) return;
+  const now = performance.now();
+  if (now - rainbowAt < 66) return;
+  rainbowAt = now;
+  rainbow.draw((now / 1000 * 0.22) % 1);
 }
 function getFaceMat(look) {
   if (!faceMats[look]) {
@@ -66,6 +90,12 @@ const glowRed = new THREE.MeshBasicMaterial({ color: 0xff2a10 });
 const LOG_PROFILE = [[0, 0], [0.24, 0], [0.252, 0.04], [0.255, 0.3], [0.252, 0.65], [0.248, 0.95], [0.243, 1.05],
   [0.23, 1.11], [0.205, 1.16], [0.16, 1.2], [0.09, 1.228], [0, 1.24]];
 const logGeo = new THREE.LatheGeometry(LOG_PROFILE.map(([r, y]) => new THREE.Vector2(r, y)), 28);
+// the log's texture v runs along the profile points: v (0..1) -> height up the log (0..1)
+function logHeightAt(v) {
+  const j = Math.max(0, Math.min(1, v)) * (LOG_PROFILE.length - 1), i = Math.min(LOG_PROFILE.length - 2, Math.floor(j));
+  const y = LOG_PROFILE[i][1] + (LOG_PROFILE[i + 1][1] - LOG_PROFILE[i][1]) * (j - i);
+  return y / LOG_PROFILE[LOG_PROFILE.length - 1][1];
+}
 // painted face: a curved patch hugging the front of the log (front = -Z = theta PI), 0.62..1.08 m
 const FACE_ARC = 2.1;
 const faceGeo = new THREE.CylinderGeometry(0.2425, 0.258, 0.46, 20, 1, true, Math.PI - FACE_ARC / 2, FACE_ARC);
@@ -99,34 +129,11 @@ function hand(parent, x, y, z, color) {
   return h;
 }
 
-// "Tung Tung Tung Sahur", modelled on the reference picture: a tall polished log with a rounded
-// top, big bulging eyes under carved brow ridges, a long nose, a small smile, thin arms and legs,
-// and a baseball bat. opts.look: 'friend' | 'enemy' | 'zombie' | 'default'.
-function buildModel(team, opts = {}) {
-  const look = opts.look || (opts.zombie ? 'zombie' : 'default');
-  const z = look === 'zombie';
-  const L = LOOKS[look];
-  const gunColor = 0x1e1d1c;
-  const root = new THREE.Group();
-  root.rotation.order = 'YXZ';
-
-  const legL = new THREE.Group(); legL.position.set(-0.11, 0.64, 0); root.add(legL);
-  const legR = new THREE.Group(); legR.position.set(0.11, 0.64, 0); root.add(legR);
-  for (const leg of [legL, legR]) {
-    stick(leg, [0, 0.03, 0], [0, -0.58, 0], 0.065, L.limb);
-    part(leg, 0.1, 0.05, 0.18, L.hand, 0, -0.615, -0.04);   // foot
-  }
-
-  const torso = new THREE.Group(); torso.position.set(0, 0.6, 0); root.add(torso);
-  const bodyMat = getBodyMat(look);
-  const log = new THREE.Mesh(logGeo, bodyMat);
-  log.castShadow = true;
-  torso.add(log);
+// big bulging eyes on the front of the log; the iris/pupil group moves with where the bot looks
+function sideFace(torso, look, bodyMat, z) {
   const face = new THREE.Mesh(faceGeo, getFaceMat(look));
   face.position.y = 0.85;
   torso.add(face);
-
-  // big bulging eyes; the iris/pupil group moves with where the bot looks
   const pupils = [];
   for (const sx of [-1, 1]) {
     const eye = new THREE.Group(); eye.position.set(sx * 0.095, 0.99, -0.226); torso.add(eye);
@@ -149,13 +156,113 @@ function buildModel(team, opts = {}) {
   nose.position.set(0, 0.875, -0.255); nose.rotation.x = 0.16; nose.scale.set(1, 1, 1.3);
   nose.castShadow = true;
   torso.add(nose);
+  return pupils;
+}
+
+// The crawler lies face down, so its face sits on the top of the log and looks ahead.
+// In the face group, -z points out of the top of the log and +y is "up" while it crawls.
+function capFace(torso, bodyMat) {
+  const f = new THREE.Group(); f.position.set(0, 1.232, 0); f.rotation.x = Math.PI / 2; torso.add(f);
+  const pupils = [];
+  for (const sx of [-1, 1]) {
+    const eye = new THREE.Group(); eye.position.set(sx * 0.085, 0.035, 0); f.add(eye);
+    sphere(eye, 0xe2d7a0, 0.07, 0.078, 0.055, 0, 0, 0);
+    const lookAt = new THREE.Group(); eye.add(lookAt);
+    sphere(lookAt, 0, 0.038, 0.04, 0.02, 0, 0.004, -0.044).material = glowRed;
+    sphere(lookAt, 0x050505, 0.024, 0.026, 0.012, 0, 0.004, -0.056);
+    pupils.push(lookAt);
+    const brow = new THREE.Mesh(browGeo, bodyMat);
+    brow.rotation.set(0, 0, Math.PI / 2 + sx * 0.3); brow.position.set(sx * 0.085, 0.11, 0.004);
+    f.add(brow);
+  }
+  const nose = new THREE.Mesh(noseGeo, bodyMat);
+  nose.position.set(0, -0.04, -0.01); nose.scale.set(0.9, 0.55, 1.1);
+  f.add(nose);
+  part(f, 0.12, 0.024, 0.02, 0x2a1006, 0, -0.13, 0.002);   // mouth
+  return pupils;
+}
+
+// crawler arm reaching forward onto the ground, pivoting at the shoulder (sx: -1 left, 1 right)
+function crawlArm(torso, sx, L) {
+  const g = new THREE.Group(); g.position.set(sx * 0.24, 0.85, -0.02); torso.add(g);
+  stick(g, [0, 0, 0], [sx * 0.1, 0.12, -0.3], 0.05, L.limb);
+  stick(g, [sx * 0.1, 0.12, -0.3], [sx * 0.04, 0.3, -0.6], 0.045, L.limb);
+  hand(g, sx * 0.04, 0.3, -0.62, L.hand);
+  return g;
+}
+
+// bat wing for the flyer: a scalloped membrane on two bones, hinged at the shoulder blade
+const wingGeo = (() => {
+  const s = new THREE.Shape();
+  s.moveTo(0, 0);
+  s.lineTo(0.38, -0.1); s.lineTo(0.84, 0.02);           // leading edge out to the tip
+  s.quadraticCurveTo(0.7, 0.1, 0.64, 0.27);             // scalloped trailing edge back to the body
+  s.quadraticCurveTo(0.52, 0.17, 0.42, 0.22);
+  s.quadraticCurveTo(0.3, 0.29, 0.25, 0.44);
+  s.quadraticCurveTo(0.12, 0.31, 0, 0.36);
+  s.lineTo(0, 0);
+  return new THREE.ShapeGeometry(s, 6);
+})();
+const wingMat = new THREE.MeshLambertMaterial({ color: 0x4a1c8c, side: THREE.DoubleSide });
+const WING_TILT = Math.PI - 0.62;   // the membrane hangs down and back from the arm bone
+function wing(torso, sx, L) {
+  const pivot = new THREE.Group(); pivot.position.set(sx * 0.13, 1.05, 0.2); torso.add(pivot);
+  const m = new THREE.Mesh(wingGeo, wingMat);
+  m.rotation.x = WING_TILT; m.scale.x = sx;
+  pivot.add(m);
+  // bones: shape point -> wing space
+  const at = (x, y) => [sx * x, y * Math.cos(WING_TILT), y * Math.sin(WING_TILT)];
+  stick(pivot, at(0, 0), at(0.38, -0.1), 0.034, L.limb);
+  stick(pivot, at(0.38, -0.1), at(0.84, 0.02), 0.028, L.limb);
+  stick(pivot, at(0.38, -0.1), at(0.64, 0.27), 0.02, L.limb);
+  stick(pivot, at(0.38, -0.1), at(0.25, 0.44), 0.02, L.limb);
+  return pivot;
+}
+
+// coconut, thrown by the pink zombies
+const cocoGeo = new THREE.IcosahedronGeometry(0.12, 1);
+const cocoMat = new THREE.MeshLambertMaterial({ color: 0x5e3b1e, flatShading: true });
+export function makeCoconut() {
+  const m = new THREE.Mesh(cocoGeo, cocoMat);
+  m.castShadow = true;
+  return m;
+}
+
+// "Tung Tung Tung Sahur", modelled on the reference picture: a tall polished log with a rounded
+// top, big bulging eyes under carved brow ridges, a long nose, a small smile, thin arms and legs,
+// and a baseball bat. opts.look: 'friend' | 'enemy' | 'zombie' | 'default'.
+// Zombies: opts.zombie with opts.variant, the zombie type (see VARIANTS in zombies.js).
+function buildModel(team, opts = {}) {
+  const variant = opts.zombie ? (opts.variant || 'normal') : null;
+  const look = opts.look || (variant ? ZOMBIE_LOOK[variant] || 'zombie' : 'default');
+  const z = !!variant || look === 'zombie';
+  const crawl = variant === 'crawler';
+  const L = LOOKS[look];
+  const gunColor = 0x1e1d1c;
+  const root = new THREE.Group();
+  root.rotation.order = 'YXZ';
+
+  const legL = new THREE.Group(); legL.position.set(-0.11, 0.64, 0); root.add(legL);
+  const legR = new THREE.Group(); legR.position.set(0.11, 0.64, 0); root.add(legR);
+  [legL, legR].forEach((leg, i) => {
+    stick(leg, [0, 0.03, 0], [0, -0.58, 0], 0.065, L.legs?.[i] ?? L.limb);
+    part(leg, 0.1, 0.05, 0.18, L.hand, 0, -0.615, -0.04);   // foot
+  });
+
+  const torso = new THREE.Group(); torso.position.set(0, 0.6, 0); root.add(torso);
+  const bodyMat = getBodyMat(look);
+  const log = new THREE.Mesh(logGeo, bodyMat);
+  log.castShadow = true;
+  torso.add(log);
+  const pupils = crawl ? capFace(torso, bodyMat) : sideFace(torso, look, bodyMat, z);
 
   // thin arms with elbows, holding the weapon
+  const armR = L.arms?.[0] ?? L.limb, armL = L.arms?.[1] ?? L.limb;
   const arms = new THREE.Group(); arms.position.set(0, 0.8, 0); torso.add(arms);
-  stick(arms, [0.24, 0, 0], [0.31, -0.2, -0.12], 0.05, L.limb);
-  stick(arms, [0.31, -0.2, -0.12], [0.13, -0.1, -0.36], 0.045, L.limb);
-  stick(arms, [-0.24, 0, 0], [-0.29, -0.2, -0.2], 0.05, L.limb);
-  stick(arms, [-0.29, -0.2, -0.2], [0.0, -0.07, -0.5], 0.045, L.limb);
+  stick(arms, [0.24, 0, 0], [0.31, -0.2, -0.12], 0.05, armR);
+  stick(arms, [0.31, -0.2, -0.12], [0.13, -0.1, -0.36], 0.045, armR);
+  stick(arms, [-0.24, 0, 0], [-0.29, -0.2, -0.2], 0.05, armL);
+  stick(arms, [-0.29, -0.2, -0.2], [0.0, -0.07, -0.5], 0.045, armL);
   hand(arms, 0.12, -0.1, -0.36, L.hand);
   hand(arms, 0.0, -0.07, -0.5, L.hand);
 
@@ -172,12 +279,22 @@ function buildModel(team, opts = {}) {
   const bat = makeBat(); bat.position.set(0.12, -0.1, -0.36); bat.rotation.x = 0.5; bat.visible = false; arms.add(bat);
   const backBat = makeBat(); backBat.position.set(-0.2, 0.95, 0.28); backBat.rotation.set(-0.1, 0, 2.6); torso.add(backBat);
 
+  const extra = {};
   if (z) {
     gun.visible = false; backBat.visible = false; bat.visible = true;
+    if (crawl) {   // pulls itself along on its hands instead of swinging a bat
+      arms.visible = false;
+      extra.armL = crawlArm(torso, -1, L); extra.armR = crawlArm(torso, 1, L);
+    }
+    if (variant === 'flyer') { extra.wingL = wing(torso, -1, L); extra.wingR = wing(torso, 1, L); }
+    if (variant === 'thrower') {   // a coconut ready in the throwing hand
+      bat.visible = false;
+      extra.coconut = makeCoconut(); extra.coconut.position.set(0.13, -0.03, -0.42); arms.add(extra.coconut);
+    }
     // hordes are big: only the body casts a shadow
     root.traverse((o) => { if (o.isMesh && o !== log) o.castShadow = false; });
   }
-  return { root, legL, legR, torso, head: null, arms, gun, bat, backBat, flash, pupils };
+  return { root, legL, legR, torso, head: null, arms, gun, bat, backBat, flash, pupils, ...extra };
 }
 
 export function buildTungModel(team, opts) { return buildModel(team, opts); }

@@ -5,10 +5,10 @@
 import * as THREE from 'three';
 import { Combatant, RUN_SPEED, dirFrom, chaseCamera } from './combatant.js';
 import { Player } from './player.js';
-import { buildTungModel } from './bots.js';
-import { WEAPONS, papDef } from './weapons.js';
-import { raycast, wrapAngle } from './physics.js';
-import { PLAYER_START } from './zmap.js';
+import { buildTungModel, makeCoconut, tickRainbow } from './bots.js';
+import { WEAPONS, papDef, MAX_PAP, ZOMBIE_SHOP, ZOMBIE_PRICES, ammoCost } from './weapons.js';
+import { raycast, raySphere, rayBox, moveBody, wrapAngle } from './physics.js';
+import { PLAYER_START, AREAS } from './zmap.js';
 import { knifeName } from './viewmodel.js';
 import { Avatar, Interp, F, r1, r2, r3, packSlots, showShot } from './avatar.js';
 import { NET_SOUNDS } from './game.js';
@@ -33,6 +33,48 @@ const BIG_SCALE = 1.7;
 const bigChance = (r) => (r < 3 ? 0 : clamp(0.06 + (r - 3) * 0.02, 0, 0.25));
 export const zombieCount = (r) => (r <= 5 ? [6, 8, 13, 18, 24][r - 1] : Math.floor(24 + (r - 5) * 4.5));
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+// share of spawns that ramps up from round `from`
+const ramp = (r, from, start, step, cap) => (r < from ? 0 : Math.min(cap, start + (r - from) * step));
+
+// The Tung Tung zombie types.
+// hp(round), speed(round) (regular and big zombies roll their own); dmg / reach / hitReach / cd: the
+// melee hit. from: first round it shows up, chance(round): share of the spawns, max(round): how many
+// can be alive at once. ground: only rises out of the ground (too big for the windows). Kill points:
+// `points`, or the usual 60 / 100 headshot / 130 knife plus `bonus`. pitch / tung: its voice.
+export const VARIANTS = {
+  normal:  { hp: () => ZOMBIE_HP, scale: 1, dmg: 50, reach: 1.3, hitReach: 1.8, cd: 1.1, pitch: 1 },
+  big:     { hp: bigZombieHealth, scale: BIG_SCALE, dmg: 80, reach: 1.9, hitReach: 2.5, cd: 1.4, pitch: 0.55, tung: 0.7,
+             ground: true, points: 250, rise: 2.2, from: 3, chance: bigChance, max: () => 3 },
+  // yellow: faster than you, but fragile
+  fast:    { hp: () => 70, scale: 0.92, speed: (r) => 6.7 + Math.min(0.5, (r - 2) * 0.05), dmg: 35, reach: 1.3, hitReach: 1.8, cd: 0.7,
+             pitch: 1.5, bonus: 30, from: 2, chance: (r) => ramp(r, 2, 0.08, 0.01, 0.14), max: () => 4,
+             intro: 'Yellow speedsters! They can outrun you' },
+  // brown: crawls along the floor, low and hard to hit
+  crawler: { hp: () => 90, scale: 1, speed: (r) => 3.2 + Math.min(1.2, (r - 2) * 0.1), dmg: 30, reach: 1.25, hitReach: 1.75, cd: 0.9,
+             pitch: 0.8, bonus: 20, crawl: true, from: 2, chance: (r) => ramp(r, 2, 0.08, 0.008, 0.12), max: () => 5,
+             intro: 'Brown crawlers! Aim low' },
+  // pink: keeps its distance and throws coconuts
+  thrower: { hp: () => 100, scale: 1, speed: (r) => 2.4 + Math.min(0.6, (r - 3) * 0.05), dmg: 35, reach: 1.3, hitReach: 1.8, cd: 1.0,
+             throwDmg: 30, pitch: 1.15, bonus: 40, throws: true, from: 3, chance: (r) => ramp(r, 3, 0.06, 0.008, 0.1), max: () => 3,
+             intro: 'Pink throwers! Dodge the coconuts' },
+  // purple: flies in from the sky and swoops down on you
+  flyer:   { hp: () => 80, scale: 0.95, speed: (r) => 4.4 + Math.min(1, (r - 4) * 0.1), dmg: 40, reach: 1.4, hitReach: 2.0, cd: 1.0,
+             pitch: 1.3, bonus: 40, fly: true, from: 4, chance: (r) => ramp(r, 4, 0.06, 0.008, 0.1), max: () => 4,
+             intro: 'Purple flyers! Look up' },
+  // rainbow: a huge, slow boss that shrugs off Insta-Kill and Kaboom, and always drops a power-up
+  giant:   { hp: (r) => 900 + 120 * r, scale: 2.2, speed: (r) => (r >= 10 ? 2.6 : 1.9), dmg: 100, reach: 2.7, hitReach: 3.4, cd: 1.8,
+             pitch: 0.4, tung: 0.95, ground: true, points: 500, rise: 3.2, boss: true,
+             from: 5, chance: (r) => ramp(r, 5, 0.025, 0.004, 0.04), max: (r) => (r >= 12 ? 2 : 1),
+             intro: 'A RAINBOW GIANT is coming!' },
+};
+export const KINDS = Object.keys(VARIANTS);   // a type's index here is its id online
+const modelOf = (kind) => (kind === 'big' ? 'normal' : kind);   // big zombies are a scaled-up regular one
+const MAX_SPECIAL = 0.6;   // at most this share of the spawns are special types
+const THROW_TIME = 0.9, THROW_RELEASE = 0.38;   // coconut throw: wind-up, then let go with this much left
+const COCO_G = 15;         // coconut gravity (a bit heavy, for snappy lobs)
+const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V'];
+// "Pack-a-Punch II (Kitchen)"
+const papName = (st, where = false) => `Pack-a-Punch${st.level > 1 ? ' ' + ROMAN[st.level] : ''}${where ? ` (${AREAS[st.area].name})` : ''}`;
 const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 // where each player starts in the spawn room
 const START_OFFSETS = [[0, 0], [1.6, 0.8], [-1.6, 0.8], [0, -1.6]];
@@ -43,46 +85,77 @@ const _hit = {}, _s = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 };
 
 // ---------------------------------------------------------------- zombie
 export class Zombie extends Combatant {
-  constructor(game) {
+  constructor(game, kind = 'normal') {
     super(game, 'Zombie', 'Z');
     this.isZombie = true;
-    this.model = buildTungModel('Z', { zombie: true });
-    this.model.root.visible = false;
-    game.scene.add(this.model.root);
     this.active = false; this.alive = false;
-    this.body.halfW = 0.3;
     this.interp = new Interp();   // joining players: positions from the host
+    this.setKind(kind);
   }
 
-  spawn(sp, round, big = false) {
-    this.active = true; this.alive = true; this.big = big;
-    const s = this.scale = big ? BIG_SCALE : 1;
-    this.health = big ? bigZombieHealth(round) : ZOMBIE_HP;
-    const roll = Math.random();
-    const sprint = clamp((round - 6) * 0.12, 0, 0.8), run = clamp((round - 2) * 0.2, 0, 0.95);
-    // scaled to CS2 player speed (6.35 m/s with a knife): sprinters stay just slower than you
-    if (big) this.speed = round >= 8 ? 3.4 : 1.8 + Math.random() * 0.3;
-    else this.speed = roll < sprint ? 5.9 : roll < run ? 4.25 : 1.55 + Math.random() * 0.45;
-    const b = this.body;
-    b.vel.set(0, 0, 0); b.height = 1.8 * s; b.halfW = 0.3 * s; b.onGround = true;
+  // Pooled zombies can come back as another type: the model is swapped when its look changes.
+  setKind(kind) {
+    if (!VARIANTS[kind]) kind = 'normal';
+    this.kind = kind; this.v = VARIANTS[kind];
+    const look = modelOf(kind);
+    if (this.model && this.modelKind === look) return;
+    if (this.model) { this.game.scene.remove(this.model.root); this.model.flash.material.dispose(); }
+    this.modelKind = look;
+    this.model = buildTungModel('Z', { zombie: true, variant: look });
+    this.model.root.visible = false;
+    this.game.scene.add(this.model.root);
+  }
+
+  // a fresh life (host and joining players): type, size, body and timers
+  reset(kind) {
+    this.setKind(kind);
+    const v = this.v, s = this.scale = v.scale, b = this.body;
+    this.active = true; this.alive = true;
+    this.tall = 1.8 * s;                                   // how tall it looks (the hitboxes)
+    b.vel.set(0, 0, 0); b.onGround = true;
+    b.height = v.crawl ? 0.8 : Math.min(this.tall, 2.2);   // tall ones duck their heads through doorways
+    b.halfW = (v.crawl ? 0.38 : 0.3) * s;
     this.attackT = 0; this.attackCd = 0.6; this.stuckT = 0; this.deathT = 0; this.tearT = 0.8;
-    this.soundT = 1 + Math.random() * 5; this.walkPhase = Math.random() * 6;
+    this.throwT = 0; this.throwCd = 1 + Math.random(); this.losT = 0; this.los = false;
+    this.lowT = 0; this.fallV = 0; this.thudded = false;
+    this.soundT = 1 + Math.random() * 5; this.walkPhase = Math.random() * 6; this.lastStep = 0; this.lastBeat = 0;
+    const m = this.model;
+    m.root.visible = true;
+    m.root.scale.setScalar(v.ground ? s : s * (0.95 + Math.random() * 0.1));
+    if (m.coconut) m.coconut.visible = true;
+  }
+
+  spawn(sp, round, kind = 'normal') {
+    this.reset(kind);
+    const v = this.v, b = this.body, s = this.scale;
+    this.health = this.maxHealth = v.hp(round);
+    if (v.speed) this.speed = v.speed(round) * (0.95 + Math.random() * 0.1);
+    else if (kind === 'big') this.speed = round >= 8 ? 3.4 : 1.8 + Math.random() * 0.3;
+    else {
+      // scaled to CS2 player speed (6.35 m/s with a knife): sprinters stay just slower than you
+      const roll = Math.random();
+      const sprint = clamp((round - 6) * 0.12, 0, 0.8), run = clamp((round - 2) * 0.2, 0, 0.95);
+      this.speed = roll < sprint ? 5.9 : roll < run ? 4.25 : 1.55 + Math.random() * 0.45;
+    }
     this.win = sp.win || null;
     if (this.win) {
       b.pos.copy(this.win.spawn);
-      this.prevPos.copy(b.pos);
       this.state = 'toWindow';
       this.yaw = Math.atan2(this.win.dir.x, this.win.dir.z); // face into the building
+    } else if (v.fly) {
+      // swoops down out of the sky (or from the rafters indoors)
+      const map = this.game.map, surf = map.surfaceAt(sp.pos.x, sp.pos.z);
+      b.pos.set(sp.pos.x, Math.max(surf + 1, Math.min(surf + 9, map.ceilAt(sp.pos.x, sp.pos.z) - b.height - 0.2)), sp.pos.z);
+      b.onGround = false;
+      this.state = 'chase';
+      this.yaw = Math.random() * Math.PI * 2;
     } else {
       this.riseBase = this.game.map.groundAt(sp.pos.x, sp.pos.z); // rise out of hills too
       b.pos.set(sp.pos.x, this.riseBase - 1.9 * s, sp.pos.z);
-      this.prevPos.copy(b.pos);
       this.state = 'rise'; this.riseT = 0;
       this.yaw = Math.random() * Math.PI * 2;
     }
-    const m = this.model;
-    m.root.visible = true;
-    m.root.scale.setScalar(big ? BIG_SCALE : 0.95 + Math.random() * 0.1);
+    this.prevPos.copy(b.pos);
     this.animate(0);
   }
 
@@ -98,7 +171,7 @@ export class Zombie extends Combatant {
 
     if (this.state === 'rise') {
       this.riseT += dt;
-      const k = Math.min(1, this.riseT / (this.big ? 2.2 : 1.5));
+      const k = Math.min(1, this.riseT / (this.v.rise || 1.5));
       b.pos.y = this.riseBase - 1.9 * this.scale * (1 - k);
       const p = g.nearestPlayer(b.pos);
       if (p) this.turnTo(Math.atan2(-(p.body.pos.x - b.pos.x), -(p.body.pos.z - b.pos.z)), dt, 3);
@@ -136,27 +209,31 @@ export class Zombie extends Combatant {
 
   // go for the closest player who is still on their feet
   chase(dt) {
-    const g = this.game, b = this.body, map = g.map;
+    const g = this.game, b = this.body, map = g.map, v = this.v;
     const p = g.nearestPlayer(b.pos, true);
     const canAttack = !!p && g.phase !== 'over';
     let dx = 0, dz = 0, dy = 0, dist = Infinity;
     if (p) { const tp = p.body.pos; dx = tp.x - b.pos.x; dz = tp.z - b.pos.z; dy = tp.y - b.pos.y; dist = Math.hypot(dx, dz); }
-    // big zombies reach further and hit harder
-    const reach = this.big ? 1.9 : 1.3, hitReach = this.big ? 2.5 : 1.8, dmg = this.big ? 80 : 50;
+    // flyers hit from above; everyone else needs you on about their level
+    const inReach = v.fly ? dy > -1.8 && dy < 1.0 : dy > -0.5 && dy < 1.4 * this.scale;
     if (this.attackT > 0) {
       const prev = this.attackT;
       this.attackT -= dt;
-      if (prev > 0.32 && this.attackT <= 0.32 && canAttack && dist < hitReach && dy > -0.5 && dy < 1.4 * this.scale) g.hurtPlayer(dmg, this, p);
+      if (prev > 0.32 && this.attackT <= 0.32 && canAttack && dist < v.hitReach && inReach) g.hurtPlayer(v.dmg, b.pos, p);
     } else {
       this.attackCd -= dt;
-      if (canAttack && dist < reach && dy > -0.5 && dy < 1.4 * this.scale && this.attackCd <= 0) {
-        this.attackT = 0.75; this.attackCd = this.big ? 1.4 : 1.1; g.sound.swing(b.pos);
+      if (canAttack && dist < v.reach && inReach && this.attackCd <= 0 && this.throwT <= 0) {
+        this.attackT = 0.75; this.attackCd = v.cd; g.sound.swing(b.pos);
       }
     }
+    // pink throwers stop at range with a clear view and lob coconuts
+    if (!canAttack) this.throwT = 0;
+    const hold = v.throws && canAttack && this.updateThrow(dt, p, dist);
     let wx = 0, wz = 0, jump = false;
-    if (canAttack && dist > 0.85 * this.scale) {
+    if (canAttack && dist > 0.85 * this.scale && !hold) {
       // run straight at you only when you're on the same level and nothing is in the way
-      if (dist < 14 && Math.abs(dy) < 1.2 && map.clearLine(b.pos, p.body.pos, 0.3 * this.scale)) { wx = dx / dist; wz = dz / dist; }
+      const level = v.fly ? p.body.pos.y - map.surfaceAt(b.pos.x, b.pos.z) : dy;
+      if (dist < 14 && Math.abs(level) < 1.2 && map.clearLine(b.pos, p.body.pos, 0.3 * this.scale)) { wx = dx / dist; wz = dz / dist; }
       else {
         const t = map.flowTarget(b.pos, _t);
         if (t) { const tx = t.x - b.pos.x, tz = t.z - b.pos.z, l = Math.hypot(tx, tz) || 1; wx = tx / l; wz = tz / l; }
@@ -165,64 +242,214 @@ export class Zombie extends Combatant {
     }
     let speed = this.speed;
     if (this.attackT > 0) speed *= 0.35;
-    if (wx || wz) {
-      if (this.horizSpeed() < speed * 0.25) this.stuckT += dt; else this.stuckT = Math.max(0, this.stuckT - dt);
-      if (this.stuckT > 0.8 && b.onGround) { jump = true; this.stuckT = 0; }
+    if (v.fly) this.fly(dt, wx, wz, speed, p, dist);
+    else {
+      if (wx || wz) {
+        if (this.horizSpeed() < speed * 0.25) this.stuckT += dt; else this.stuckT = Math.max(0, this.stuckT - dt);
+        if (this.stuckT > 0.8 && b.onGround) { jump = true; this.stuckT = 0; }
+      }
+      this.applyMovement(dt, wx, wz, speed / RUN_SPEED, jump);
     }
-    this.applyMovement(dt, wx, wz, speed / RUN_SPEED, jump);
-    if (dist < 2.5) this.turnTo(Math.atan2(-dx, -dz), dt, 10);
+    if (dist < 2.5 || hold) this.turnTo(Math.atan2(-dx, -dz), dt, 10);
     else if (wx || wz) this.turnTo(Math.atan2(-wx, -wz), dt, 7);
   }
 
+  // Flying: steer along the same paths as the others, but cruise above the floor, weaving side to
+  // side, then swoop down on the target. Ducks under roofs and doorways (and drops low when stuck).
+  fly(dt, wx, wz, speed, p, dist) {
+    const g = this.game, b = this.body, map = g.map;
+    if ((wx || wz) && dist > 4) {
+      const w = Math.sin(g.time * 1.8 + this.walkPhase) * 0.45;
+      const nx = wx - wz * w, nz = wz + wx * w, l = Math.hypot(nx, nz);
+      wx = nx / l; wz = nz / l;
+    }
+    const k = Math.min(1, dt * 2.5);
+    b.vel.x += (wx * speed - b.vel.x) * k; b.vel.z += (wz * speed - b.vel.z) * k;
+    let surf = map.surfaceAt(b.pos.x, b.pos.z), ceil = map.ceilAt(b.pos.x, b.pos.z);
+    for (const a of [0.35, 0.7]) {   // look ahead for low ceilings and steps up
+      const x = b.pos.x + b.vel.x * a, z = b.pos.z + b.vel.z * a;
+      surf = Math.max(surf, map.surfaceAt(x, z)); ceil = Math.min(ceil, map.ceilAt(x, z));
+    }
+    let alt = surf + 1.8 + Math.sin(g.time * 2.3 + this.walkPhase) * 0.3;
+    if (p && dist < 5) alt = Math.min(alt, Math.max(surf + 0.15, p.body.pos.y + 0.45));
+    if (this.lowT > 0) { this.lowT -= dt; alt = surf + 0.15; }
+    alt = Math.min(alt, ceil - b.height - 0.15);
+    b.vel.y += (clamp((alt - b.pos.y) * 3, -6, 5) - b.vel.y) * Math.min(1, dt * 5);
+    moveBody(b, dt, map.colliders, (x, z) => map.groundAt(x, z), true);
+    if (wx || wz) {
+      if (this.horizSpeed() < speed * 0.2) this.stuckT += dt; else this.stuckT = Math.max(0, this.stuckT - dt);
+      if (this.stuckT > 0.5) { this.lowT = 1.5; this.stuckT = 0; }
+    }
+  }
+
+  // Throwers: wind up and let go of a coconut every few seconds while they can see you.
+  // Returns true while it should stand still (throwing, or close enough to keep its distance).
+  updateThrow(dt, p, dist) {
+    const g = this.game;
+    if (this.throwT > 0) {
+      const prev = this.throwT;
+      this.throwT -= dt;
+      if (prev > THROW_RELEASE && this.throwT <= THROW_RELEASE) g.throwCoconut(this, p);
+      return true;
+    }
+    this.throwCd -= dt;
+    this.losT -= dt;
+    if (this.losT <= 0) { this.losT = 0.25; this.los = dist < 22 && g.clearShot(this, p); }
+    if (!this.los || dist < 3.5) return false;
+    if (this.throwCd <= 0 && this.attackT <= 0) { this.throwT = THROW_TIME; this.throwCd = 2.0 + Math.random() * 1.2; }
+    return dist < 10;
+  }
+
+  // where a thrown coconut leaves its hand (over the right shoulder)
+  handPos(out) {
+    const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw), p = this.body.pos;
+    return out.set(p.x + fx * 0.35 - fz * 0.15, p.y + 1.9 * this.scale, p.z + fz * 0.35 + fx * 0.15);
+  }
+
+  // Hitboxes. Upright zombies use how tall they look (their body for walls can be shorter);
+  // the crawler is a low log with its head out in front.
+  rayHit(o, d, maxT) {
+    const p = this.body.pos, s = this.scale;
+    let best = null;
+    if (this.v.crawl) {
+      const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
+      const tHead = raySphere(o, d, p.x + fx * 0.6, p.y + 0.62, p.z + fz * 0.6, 0.27);
+      if (tHead !== null && tHead < maxT) best = { t: tHead, part: 'head' };
+      const cx = p.x + fx * 0.05, cz = p.z + fz * 0.05, w = 0.42;
+      const tBody = rayBox(o, d, cx - w, p.y, cz - w, cx + w, p.y + 0.62, cz + w);
+      if (tBody !== null && tBody < (best ? best.t : maxT)) best = { t: tBody, part: 'body' };
+      return best;
+    }
+    const h = this.tall;
+    const tHead = raySphere(o, d, p.x, p.y + h - 0.17 * s, p.z, 0.19 * s);
+    if (tHead !== null && tHead < maxT) best = { t: tHead, part: 'head' };
+    const w = 0.28 * s;
+    const tBody = rayBox(o, d, p.x - w, p.y, p.z - w, p.x + w, p.y + h - 0.33 * s, p.z + w);
+    if (tBody !== null && tBody < (best ? best.t : maxT)) {
+      const y = o.y + d.y * tBody;
+      best = { t: tBody, part: y < p.y + 0.62 * s ? 'leg' : 'body' };
+    }
+    return best;
+  }
+  headPos(out) {
+    const p = this.body.pos;
+    if (this.v.crawl) return out.set(p.x - Math.sin(this.yaw) * 0.6, p.y + 0.62, p.z - Math.cos(this.yaw) * 0.6);
+    return out.set(p.x, p.y + this.tall - 0.17 * this.scale, p.z);
+  }
+  chestPos(out) {
+    const p = this.body.pos;
+    if (this.v.crawl) return out.set(p.x - Math.sin(this.yaw) * 0.2, p.y + 0.45, p.z - Math.cos(this.yaw) * 0.2);
+    return out.set(p.x, p.y + this.tall * 0.68, p.z);
+  }
+
   animate(dt, phaseSpeed) {
-    const m = this.model, b = this.body;
+    const v = this.v;
+    if (v.crawl) { this.animateCrawl(dt, phaseSpeed); return; }
+    const m = this.model, b = this.body, g = this.game;
     m.root.position.copy(b.pos);
     m.root.rotation.set(0, this.yaw, 0);
     const sp = phaseSpeed ?? this.horizSpeed();
     this.walkPhase += dt * (sp * 1.9 + 0.8);
     const amp = Math.min(1, sp / 3.5) * 0.7 + 0.1;
-    m.legL.rotation.x = Math.sin(this.walkPhase) * amp;
-    m.legR.rotation.x = -Math.sin(this.walkPhase) * amp;
-    m.torso.position.y = 0.6 + Math.abs(Math.cos(this.walkPhase)) * 0.04 * amp;
+    const flying = v.fly && this.state === 'chase';
+    if (flying) {   // legs dangle and trail behind
+      const dangle = Math.sin(g.time * 2.2 + this.walkPhase * 0.2) * 0.12;
+      m.legL.rotation.x = -0.3 - Math.min(0.4, sp * 0.08) + dangle;
+      m.legR.rotation.x = -0.3 - Math.min(0.4, sp * 0.08) - dangle;
+    } else {
+      m.legL.rotation.x = Math.sin(this.walkPhase) * amp;
+      m.legR.rotation.x = -Math.sin(this.walkPhase) * amp;
+    }
+    m.torso.position.y = 0.6 + (flying ? 0 : Math.abs(Math.cos(this.walkPhase)) * 0.04 * amp);
     m.torso.rotation.z = Math.sin(this.walkPhase) * 0.07 * amp;
-    m.torso.rotation.x = this.speed > 4.5 ? -0.3 : -0.14; // hunched forward
+    m.torso.rotation.x = flying ? -0.32 : this.kind === 'fast' ? -0.42 : this.speed > 4.5 ? -0.3 : -0.14; // hunched forward
     // bat held low at the side while walking (like the reference), raised over the shoulder to swing
     let armX = -0.35 + Math.sin(this.walkPhase * 0.5) * 0.08, batX = 0.35 + Math.sin(this.walkPhase) * 0.12;
     if (this.attackT > 0) {
       const k = 1 - this.attackT / 0.75;
       if (k < 0.55) { const e = k / 0.55; armX = -0.35 + e * 1.25; batX = 0.35 - e * 2.6; }
       else { const e = (k - 0.55) / 0.45; armX = 0.9 - e * 1.35; batX = -2.25 + e * 3.2; }
+    } else if (this.throwT > 0) {
+      // coconut throw: lean back with it over the head, then whip it forward
+      const k = 1 - this.throwT / THROW_TIME, rel = 1 - THROW_RELEASE / THROW_TIME;
+      if (k < rel) { const e = k / rel; armX = -0.35 + e * e * 2.95; m.torso.rotation.x = -0.14 + e * 0.3; }
+      else { const e = (k - rel) / (1 - rel); armX = 2.6 - Math.min(1, e * 3) * 3.1 + Math.max(0, e - 0.33) * 0.75; m.torso.rotation.x = -0.45 + e * 0.3; }
     } else if (this.state === 'tear') {
-      armX = 0.5 + Math.sin(this.game.time * 9 + this.walkPhase) * 0.6;
-      batX = -0.6 + Math.sin(this.game.time * 9 + this.walkPhase) * 0.9;
+      armX = 0.5 + Math.sin(g.time * 9 + this.walkPhase) * 0.6;
+      batX = -0.6 + Math.sin(g.time * 9 + this.walkPhase) * 0.9;
+    } else if (this.kind === 'fast' && sp > 3) {
+      armX = -1.3 + Math.sin(this.walkPhase) * 0.06; batX = 1.0;   // arms swept back, bat trailing
     }
     m.arms.rotation.x = armX;
     m.bat.rotation.x = batX;
+    if (m.coconut) m.coconut.visible = this.throwT <= 0 || this.throwT > THROW_RELEASE;
+    if (m.wingL) {
+      // wings beat fast in the air; half folded while it walks to a window
+      const ft = g.time * (flying ? 11 : 4) + this.walkPhase, beat = Math.sin(ft);
+      const lift = flying ? 0.25 + beat * 0.7 : -0.45 + beat * 0.12, sweep = flying ? 0.2 + beat * 0.15 : 0.9;
+      m.wingR.rotation.set(0, -sweep, lift); m.wingL.rotation.set(0, sweep, -lift);
+      const n = Math.floor(ft / (Math.PI * 2));
+      if (flying && n !== this.lastBeat) { this.lastBeat = n; g.flapSound?.(this); }
+    }
+    if (v.boss) {
+      tickRainbow();
+      const step = Math.floor(this.walkPhase / Math.PI);   // the ground shakes with each step
+      if (step !== this.lastStep) { this.lastStep = step; if (this.alive && this.state === 'chase' && sp > 0.4) g.giantStep?.(this); }
+    }
+  }
+
+  // the crawler drags itself along on its hands, swaying with each pull; it rears up to lunge
+  animateCrawl(dt, phaseSpeed) {
+    const m = this.model, b = this.body;
+    m.root.position.copy(b.pos);
+    const sp = phaseSpeed ?? this.horizSpeed();
+    this.walkPhase += dt * (sp * 2.6 + 0.6);
+    const ph = this.walkPhase, amp = Math.min(1, sp / 2.5) * 0.8 + 0.15;
+    m.root.rotation.set(0, this.yaw + Math.sin(ph) * 0.12 * amp, Math.sin(ph) * 0.06 * amp);
+    let lift = 0, reach = 0;
+    if (this.attackT > 0) { const k = 1 - this.attackT / 0.75; lift = Math.sin(Math.min(1, k * 1.3) * Math.PI); reach = lift; }
+    else if (this.state === 'tear') reach = 0.5 + Math.sin(this.game.time * 10 + ph) * 0.5;
+    m.torso.position.set(0, 0.3 + lift * 0.12 + Math.abs(Math.sin(ph)) * 0.03 * amp, 0.45);
+    m.torso.rotation.set(-1.25 + lift * 0.5, 0, 0);
+    const pull = Math.sin(ph) * 0.5 * amp;
+    m.armR.rotation.x = pull + reach;
+    m.armL.rotation.x = -pull + reach;
+    // legs drag behind, kicking a little
+    m.legL.position.set(-0.11, 0.25, 0.5); m.legR.position.set(0.11, 0.25, 0.5);
+    m.legL.rotation.x = -1.4 + Math.sin(ph) * 0.18 * amp;
+    m.legR.rotation.x = -1.4 - Math.sin(ph) * 0.18 * amp;
   }
 
   die() {
     this.alive = false; this.state = 'dead'; this.deathT = 0; this.deathTilt = (Math.random() - 0.5) * 0.6;
-    this.attackT = 0;
+    this.attackT = 0; this.throwT = 0; this.fallV = 0;
   }
 
   updateDead(dt) {
-    const m = this.model;
+    const m = this.model, b = this.body, v = this.v;
     this.deathT += dt;
-    const k = Math.min(1, this.deathT / 0.45), e = k * k;
-    m.root.rotation.set(e * Math.PI / 2 * 0.97, this.yaw, e * this.deathTilt);
-    let y = this.body.pos.y + e * 0.15;
-    if (this.deathT > 2.2) y -= (this.deathT - 2.2) * 0.7; // sink into the ground
-    m.root.position.set(this.body.pos.x, y, this.body.pos.z);
-    if (this.deathT > 3.8) this.deactivate();
+    if (v.fly) {   // drops out of the air with its wings folded
+      const floor = this.game.map.surfaceAt(b.pos.x, b.pos.z);
+      if (b.pos.y > floor) { this.fallV += 22 * dt; b.pos.y = Math.max(floor, b.pos.y - this.fallV * dt); }
+      m.wingR.rotation.set(0, -1.0, -0.6); m.wingL.rotation.set(0, 1.0, 0.6);
+    }
+    const k = Math.min(1, this.deathT / (v.boss ? 0.8 : 0.45)), e = k * k;
+    if (v.crawl) m.root.rotation.set(0, this.yaw, e * 1.5 * (this.deathTilt < 0 ? -1 : 1));   // rolls onto its side
+    else m.root.rotation.set(e * Math.PI / 2 * 0.97, this.yaw, e * this.deathTilt);
+    let y = b.pos.y + (v.crawl ? 0 : e * 0.15);
+    if (this.deathT > 2.2) y -= (this.deathT - 2.2) * 0.7 * (v.boss ? 1.5 : 1); // sink into the ground
+    m.root.position.set(b.pos.x, y, b.pos.z);
+    if (v.boss && k >= 1 && !this.thudded) { this.thudded = true; this.game.giantStep?.(this, 1.6); }
+    if (this.deathT > (v.boss ? 4.6 : 3.8)) this.deactivate();
   }
 
   // ----- joining players: a copy that follows the host's zombie -----
-  // e: [id, x, y, z, yaw, state, flags (1 alive, 2 big, 4 fast), attack time x100]
+  // e: [id, x, y, z, yaw, state, flags (1 alive, 4 fast), attack time x100, type (KINDS index), throw time x100]
   netUpdate(T, e) {
-    const alive = !!(e[6] & 1);
-    if (!this.active || (alive && !this.alive)) {
+    const alive = !!(e[6] & 1), kind = KINDS[e[8]] || 'normal';
+    if (!this.active || (alive && (!this.alive || kind !== this.kind))) {
       if (!alive) return;                        // already gone here
-      this.puppetSpawn(!!(e[6] & 2), !!(e[6] & 4));
+      this.puppetSpawn(kind, !!(e[6] & 4));
     }
     if (!alive) { if (this.alive) this.die(); return; }
     this.interp.push(T, e[1], e[2], e[3], e[4]);
@@ -230,20 +457,17 @@ export class Zombie extends Combatant {
     const atk = e[7] / 100;
     if (atk > 0 && this.netAtk <= 0) { this.attackT = atk; this.game.sound.swing(this.body.pos); }
     this.netAtk = atk;
+    const th = (e[9] || 0) / 100;
+    if (th > 0 && this.netThrow <= 0) this.throwT = th;
+    this.netThrow = th;
   }
 
-  puppetSpawn(big, fast) {
-    this.active = true; this.alive = true; this.big = big;
-    const s = this.scale = big ? BIG_SCALE : 1;
-    this.speed = fast ? 5.9 : 2;   // only changes how hunched it looks
-    const b = this.body;
-    b.height = 1.8 * s; b.halfW = 0.3 * s; b.vel.set(0, 0, 0);
-    this.attackT = 0; this.netAtk = 0; this.deathT = 0; this.state = 'chase'; this.placed = false;
-    this.soundT = 1 + Math.random() * 5; this.walkPhase = Math.random() * 6;
+  puppetSpawn(kind, fast) {
+    this.reset(kind);
+    const v = this.v;
+    this.speed = v.speed ? v.speed(this.game.round || 1) : fast ? 5.9 : 2;   // only changes how it looks
+    this.netAtk = 0; this.netThrow = 0; this.state = 'chase'; this.placed = false;
     this.interp.clear();
-    const m = this.model;
-    m.root.visible = true;
-    m.root.scale.setScalar(big ? BIG_SCALE : 0.95 + Math.random() * 0.1);
   }
 
   puppetUpdate(dt) {
@@ -255,6 +479,7 @@ export class Zombie extends Combatant {
     if (fresh) this.prevPos.copy(b.pos);
     if (dt > 0) { b.vel.x = (b.pos.x - _v.x) / dt; b.vel.z = (b.pos.z - _v.z) / dt; if (Math.hypot(b.vel.x, b.vel.z) > 15) b.vel.set(0, 0, 0); }
     if (this.attackT > 0) this.attackT = Math.max(0, this.attackT - dt);
+    if (this.throwT > 0) this.throwT = Math.max(0, this.throwT - dt);
     this.soundT -= dt;
     if (this.soundT <= 0) { this.soundT = 3 + Math.random() * 5; g.zombieSound(this); }
     this.animate(dt, this.state === 'rise' ? 0.6 : this.state === 'climb' ? 1.5 : undefined);
@@ -268,13 +493,24 @@ export class ZombiesGame {
     this.mode = 'zombies';
     this.bleedTime = BLEED_TIME;
     this.time = 0; this.baseFov = 74; this.scopeFov = 22;
-    this.zombies = []; this.combatants = []; this.powerups = [];
+    this.zombies = []; this.combatants = []; this.powerups = []; this.projectiles = [];
     this.players = []; this.remotes = [];
     this.net = null; this.netDelay = 0.075; this.shotEnds = [];
     this.running = false; this.phase = 'live';
     this.bomb = { state: 'none' };
-    this.lastZSound = 0;
+    this.lastZSound = 0; this.lastFlap = 0; this.pjId = 0;
     this.puTex = {};
+    // one hidden zombie of each type, so their materials get compiled with the map
+    // (no hitch the first time one shows up)
+    if (!scene.userData.zombieWarmup) {
+      scene.userData.zombieWarmup = true;
+      for (const k of KINDS) {
+        if (modelOf(k) !== k) continue;
+        const m = buildTungModel('Z', { zombie: true, variant: k });
+        m.root.visible = false; scene.add(m.root);
+      }
+      const c = makeCoconut(); c.visible = false; scene.add(c);
+    }
   }
 
   // ----- lifecycle -----
@@ -288,6 +524,7 @@ export class ZombiesGame {
     this.round = 0;
     this.effects = { instakill: 0, double: 0 };
     this.powerupsThisRound = 0; this.killsSinceDrop = 0; this.puId = 0;
+    this.seenKinds = new Set(); this.spawnedThisRound = 0;
     this.interaction = null; this.flowT = 0;
     this.setupPlayers(roster || [{ nid: 0, name: 'You', kind: 'local' }], net ? net.myId : null, knife);
     for (const a of this.remotes) a.spawnEpoch = 0;   // matches the joining player's first state
@@ -349,6 +586,7 @@ export class ZombiesGame {
   stop() {
     this.running = false;
     for (const z of this.zombies) z.deactivate();
+    this.clearProjectiles();
     for (const pu of this.powerups) this.scene.remove(pu.sprite, pu.glow);
     this.powerups = [];
     for (const a of this.remotes) a.dispose();
@@ -356,8 +594,37 @@ export class ZombiesGame {
   }
 
   // ----- interface used by Player / Combatant / HUD -----
-  canBuy() { return false; }
-  buy() {}
+  // ----- shop (B): guns unlock every couple of rounds, plus ammo for the gun in your hands -----
+  canBuy(p) { return !!p && p.alive && !p.downed && this.phase !== 'over'; }
+  buyCount() { return ZOMBIE_SHOP.length + 1; }   // keys 1-9 guns, 0 ammo
+  // the gun a shop ammo refill is for: the one in your hands, or your first gun while holding the knife
+  ammoTarget(p) {
+    const w = p.weapon;
+    return w && !w.def.melee ? w : p.slots[1] || p.slots[2] || null;
+  }
+  buy(p, index) {
+    if (!this.canBuy(p)) return;
+    if (index === ZOMBIE_SHOP.length) {
+      const w = this.ammoTarget(p);
+      if (!w) return;
+      if (w.reserve >= w.def.reserve) { this.tell(p, { e: 'msg', s: 'Ammo is already full', d: 1 }); return; }
+      if (!this.spend(p, ammoCost(w))) return;
+      w.reserve = w.def.reserve;
+      this.syncInv(p, 'ammo');
+      this.tell(p, { e: 'snd', n: 'purchase' });
+      return;
+    }
+    const it = ZOMBIE_SHOP[index];
+    if (!it) return;
+    if (Math.max(1, this.round) < it.round) {
+      this.tell(p, { e: 'snd', n: 'denied' }); this.tell(p, { e: 'msg', s: `Unlocks at round ${it.round}`, d: 1.2 });
+      return;
+    }
+    if (this.ownedSlot(p, it.key)) { this.tell(p, { e: 'msg', s: 'You already have it (0 buys ammo)', d: 1.2 }); return; }
+    if (!this.spend(p, ZOMBIE_PRICES[it.key])) return;
+    this.givePlayerWeapon(p, it.key);
+    this.tell(p, { e: 'snd', n: 'purchase' });
+  }
   emitNoise() {}
   useInfo() { return null; }
   aliveZombies() { let n = 0; for (const z of this.zombies) if (z.active && z.alive) n++; return n; }
@@ -382,10 +649,13 @@ export class ZombiesGame {
     // more players, more zombies
     this.toSpawn = Math.round(zombieCount(r) * (1 + 0.5 * (this.players.length - 1)));
     this.spawnT = 1.5;
-    this.powerupsThisRound = 0;
+    this.powerupsThisRound = 0; this.spawnedThisRound = 0;
     this.hud.zRound(r, true);
     this.sound.zRoundStart();
     this.net?.emit({ e: 'round', r });
+    // new guns in the shop
+    const fresh = ZOMBIE_SHOP.filter((it) => it.round === r).map((it) => WEAPONS[it.key].name);
+    if (fresh.length) this.announce(null, r === 1 ? 'Press B to open the shop: guns and ammo' : `New in the shop (B): ${fresh.join(', ')}`);
   }
 
   endRound() {
@@ -413,12 +683,13 @@ export class ZombiesGame {
     }
   }
 
-  pickSpawn(big = false) {
+  // groundOnly: only spots out in the open (rising out of the ground, or flying in), no windows
+  pickSpawn(groundOnly = false) {
     // distance to the closest living player
     const near = (pos) => { let d = Infinity; for (const p of this.players) if (p.alive) d = Math.min(d, flat(pos, p.body.pos)); return d; };
     const all = [];
-    if (!big) for (const w of this.map.windows) if (this.activeAreas.has(w.area)) all.push({ win: w, pos: w.spawn, weight: 2 });
-    if (this.round >= 2 || big) for (const s of this.map.groundSpawns) if (this.activeAreas.has(s.area)) all.push({ pos: s.pos, weight: 1 });
+    if (!groundOnly) for (const w of this.map.windows) if (this.activeAreas.has(w.area)) all.push({ win: w, pos: w.spawn, weight: 2 });
+    if (this.round >= 2 || groundOnly) for (const s of this.map.groundSpawns) if (this.activeAreas.has(s.area)) all.push({ pos: s.pos, weight: 1 });
     if (!all.length) return null;
     let pool = all.filter((s) => { const d = near(s.pos); return d > 7 && d < 42; });
     if (!pool.length) pool = all.filter((s) => near(s.pos) > 5);
@@ -429,9 +700,51 @@ export class ZombiesGame {
     return pool[0];
   }
 
-  getZombie() {
-    let z = this.zombies.find((q) => !q.active);
-    if (!z) { z = new Zombie(this); z.netId = this.zombies.length; this.zombies.push(z); }
+  // which type the next zombie is
+  pickKind() {
+    const r = this.round;
+    // the first time a type is due, send one in early in the round so it gets noticed
+    if (this.spawnedThisRound % 3 === 2) {
+      const k = KINDS.find((q) => VARIANTS[q].intro && r >= VARIANTS[q].from && !this.seenKinds.has(q));
+      if (k) return k;
+    }
+    const opts = [];
+    let total = 0;
+    for (const k of KINDS) {
+      const v = VARIANTS[k];
+      if (!v.chance || r < v.from || this.countAlive(k) >= v.max(r)) continue;
+      const c = v.chance(r);
+      if (c > 0) { opts.push([k, c]); total += c; }
+    }
+    const scale = total > MAX_SPECIAL ? MAX_SPECIAL / total : 1;   // regular ones stay the most common
+    let x = Math.random();
+    for (const [k, c] of opts) { x -= c * scale; if (x < 0) return k; }
+    return 'normal';
+  }
+
+  countAlive(kind) { let n = 0; for (const z of this.zombies) if (z.active && z.alive && z.kind === kind) n++; return n; }
+
+  spawnNext() {
+    let kind = this.pickKind();
+    const v = VARIANTS[kind];
+    // flyers would rather swoop in from the sky; the biggest ones can only rise out of the ground
+    let sp = this.pickSpawn(v.ground || v.fly) || (v.ground ? null : this.pickSpawn(false));
+    if (!sp) { kind = 'normal'; sp = this.pickSpawn(false); }   // no open ground yet: a regular one through a window
+    if (!sp) return false;
+    this.getZombie(kind).spawn(sp, this.round, kind);
+    this.spawnedThisRound++;
+    if (!this.seenKinds.has(kind)) {
+      this.seenKinds.add(kind);
+      if (VARIANTS[kind].intro) this.announce(null, VARIANTS[kind].intro);
+    }
+    return true;
+  }
+
+  // a free zombie from the pool, preferably one that already has this type's model
+  getZombie(kind = 'normal') {
+    const look = modelOf(kind);
+    let z = this.zombies.find((q) => !q.active && q.modelKind === look) || this.zombies.find((q) => !q.active);
+    if (!z) { z = new Zombie(this, kind); z.netId = this.zombies.length; this.zombies.push(z); }
     return z;
   }
 
@@ -522,7 +835,7 @@ export class ZombiesGame {
 
   damageZombie(z, dmg, head, melee, quiet, attacker = this.player) {
     if (!z.alive) return;
-    if (this.effects.instakill > 0) dmg = z.health + 1;
+    if (this.effects.instakill > 0 && !z.v.boss) dmg = z.health + 1;   // the rainbow giant shrugs it off
     z.health -= dmg;
     if (attacker === this.player && (!quiet || z.health <= 0)) { this.hud.hit(head); this.sound.hit(head); }
     if (z.health <= 0) this.killZombie(z, head, melee, false, attacker);
@@ -533,8 +846,11 @@ export class ZombiesGame {
     z.die();
     if (attacker) { attacker.kills++; if (head) attacker.headshots++; }
     if (!nuked) {
-      this.addPoints(attacker, z.big ? 250 : melee ? 130 : head ? 100 : 60);
-      this.maybeDropPowerup(z.body.pos);
+      const v = z.v, b = z.body.pos;
+      this.addPoints(attacker, v.points ?? ((melee ? 130 : head ? 100 : 60) + (v.bonus || 0)));
+      // power-ups land on the floor, even when a flyer drops them
+      const at = _v.set(b.x, v.fly ? this.map.surfaceAt(b.x, b.z) : b.y, b.z);
+      if (v.boss) this.dropPowerup(at); else this.maybeDropPowerup(at);
     }
   }
 
@@ -551,11 +867,12 @@ export class ZombiesGame {
     return true;
   }
 
-  hurtPlayer(dmg, z, p) {
+  // from: where the hit came from (the zombie, or a coconut)
+  hurtPlayer(dmg, from, p) {
     if (!p || !p.alive || p.downed || this.phase === 'over') return;
     p.health -= dmg;
     p.lastHurt = this.time;
-    _d.set(p.body.pos.x - z.body.pos.x, 0, p.body.pos.z - z.body.pos.z).normalize();
+    _d.set(p.body.pos.x - from.x, 0, p.body.pos.z - from.z).normalize();
     this.tell(p, { e: 'hurt', x: r2(_d.x), z: r2(_d.z) });
     if (p.health <= 0) {
       if (this.coop || p.perks.has('quick')) this.goDown(p);
@@ -564,7 +881,7 @@ export class ZombiesGame {
   }
 
   goDown(p) {
-    p.downed = true; p.health = 1; p.scoped = false; p.reloading = false;
+    p.downed = true; p.health = 1; p.scoped = false; p.reloading = false; p.buyOpen = false;
     p.downs++; p.reviveT = 0; p.reviveFrac = 0; p.reviver = null;
     this.clearPerks(p);
     if (!this.coop) {   // solo: Quick Revive gets you back up
@@ -680,7 +997,7 @@ export class ZombiesGame {
     for (const w of map.windows) if (w.boards < w.max && this.activeAreas.has(w.area)) consider(flat(pos, w.inside), 2.2, { type: 'window', w });
     for (const wb of map.wallBuys) consider(flat(pos, wb.at), 1.7, { type: 'wallbuy', wb });
     for (const pm of map.perkMachines) if (!p.perks.has(pm.id)) consider(flat(pos, pm.at), 1.7, { type: 'perk', pm });
-    consider(flat(pos, map.pap.at), 1.9, { type: 'pap' });
+    for (const st of map.papStations) if (Math.abs(st.at.y - pos.y) < 1.5) consider(flat(pos, st.at), 1.9, { type: 'pap', st });
     consider(flat(pos, map.box.at), 2.0, { type: 'box' });
     return best;
   }
@@ -700,15 +1017,17 @@ export class ZombiesGame {
       case 'window': return 'Hold E to rebuild the barrier';
       case 'wallbuy': {
         const s = this.ownedSlot(p, it.wb.weapon);
-        if (s) return `Press E to buy ammo [${p.slots[s].def.pap ? 4500 : it.wb.cost / 2}]`;
+        if (s) return `Press E to buy ammo [${ammoCost(p.slots[s])}]`;
         return `Press E to buy ${it.wb.def.name} [${it.wb.cost}]`;
       }
       case 'perk': return `Press E to drink ${it.pm.name} [${it.pm.cost}]`;
       case 'pap': {
-        const w = p.weapon;
-        if (!w || w.def.melee) return 'Pack-a-Punch: hold a gun to upgrade it';
-        if (w.def.pap) return 'This weapon is already upgraded';
-        return `Press E to Pack-a-Punch ${w.def.name} [${this.map.pap.cost}]`;
+        // each station upgrades one level, in order: point the way to the right one
+        const w = p.weapon, st = it.st, lv = w?.def.pap || 0, stations = this.map.papStations;
+        if (!w || w.def.melee) return `${papName(st)}: hold a gun to upgrade it`;
+        if (lv >= MAX_PAP) return 'This weapon is fully upgraded';
+        if (lv !== st.level - 1) return `This gun's next upgrade is at ${papName(stations[lv], true)}`;
+        return `Press E to upgrade to ${papDef(w.def, st.level).name} [${st.cost}]`;
       }
       case 'box': {
         const b = this.map.box;
@@ -733,7 +1052,7 @@ export class ZombiesGame {
         if (s) {
           const w = p.slots[s];
           if (w.reserve >= w.def.reserve) { this.tell(p, { e: 'msg', s: 'Ammo is already full', d: 1 }); return; }
-          if (!this.spend(p, w.def.pap ? 4500 : wb.cost / 2)) return;
+          if (!this.spend(p, ammoCost(w))) return;
           w.reserve = w.def.reserve;
           this.syncInv(p, 'ammo');
         } else {
@@ -750,10 +1069,10 @@ export class ZombiesGame {
         this.tell(p, { e: 'msg', s: `${it.pm.name}!`, d: 2 });
         break;
       case 'pap': {
-        const w = p.weapon;
-        if (!w || w.def.melee || w.def.pap) { this.tell(p, { e: 'snd', n: 'denied' }); return; }
-        if (!this.spend(p, map.pap.cost)) return;
-        w.def = papDef(w.def); w.mag = w.def.mag; w.reserve = w.def.reserve;
+        const w = p.weapon, st = it.st;
+        if (!w || w.def.melee || (w.def.pap || 0) !== st.level - 1) { this.tell(p, { e: 'snd', n: 'denied' }); return; }
+        if (!this.spend(p, st.cost)) return;
+        w.def = papDef(w.def, st.level); w.mag = w.def.mag; w.reserve = w.def.reserve;
         p.deployUntil = this.time + 1.0; p.reloading = false;
         this.syncInv(p, 'pap');
         this.tell(p, { e: 'snd', n: 'perk' });
@@ -886,6 +1205,10 @@ export class ZombiesGame {
     this.killsSinceDrop++;
     const chance = 0.02 + Math.min(0.06, this.killsSinceDrop * 0.0015);
     if (this.powerupsThisRound >= 4 || Math.random() > chance) return;
+    this.dropPowerup(pos);
+  }
+
+  dropPowerup(pos) {
     this.killsSinceDrop = 0; this.powerupsThisRound++;
     const types = Object.keys(POWERUPS);
     const type = types[Math.floor(Math.random() * types.length)];
@@ -928,7 +1251,7 @@ export class ZombiesGame {
     if (type === 'double') this.effects.double = 30;
     if (type === 'carpenter') { for (const w of this.map.windows) this.map.setBoards(w, w.max); for (const p of this.players) this.addPoints(p, 200); }
     if (type === 'nuke') {
-      for (const z of this.zombies) if (z.active && z.alive) this.killZombie(z, false, false, true, taker);
+      for (const z of this.zombies) if (z.active && z.alive && !z.v.boss) this.killZombie(z, false, false, true, taker);
       for (const p of this.players) this.addPoints(p, 400);
     }
   }
@@ -967,7 +1290,100 @@ export class ZombiesGame {
     if (this.time - this.lastZSound < 0.35) return;
     if (flat(z.body.pos, this.player.body.pos) > 32) return;
     this.lastZSound = this.time;
-    if (Math.random() < 0.35) this.sound.tung(z.body.pos, z.big ? 0.7 : 0.45); else this.sound.groan(z.body.pos, z.big ? 0.55 : 1);
+    if (Math.random() < 0.35) this.sound.tung(z.body.pos, z.v.tung || 0.45); else this.sound.groan(z.body.pos, z.v.pitch);
+  }
+
+  flapSound(z) {
+    if (this.time - this.lastFlap < 0.12 || flat(z.body.pos, this.player.body.pos) > 18) return;
+    this.lastFlap = this.time;
+    this.sound.flap(z.body.pos);
+  }
+
+  // the ground shakes when the rainbow giant walks (or falls) nearby
+  giantStep(z, k = 1) {
+    this.sound.stomp(z.body.pos, Math.min(1, 0.8 * k));
+    const p = this.player, d = flat(z.body.pos, p.body.pos);
+    if (p.alive && d < 18) p.punch += 0.02 * k * (1 - d / 18);
+  }
+
+  // ----- coconuts (thrown by the pink zombies) -----
+  // can zombie z see player p well enough to throw at them?
+  clearShot(z, p) {
+    const o = z.handPos(_v), t = p.chestPos(_v2);
+    _d.copy(t).sub(o);
+    const len = _d.length();
+    if (len < 0.1) return true;
+    _d.divideScalar(len);
+    return !raycast(o, _d, len, this.map.colliders, _hit) && this.map.rayGround(o, _d, len) === null;
+  }
+
+  throwCoconut(z, p) {
+    const o = z.handPos(new THREE.Vector3()), t = p.chestPos(new THREE.Vector3());
+    // a flatter, faster throw the further away you are; leads a moving target a little, and misses a little
+    const hs = clamp(9 + flat(o, t) * 0.5, 10, 19), lead = flat(o, t) / hs * 0.6;
+    t.x += p.body.vel.x * lead + (Math.random() - 0.5) * 0.6;
+    t.z += p.body.vel.z * lead + (Math.random() - 0.5) * 0.6;
+    const dx = t.x - o.x, dz = t.z - o.z, d = Math.hypot(dx, dz) || 1, T = d / hs;
+    const vel = new THREE.Vector3(dx / d * hs, (t.y - o.y + 0.5 * COCO_G * T * T) / T, dz / d * hs);
+    const pj = this.addProjectile(++this.pjId, o, vel, z.v.throwDmg);
+    this.sound.swing(o);
+    this.net?.emit({ e: 'zt', i: pj.id, p: [r2(o.x), r2(o.y), r2(o.z)], v: [r2(vel.x), r2(vel.y), r2(vel.z)] });
+  }
+
+  addProjectile(id, pos, vel, dmg = 0) {
+    const mesh = makeCoconut();
+    mesh.position.copy(pos);
+    this.scene.add(mesh);
+    const pj = { id, pos: mesh.position, vel: vel.clone(), t: 0, dmg, mesh };
+    this.projectiles.push(pj);
+    return pj;
+  }
+
+  // Coconuts fly in an arc and crack on whatever they hit. hits: decide who gets hit (the host);
+  // joining players only draw them.
+  updateProjectiles(dt, hits = true) {
+    for (let i = this.projectiles.length - 1; i >= 0; i--) {
+      const pj = this.projectiles[i], pos = pj.pos;
+      pj.t += dt;
+      _v.copy(pos);
+      pj.vel.y -= COCO_G * dt;
+      pos.addScaledVector(pj.vel, dt);
+      pj.mesh.rotation.x += dt * 11; pj.mesh.rotation.y += dt * 7;
+      let victim = null, done = pj.t > 5;
+      if (hits && this.phase !== 'over') {
+        for (const p of this.players) {
+          if (!p.alive || p.downed) continue;
+          const pp = p.body.pos, cy = clamp(pos.y, pp.y + 0.2, pp.y + (p.crouching ? 1.15 : 1.65));
+          if ((pos.x - pp.x) ** 2 + (pos.z - pp.z) ** 2 + (pos.y - cy) ** 2 < 0.45 * 0.45) { victim = p; break; }
+        }
+      }
+      if (!victim && !done) {
+        _d.copy(pos).sub(_v);
+        const len = _d.length();
+        if (len > 1e-6) {
+          _d.divideScalar(len);
+          const w = raycast(_v, _d, len, this.map.colliders, _hit);
+          if (w) { pos.copy(_v).addScaledVector(_d, Math.max(0, w.t - 0.05)); done = true; }
+        }
+        if (pos.y <= this.map.groundAt(pos.x, pos.z)) done = true;
+      }
+      if (victim) this.hurtPlayer(pj.dmg, _v, victim);
+      if (victim || done) this.popProjectile(pj, hits);
+    }
+  }
+
+  popProjectile(pj, tell) {
+    this.scene.remove(pj.mesh);
+    this.projectiles.splice(this.projectiles.indexOf(pj), 1);
+    this.fx.burst(pj.pos, 0x5e3b1e, 8, 4);
+    this.fx.burst(pj.pos, 0xf2eee2, 6, 3);   // coconut milk
+    this.sound.coconut(pj.pos);
+    if (tell) this.net?.emit({ e: 'zx', i: pj.id, p: [r2(pj.pos.x), r2(pj.pos.y), r2(pj.pos.z)] });
+  }
+
+  clearProjectiles() {
+    for (const pj of this.projectiles) this.scene.remove(pj.mesh);
+    this.projectiles = [];
   }
 
   separate() {
@@ -976,6 +1392,7 @@ export class ZombiesGame {
       const a = zs[i].body.pos;
       for (let j = i + 1; j < zs.length; j++) {
         const b = zs[j].body.pos;
+        if (Math.abs(a.y - b.y) > 1.2) continue;   // a flyer passing over
         const dx = b.x - a.x, dz = b.z - a.z, d = Math.hypot(dx, dz);
         const minD = 0.33 * (zs[i].scale + zs[j].scale);
         if (d > 0.001 && d < minD) {
@@ -1050,6 +1467,7 @@ export class ZombiesGame {
     if (this.phase === 'over') {
       this.overT -= dt;
       for (const z of this.zombies) if (z.active) { if (z.alive) z.animate(dt, 0.4); else z.updateDead(dt); }
+      this.updateProjectiles(dt, false);
       if (this.overT <= 0) {
         this.running = false;
         this.onGameOver?.(this.finalStats());
@@ -1062,10 +1480,7 @@ export class ZombiesGame {
     if (!this.betweenRounds) {
       this.spawnT -= dt;
       if (this.toSpawn > 0 && this.spawnT <= 0 && this.aliveZombies() < MAX_ALIVE) {
-        const bigAlive = this.zombies.reduce((n, z) => n + (z.active && z.alive && z.big ? 1 : 0), 0);
-        const big = bigAlive < 3 && Math.random() < bigChance(this.round);
-        const sp = this.pickSpawn(big) || this.pickSpawn(false);
-        if (sp) { this.getZombie().spawn(sp, this.round, big && !sp.win); this.toSpawn--; }
+        if (this.spawnNext()) this.toSpawn--;
         this.spawnT = Math.max(0.35, 2.0 - this.round * 0.12) * (0.6 + Math.random() * 0.8);
       }
     }
@@ -1087,6 +1502,7 @@ export class ZombiesGame {
     }
     for (const z of this.zombies) if (z.active) z.update(dt);
     this.separate();
+    this.updateProjectiles(dt);
     if (this.phase === 'over') return;
     this.updateInteract(dt);
     this.updatePowerups(dt);
@@ -1142,13 +1558,14 @@ export class ZombiesGame {
       const pos = s || q.body.pos, w = q.weapon;
       return [q.nid, r2(pos.x), r2(pos.y), r2(pos.z), r3(s ? s.yaw : q.yaw), r3(s ? s.pitch : q.pitch), f,
         Math.max(0, Math.ceil(q.health)), q.maxHealth, q.points, [...q.perks].join(','), q.kills,
-        r1(q.downT), r2(q.reviveFrac || 0), w ? w.key : '', w?.def.pap ? 1 : 0];
+        r1(q.downT), r2(q.reviveFrac || 0), w ? w.key : '', w?.def.pap || 0];
     });
     const z = [];
     for (const zb of this.zombies) {
       if (!zb.active) continue;
       const b = zb.body.pos;
-      z.push([zb.netId, r2(b.x), r2(b.y), r2(b.z), r2(zb.yaw), zb.state, (zb.alive ? 1 : 0) | (zb.big ? 2 : 0) | (zb.speed > 4.5 ? 4 : 0), Math.round(zb.attackT * 100)]);
+      z.push([zb.netId, r2(b.x), r2(b.y), r2(b.z), r2(zb.yaw), zb.state, (zb.alive ? 1 : 0) | (zb.speed > 4.5 ? 4 : 0),
+        Math.round(zb.attackT * 100), KINDS.indexOf(zb.kind), Math.round(zb.throwT * 100)]);
     }
     const box = this.map.box;
     return {
@@ -1196,6 +1613,9 @@ export class ZombiesGame {
       case 'next':
         if (this.betweenRounds && this.time < this.nextRoundAt) this.nextRoundAt = this.time;
         break;
+      case 'shop':   // bought something from the shop (B)
+        this.buy(p, ev.i | 0);
+        break;
     }
   }
 
@@ -1206,7 +1626,7 @@ export class ZombiesGame {
       case 'door': { const d = map.doors.find((x) => x.id === ev.id); return d && !d.open && near(d.center, 2.8) ? { type: 'door', d } : null; }
       case 'wallbuy': { const wb = map.wallBuys[ev.id]; return wb && near(wb.at, 1.7) ? { type: 'wallbuy', wb } : null; }
       case 'perk': { const pm = map.perkMachines.find((x) => x.id === ev.id); return pm && near(pm.at, 1.7) ? { type: 'perk', pm } : null; }
-      case 'pap': return near(map.pap.at, 1.9) ? { type: 'pap' } : null;
+      case 'pap': { const st = map.papStations[ev.id]; return st && near(st.at, 1.9) && Math.abs(st.at.y - pos.y) < 2 ? { type: 'pap', st } : null; }
       case 'box': return near(map.box.at, 2.0) ? { type: 'box' } : null;
     }
     return null;

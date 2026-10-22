@@ -78,14 +78,43 @@ Object.assign(WEAPONS, {
   },
 });
 
-// Pack-a-Punch: returns an upgraded copy of a weapon definition.
-export function papDef(def) {
+// Pack-a-Punch levels (Zombies). Each station upgrades a gun one level further, in order.
+// Multipliers apply to the base gun; rate < 1 fires faster.
+export const PAP_LEVELS = [
+  null,
+  { tag: '',     damage: 2.2, mag: 1.5,  reserve: 2,   rate: 1,    tracer: 0xc070ff },
+  { tag: ' II',  damage: 3.2, mag: 1.75, reserve: 2.5, rate: 0.9,  tracer: 0x4fe3ff },
+  { tag: ' III', damage: 4.6, mag: 2,    reserve: 3,   rate: 0.82, tracer: 0xffc93a },
+  { tag: ' IV',  damage: 6.6, mag: 2.5,  reserve: 3.5, rate: 0.74, tracer: 0xff3b3b },
+];
+export const MAX_PAP = PAP_LEVELS.length - 1;
+
+// Pack-a-Punch: an upgraded copy of a weapon definition (level 1..MAX_PAP). def.pap = its level.
+export function papDef(def, level = 1) {
+  const base = WEAPONS[def.key] || def, lv = Math.max(1, Math.min(MAX_PAP, level | 0)), L = PAP_LEVELS[lv];
   return {
-    ...def, pap: true, name: "Tung'd " + def.name,
-    damage: def.damage * 2.2, mag: Math.round(def.mag * 1.5), reserve: Math.round(def.reserve * 2),
-    splash: def.splash ? { radius: def.splash.radius * 1.3, damage: def.splash.damage * 2 } : undefined,
-    tracer: def.tracer ? 0xff50ff : 0xc070ff,
+    ...base, pap: lv, name: "Tung'd " + base.name + L.tag,
+    damage: base.damage * L.damage, rate: base.rate * L.rate,
+    mag: Math.round(base.mag * L.mag), reserve: Math.round(base.reserve * L.reserve),
+    splash: base.splash ? { radius: base.splash.radius * (1.2 + 0.1 * lv), damage: base.splash.damage * L.damage * 0.9 } : undefined,
+    tracer: L.tracer,
   };
+}
+
+// ----- Zombies shop (B): guns unlock every couple of rounds; prices in points -----
+export const ZOMBIE_PRICES = { pistol: 500, deagle: 700, smg: 1000, shotgun: 1500, m16: 1600, scout: 1700,
+  ak: 1800, m4: 1800, sniper: 2000, lmg: 3000, raygun: 8000 };
+export const ZOMBIE_SHOP = [
+  { key: 'deagle', cat: 'Pistol', round: 1 }, { key: 'smg', cat: 'SMG', round: 1 },
+  { key: 'shotgun', cat: 'Shotgun', round: 3 }, { key: 'm16', cat: 'Rifle', round: 3 },
+  { key: 'ak', cat: 'Rifle', round: 5 }, { key: 'scout', cat: 'Sniper', round: 5 },
+  { key: 'm4', cat: 'Rifle', round: 7 }, { key: 'sniper', cat: 'Sniper', round: 7 },
+  { key: 'lmg', cat: 'LMG', round: 9 },
+];
+// refilling a gun's ammo (shop or wall): half its price, more once it's upgraded
+export function ammoCost(w) {
+  if (w.def.pap) return 2500 + 2000 * w.def.pap;
+  return Math.round((ZOMBIE_PRICES[w.key] || 500) / 2);
 }
 
 export const ARMOR_PRICE = 1000;

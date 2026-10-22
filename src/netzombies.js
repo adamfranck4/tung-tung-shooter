@@ -36,6 +36,7 @@ export class ZombiesClient extends ZombiesGame {
     for (const z of this.zombies) if (z.active) z.prevPos.copy(z.body.pos);
     for (const a of this.remotes) a.update(dt);
     for (const z of this.zombies) if (z.active) z.puppetUpdate(dt);
+    this.updateProjectiles(dt, false);   // coconuts: the host decides who gets hit
     if (this.phase === 'over') {
       this.overT -= dt;
       if (this.overT <= 0) { this.running = false; this.onGameOver?.(this.finalStats()); }
@@ -82,8 +83,12 @@ export class ZombiesClient extends ZombiesGame {
     if (it.type === 'door') req.id = it.d.id;
     else if (it.type === 'wallbuy') req.id = this.map.wallBuys.indexOf(it.wb);
     else if (it.type === 'perk') req.id = it.pm.id;
+    else if (it.type === 'pap') req.id = this.map.papStations.indexOf(it.st);
     this.net.emit(req);
   }
+
+  // the shop (B): the host checks the round and your points, then sends the gun
+  buy(p, index) { if (p === this.player && this.canBuy(p)) this.net.emit({ e: 'shop', i: index }); }
 
   hitZombie(z, dmg, head, melee, quiet, attacker, knock) {
     if (attacker !== this.player) return;
@@ -139,7 +144,7 @@ export class ZombiesClient extends ZombiesGame {
       if (q === this.player) {
         q.reloadMul = q.perks.has('speed') ? 0.5 : 1;
         q.rateMul = q.perks.has('dtap') ? 0.75 : 1;
-        if (!wasDown && q.downed) { q.scoped = false; q.reloading = false; }
+        if (!wasDown && q.downed) { q.scoped = false; q.reloading = false; q.buyOpen = false; }
         if (wasDown && !q.downed && q.alive) q.eyeH = 1.65;
         if (q.alive && !(f & F.ALIVE)) { q.alive = false; q.downed = false; this.spectating = this.nextSpectate(null); }
         continue;
@@ -201,6 +206,20 @@ export class ZombiesClient extends ZombiesGame {
         break;
       }
       case 'pu': this.powerupFx(ev.ty); break;
+      case 'zt': {   // a pink zombie threw a coconut
+        if (!Array.isArray(ev.p) || !Array.isArray(ev.v) || this.projectiles.some((q) => q.id === ev.i)) break;
+        _v.set(+ev.p[0] || 0, +ev.p[1] || 0, +ev.p[2] || 0);
+        this.addProjectile(ev.i, _v, new THREE.Vector3(+ev.v[0] || 0, +ev.v[1] || 0, +ev.v[2] || 0));
+        this.sound.swing(_v);
+        break;
+      }
+      case 'zx': {   // ...and it hit something
+        const pj = this.projectiles.find((q) => q.id === ev.i);
+        if (!pj) break;
+        if (Array.isArray(ev.p)) pj.pos.set(+ev.p[0] || 0, +ev.p[1] || 0, +ev.p[2] || 0);
+        this.popProjectile(pj, false);
+        break;
+      }
       case 'shot': if (c && c !== this.player) showShot(this, c, ev); break;
       case 'knife': if (c && c !== this.player) this.sound.knife(c.body.pos); break;
       case 'spawn':

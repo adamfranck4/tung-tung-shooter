@@ -1,5 +1,6 @@
 // Keyboard + mouse state with pointer lock.
-const GAME_KEYS = new Set(['Tab', 'Space', 'KeyB', 'KeyQ', 'KeyE', 'KeyR', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'ControlLeft', 'KeyC', 'KeyW', 'KeyA', 'KeyS', 'KeyD']);
+const GAME_KEYS = new Set(['Tab', 'Space', 'KeyB', 'KeyQ', 'KeyE', 'KeyR', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6',
+  'Digit7', 'Digit8', 'Digit9', 'Digit0', 'ControlLeft', 'KeyC', 'KeyW', 'KeyA', 'KeyS', 'KeyD']);
 
 export class Input {
   constructor(el) {

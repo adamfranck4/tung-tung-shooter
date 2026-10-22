@@ -187,6 +187,20 @@ export class Sound {
     osc.start(t); lfo.start(t); osc.stop(t + 1.05); lfo.stop(t + 1.05);
   }
   swing(pos) { const o = this.out(pos, 0.4, 20); if (o) this.noiseBurst(o.node, { freq: 900, type: 'bandpass', q: 1.5, decay: 0.2, attack: 0.08 }); }
+  // the rainbow giant's footsteps: a deep thud you feel more than hear
+  stomp(pos, vol = 0.9) {
+    const o = this.out(pos, vol, 60); if (!o) return;
+    this.tone(o.node, { freq: 72, end: 34, decay: 0.42, vol: 1 });
+    this.noiseBurst(o.node, { freq: 220, decay: 0.28, vol: 0.7, attack: 0.004 });
+  }
+  // a flyer's wing beat
+  flap(pos) { const o = this.out(pos, 0.3, 18); if (o) this.noiseBurst(o.node, { freq: 520, q: 0.7, decay: 0.13, attack: 0.035 }); }
+  // a coconut cracking against something
+  coconut(pos) {
+    const o = this.out(pos, 0.5, 40); if (!o) return;
+    this.tone(o.node, { freq: 640, end: 380, decay: 0.09, type: 'triangle', vol: 0.8 });
+    this.noiseBurst(o.node, { freq: 1700, type: 'bandpass', q: 1.5, decay: 0.07, vol: 0.6 });
+  }
   batHit() { const o = this.out(null, 0.6); if (o) { this.tone(o.node, { freq: 160, end: 90, decay: 0.18, vol: 1 }); this.noiseBurst(o.node, { freq: 700, decay: 0.12, vol: 0.8 }); } }
   boardBreak(pos) { const o = this.out(pos, 0.5, 40); if (o) { this.noiseBurst(o.node, { freq: 1100, type: 'bandpass', q: 1, decay: 0.18 }); this.tone(o.node, { freq: 300, end: 120, decay: 0.1, type: 'triangle', vol: 0.5 }); } }
   boardFix() { const o = this.out(null, 0.35); if (o) for (let i = 0; i < 2; i++) this.tone(o.node, { freq: 900, end: 600, decay: 0.05, type: 'square', vol: 0.3, delay: i * 0.12 }); }

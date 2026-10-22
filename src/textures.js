@@ -307,10 +307,11 @@ export function treeRingsTexture() {
 
 // Smooth, polished wood for the Tung Tung body (light; tinted per team by the material color).
 // Darker toward the bottom like the reference character.
-export function tungSkinTexture() {
+// base: the wood color under the tint (a pale base lets strong tints like purple show through)
+export function tungSkinTexture(base = '#f4d08a') {
   const W = 256, H = 512, r = rng(131);
   const [c, ctx] = makeCanvas(W, H);
-  ctx.fillStyle = '#f4d08a'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = base; ctx.fillRect(0, 0, W, H);
   const g = ctx.createLinearGradient(0, 0, 0, H);
   g.addColorStop(0, 'rgba(255,245,215,0.25)');
   g.addColorStop(0.45, 'rgba(255,240,200,0)');
@@ -328,6 +329,44 @@ export function tungSkinTexture() {
   const t = toTexture(c);
   t.wrapT = THREE.ClampToEdgeWrapping;
   return t;
+}
+
+// Rainbow skin for the giant zombie: bands of color up the log, shaded with faint wood grain.
+// heightAt(v) maps the texture's v (0 bottom .. 1 top) to the height up the log (0..1), so the
+// bands come out evenly spaced. Call draw(shift) to slide the colors up the body.
+export function rainbowSkin(heightAt) {
+  const W = 128, H = 512, r = rng(77);
+  const [grain, gctx] = makeCanvas(W, H);
+  gctx.fillStyle = '#fff'; gctx.fillRect(0, 0, W, H);
+  const g = gctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.5, 'rgba(255,255,255,0)'); g.addColorStop(1, 'rgba(70,40,30,0.45)');
+  gctx.fillStyle = g; gctx.fillRect(0, 0, W, H);
+  for (let i = 0; i < 24; i++) {
+    const x0 = r() * W, wob = 2 + r() * 4, ph = r() * 6;
+    gctx.strokeStyle = `rgba(110,80,60,${0.06 + r() * 0.08})`; gctx.lineWidth = 1 + r() * 2;
+    gctx.beginPath();
+    for (let y = 0; y <= H; y += 8) { const x = x0 + Math.sin(y / 70 + ph) * wob; if (y === 0) gctx.moveTo(x, y); else gctx.lineTo(x, y); }
+    gctx.stroke();
+  }
+  const [c, ctx] = makeCanvas(W, H);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  const heights = [];
+  for (let y = 0; y < H; y += 2) heights.push(heightAt(1 - (y + 1) / H));
+  const draw = (shift) => {
+    ctx.globalCompositeOperation = 'source-over';
+    heights.forEach((h, i) => {
+      const hue = (((h * 0.85 - shift) % 1) + 1) % 1 * 360;   // red at the feet up to violet at the top
+      ctx.fillStyle = `hsl(${hue.toFixed(1)},88%,58%)`;
+      ctx.fillRect(0, i * 2, W, 2);
+    });
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.drawImage(grain, 0, 0);
+    tex.needsUpdate = true;
+  };
+  draw(0);
+  return { tex, draw };
 }
 
 // Painted details for the face (the eyes, brow ridges and nose are 3D on top of this):
