@@ -169,6 +169,15 @@ export class ClassicClient extends Game {
     this.phase = 'freeze'; this.phaseEnd = ev.ph; this.liveStart = ev.ls; this.roundEnd = ev.re;
     this.spectating = null; this.spectateSwitchAt = 0;
     this.player.buyOpen = false;
+    // sides (they switch at halftime)
+    if (Array.isArray(ev.tm)) {
+      for (const [nid, team] of ev.tm) {
+        const c = this.byNid.get(nid);
+        if (c && (team === 'T' || team === 'CT')) c.team = team;
+      }
+      this.vm.setTeam(this.player.team);
+    }
+    if (ev.hf) { const p = this.player; p.slots[1] = null; p.slots[2] = null; p.armor = 0; }   // the host sends the new kit right after
     for (const [nid, x, y, z, yaw, ep] of ev.sp) {
       const c = this.byNid.get(nid);
       if (!c) continue;
@@ -179,7 +188,7 @@ export class ClassicClient extends Game {
     for (const c of this.combatants) c.hasBomb = c.nid === ev.c;
     Object.assign(this.bomb, { state: ev.c >= 0 ? 'carried' : 'none', carrier: this.byNid.get(ev.c) || null });
     this.bombMesh.visible = false;
-    this.hud.banner(`Round ${ev.r}`, ev.c === this.player.nid ? 'You have the bomb. Plant it at A or B.' : 'Buy time. Press B to buy.', this.player.team, 2.5);
+    this.roundBanner(ev.c === this.player.nid, !!ev.hf);
     this.sound.roundStart();
   }
 

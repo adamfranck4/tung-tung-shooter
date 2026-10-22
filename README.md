@@ -6,7 +6,15 @@ No build step, no server code, no assets to download — every texture, model an
 - Original desert map with bomb sites A and B, mid, long and tunnels
 - You + 4 bot teammates vs 5 bots, three difficulty levels — or play **online with friends** (see below)
 - Buy menu and economy, recoil and spread, headshots, armor
+- Guns: P-9 Pistol, Desert Eagle, Pump Shotgun, SMG-7, M16 Burst (3-round burst per click), AK (T) / M4 (CT),
+  Scout (light sniper, accurate in the air, lighter zoom), Bolt Sniper
 - Bomb plant / defuse, round timer, radar, kill feed, scoreboard, spectating
+- Halftime: the teams switch sides after `rounds to win - 1` rounds (after 4, 7 or 12). Scores follow the
+  players, and everyone restarts with a pistol and $800
+- Bot Terrorists change up their attack every round: rushes, quiet executes, split hits from two routes,
+  slow defaults that take map control and then call the weaker site, and fakes. They use every route
+  (long, short / catwalk, tunnels, mid to B), sometimes leave a lurker, and avoid repeating recent plans.
+  CTs vary their setup (2-1-2 or stacking a site) and can rotate back after falling for a fake
 - Every fighter is a "Tung Tung Tung Sahur" kentongan log: dome top, bulging eyes, toothy grin, bare feet,
   and a baseball bat (slung on the back, swung in melee). Team color is the hanging rope: orange = T, blue = CT.
 - Knife skins picked in the menu: Knife, Karambit, Flip, Butterfly (with flips), Sword, Katana. Skins are cosmetic.
@@ -90,13 +98,13 @@ online with up to 3 friends.
 | Key | Action |
 | --- | --- |
 | WASD | Move |
-| Mouse | Aim / shoot (right click scopes the sniper) |
+| Mouse | Aim / shoot (right click scopes the Scout and Bolt Sniper) |
 | Space | Jump |
 | C or Ctrl | Crouch |
 | Shift | Walk (quiet, more accurate) |
 | 1 / 2 / 3, Q, wheel | Switch weapons |
 | R | Reload |
-| B | Buy menu (in spawn during buy time) |
+| B | Buy menu (in spawn during buy time), then 1-8 to buy |
 | E (hold) | Plant / defuse, rebuild boards, revive a teammate |
 | Tab | Scoreboard |
 | F | Inspect weapon |
@@ -133,7 +141,7 @@ vercel --prod
 
 - `index.html`, `style.css` — page, menus, HUD layout
 - `src/main.js` — renderer, lighting, sky, menu, game loop
-- `src/map.js` — map layout, geometry, collision boxes, A* pathfinding
+- `src/map.js` — map layout, geometry, collision boxes, A* pathfinding, attack routes for the bots
 - `src/game.js` — rounds, economy, bomb, bullets, damage, spectating
 - `src/combatant.js` — shared movement, weapons, recoil, hitboxes
 - `src/player.js` — keyboard/mouse control

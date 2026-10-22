@@ -58,6 +58,7 @@ export class Combatant {
     this.slots = { 1: null, 2: null, 3: null }; this.slot = 2; this.lastSlot = 3;
     this.kills = 0; this.deaths = 0; this.hasBomb = false;
     this.recoil = 0; this.lastShot = -10; this.nextFire = 0; this.deployUntil = 0;
+    this.burstLeft = 0; this.burstAt = 0;   // shots still to come in a burst (M16)
     this.reloading = false; this.reloadEnd = 0; this.autoReloadAt = 0; this.scoped = false;
     this.punch = 0; this.useProgress = 0; this.wantsUse = false; this.spottedUntil = 0;
     this.lastAttacker = null;
@@ -75,7 +76,7 @@ export class Combatant {
     if (slot === this.slot && !instant) return false;
     if (slot !== this.slot) this.lastSlot = this.slot;
     this.slot = slot;
-    this.reloading = false; this.autoReloadAt = 0; this.scoped = false; this.recoil = 0;
+    this.reloading = false; this.autoReloadAt = 0; this.scoped = false; this.recoil = 0; this.burstLeft = 0;
     this.deployUntil = this.game.time + (instant ? 0 : (this.weapon.def.deploy || 0.5));
     this.onSwitch?.();
     return true;
@@ -87,13 +88,14 @@ export class Combatant {
     this.prevPos.copy(pos); this.viewOffset = 0;
     this.crouching = false; this.eyeH = 1.65;
     this.yaw = yaw; this.pitch = 0;
-    if (!this.alive) { this.slots[1] = null; this.armor = 0; }
+    // dying loses everything you bought, including a pistol upgrade
+    if (!this.alive) { this.slots[1] = null; this.slots[2] = null; this.armor = 0; }
     if (!this.slots[2]) this.give('pistol');
     if (!this.slots[3]) this.give('knife');
     for (const s of [1, 2]) { const w = this.slots[s]; if (w) { w.mag = w.def.mag; w.reserve = w.def.reserve; } }
     this.health = 100; this.alive = true; this.hasBomb = false;
     this.useProgress = 0; this.wantsUse = false; this.recoil = 0; this.punch = 0;
-    this.reloading = false; this.scoped = false; this.nextFire = 0; this.lastAttacker = null;
+    this.reloading = false; this.scoped = false; this.nextFire = 0; this.lastAttacker = null; this.burstLeft = 0;
     this.selectSlot(this.slots[1] ? 1 : 2, true);
   }
 
@@ -144,7 +146,15 @@ export class Combatant {
     this.nextFire = g.time + d.rate * (this.rateMul || 1);
     this.lastShot = g.time;
     if (d.melee) { g.melee(this); this.onFire?.(); return true; }
+    this.shoot(w);
+    // burst weapons fire the rest of the burst on their own (see updateWeapon)
+    if (d.burst) { this.burstLeft = Math.min(d.burst - 1, w.mag); this.burstAt = g.time + d.burstGap; }
+    return true;
+  }
 
+  // one shot of a gun: spends a round, fires its bullet(s), adds recoil
+  shoot(w) {
+    const g = this.game, d = w.def;
     w.mag--;
     const pOff = this.recoilPitch(), yOff = this.recoilYaw();
     const spread = this.spread();
@@ -160,13 +170,12 @@ export class Combatant {
     g.onShot(this, d);
     this.onFire?.();
     if (w.mag === 0 && w.reserve > 0) this.autoReloadAt = g.time + 0.4;
-    return true;
   }
 
   startReload() {
     const w = this.weapon;
     if (!w || w.def.melee || this.reloading || w.mag >= w.def.mag || w.reserve <= 0) return false;
-    this.reloading = true;
+    this.reloading = true; this.burstLeft = 0;
     this.reloadDur = w.def.reload * (this.reloadMul || 1);
     this.reloadEnd = this.game.time + this.reloadDur;
     this.scoped = false;
@@ -177,6 +186,12 @@ export class Combatant {
   updateWeapon(dt) {
     const g = this.game, w = this.weapon;
     if (!w) return;
+    if (this.burstLeft > 0 && g.time >= this.burstAt) {
+      if (this.alive && w.def.burst && !this.reloading && w.mag > 0) {
+        this.burstLeft--; this.burstAt += w.def.burstGap; this.lastShot = g.time;
+        this.shoot(w);
+      } else this.burstLeft = 0;
+    }
     if (this.reloading && g.time >= this.reloadEnd) {
       const take = Math.min(w.def.mag - w.mag, w.reserve);
       w.mag += take; w.reserve -= take;

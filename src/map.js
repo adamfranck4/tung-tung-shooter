@@ -73,6 +73,29 @@ export const PLANT_SPOTS = {
   A: [v(98, 24, 0), v(92, 20, 0), v(106, 16, 0)],
   B: [v(24, 28, 0), v(14, 24, 0), v(29, 11, 0)],
 };
+// The ways the Terrorists can attack each site.
+//   via:   waypoints from T spawn (so bots don't all take the single shortest path)
+//   stage: a spot just out of sight of the site, where a group gathers before the hit
+//   look:  where to watch while waiting at the stage
+//   entry: the doorway into the site that the final push goes through
+export const T_ROUTES = {
+  A: {
+    long:  { via: [v(92, 102, 0), v(109, 99, 0)], stage: v(106, 85, 0), look: v(110, 70), entry: v(110, 47, 0) },
+    short: { via: [v(61, 82, 0), v(60, 66, 0)], stage: v(75, 59, 0), look: v(86, 58), entry: v(85, 42, 0) },
+  },
+  B: {
+    tunnels: { via: [v(28, 104, 0), v(19, 92, 0)], stage: v(21, 63, 0), look: v(19, 46), entry: v(19, 44, 0) },
+    mid:     { via: [v(61, 82, 0), v(60, 60, 0), v(60, 42, 0)], stage: v(50, 36, 0), look: v(36, 36), entry: v(37, 36, 0) },
+  },
+};
+// Map-control spots the Terrorists spread out to on a slow "default" round.
+export const T_CONTROL = [
+  { pos: v(106, 85, 0), look: v(110, 70) },   // long, behind the doors
+  { pos: v(62, 83, 0), look: v(60, 50) },     // lower mid, behind the wall
+  { pos: v(74, 59, 0), look: v(86, 58) },     // catwalk, next to short
+  { pos: v(21, 63, 0), look: v(19, 46) },     // tunnels, between the zigzags
+  { pos: v(19, 82, 0), look: v(21, 64) },     // lower tunnels
+];
 export const CT_HOLDS = {
   A: [{ pos: v(100, 24, 0), look: v(109, 44) }, { pos: v(90, 14, 0), look: v(85, 44) }, { pos: v(108, 15, 0), look: v(109, 44) }],
   B: [{ pos: v(22, 30, 0), look: v(19, 46) }, { pos: v(12, 15, 0), look: v(38, 36) }, { pos: v(28, 10, 0), look: v(19, 46) }],

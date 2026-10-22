@@ -123,7 +123,8 @@ input[type=range] { width: 100%; accent-color: #ffc65c; }
 #buymenu h3 span { color: #8fe08a; }
 .buy-row { display: flex; align-items: center; gap: 12px; padding: 8px 6px; border-bottom: 1px solid rgba(255,255,255,0.07); font-size: 20px; font-weight: 600; }
 .buy-row .k { width: 26px; height: 26px; border-radius: 4px; background: #ffc65c; color: #1a1209; text-align: center; line-height: 26px; text-shadow: none; }
-.buy-row .n { flex: 1; } .buy-row .p { color: #8fe08a; }
+.buy-row .n { flex: 1; } .buy-row .p { color: #8fe08a; min-width: 70px; text-align: right; }
+.buy-row .c { font-size: 14px; letter-spacing: 1px; text-transform: uppercase; opacity: 0.45; }
 .buy-row.no { opacity: 0.35; }
 .buy-row.own .p { color: #aaa; }
 .buy-foot { margin-top: 10px; font-size: 15px; opacity: 0.6; text-align: center; }

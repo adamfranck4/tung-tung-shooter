@@ -621,6 +621,46 @@ function buildModels(team) {
   arms(g, band, true, 0.0); mz = new THREE.Object3D(); mz.position.set(0, 0.025, -0.16); g.add(mz); g.userData.muzzle = mz;
   models.pistol = g;
 
+  g = new THREE.Group(); // Desert Eagle: big brushed-steel slide with a ribbed top
+  const deSteel = shiny(0xa4a7ad), deDark = shiny(0x75787e);
+  b(g, 0.044, 0.05, 0.26, 0, 0, 0.024, -0.075, 0, 0, 0, deSteel);          // slide
+  b(g, 0.026, 0.016, 0.24, 0, 0, 0.056, -0.08, 0, 0, 0, deDark);           // top rib over the barrel
+  b(g, 0.038, 0.03, 0.15, 0x2a2b2e, 0, -0.012, -0.08);                     // frame
+  b(g, 0.012, 0.028, 0.04, 0x1d1e20, 0, -0.035, -0.035);                   // trigger guard
+  b(g, 0.04, 0.125, 0.058, 0x1d1e20, 0, -0.065, 0.035, -0.22);             // grip
+  b(g, 0.008, 0.014, 0.008, 0x111111, 0, 0.07, -0.19);                     // front sight
+  b(g, 0.022, 0.012, 0.008, 0x111111, 0, 0.07, 0.04);                      // rear sight
+  b(g, 0.046, 0.012, 0.03, 0, 0, 0.03, 0.035, 0, 0, 0, deDark);            // hammer end
+  arms(g, band, true, 0.0); mz = new THREE.Object3D(); mz.position.set(0, 0.03, -0.22); g.add(mz); g.userData.muzzle = mz;
+  models.deagle = g;
+
+  g = new THREE.Group(); // M16: carry handle, round handguard, long thin barrel, fixed stock
+  b(g, 0.05, 0.072, 0.36, 0x26282b, 0, 0, -0.04);                          // receiver
+  b(g, 0.022, 0.016, 0.2, 0x1b1c1f, 0, 0.082, -0.03);                      // carry handle
+  b(g, 0.02, 0.04, 0.022, 0x1b1c1f, 0, 0.056, -0.12);
+  b(g, 0.02, 0.04, 0.022, 0x1b1c1f, 0, 0.056, 0.06);
+  cyl(g, 0.034, 0.25, 0x2f3134, 0, 0.0, -0.34);                            // handguard
+  b(g, 0.02, 0.02, 0.26, 0x161616, 0, 0.008, -0.57);                       // barrel
+  b(g, 0.012, 0.065, 0.014, 0x161616, 0, 0.045, -0.48);                    // front sight post
+  b(g, 0.034, 0.15, 0.052, 0x1c1d20, 0, -0.105, -0.1, 0.18);               // magazine
+  b(g, 0.035, 0.09, 0.045, 0x1c1d20, 0, -0.07, 0.07, -0.3);                // grip
+  b(g, 0.045, 0.08, 0.26, 0x222428, 0, -0.014, 0.27);                      // stock
+  arms(g, band, true, -0.32); mz = new THREE.Object3D(); mz.position.set(0, 0.008, -0.71); g.add(mz); g.userData.muzzle = mz;
+  models.m16 = g;
+
+  g = new THREE.Group(); // Scout: slim bolt-action with a light scope
+  b(g, 0.045, 0.06, 0.44, 0x2b3a2c, 0, 0, 0.0);                            // body
+  b(g, 0.02, 0.02, 0.44, 0x151515, 0, 0.012, -0.42);                       // barrel
+  cyl(g, 0.022, 0.24, 0x111111, 0, 0.068, -0.05);                          // scope tube
+  cyl(g, 0.03, 0.05, 0x111111, 0, 0.068, -0.18);                           // front bell
+  b(g, 0.012, 0.03, 0.012, 0x111111, 0, 0.045, -0.1);                      // scope mounts
+  b(g, 0.012, 0.03, 0.012, 0x111111, 0, 0.045, 0.02);
+  b(g, 0.04, 0.012, 0.012, 0x8a8c90, 0.035, 0.02, 0.07);                   // bolt handle
+  b(g, 0.044, 0.09, 0.22, 0x2b3a2c, 0, -0.03, 0.29);                       // stock
+  b(g, 0.03, 0.06, 0.05, 0x111111, 0, -0.055, -0.06);                      // magazine
+  arms(g, band, true, -0.26); mz = new THREE.Object3D(); mz.position.set(0, 0.012, -0.66); g.add(mz); g.userData.muzzle = mz;
+  models.scout = g;
+
   g = new THREE.Group(); // pump shotgun
   b(g, 0.05, 0.07, 0.3, 0x2a2b2e, 0, 0, 0.0);
   b(g, 0.03, 0.03, 0.55, 0x1b1c1e, 0, 0.022, -0.38);

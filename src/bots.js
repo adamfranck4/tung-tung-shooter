@@ -222,7 +222,11 @@ export class Bot extends Combatant {
     this.animate(0);
   }
 
-  setObjective(o) { this.objective = o; this.path = null; this.arrived = false; this.pending = null; }
+  // o: { pos, look, kind, site, via?: waypoints to pass on the way, quiet?: walk (silently) once within this many meters }
+  setObjective(o) {
+    if (o) o.viaIdx = 0;
+    this.objective = o; this.path = null; this.arrived = false; this.pending = null; this.nextPathTime = 0;
+  }
   queueObjective(o, delay) { this.pending = o; this.pendingAt = this.game.time + delay; }
 
   onDamaged(attacker) {
@@ -346,25 +350,36 @@ export class Bot extends Combatant {
     else if (this.slot !== 3) this.selectSlot(3);
   }
 
+  // Direction to walk this tick (or null). Goes through the objective's waypoints in order, then to its spot.
   navigate() {
     const o = this.objective, g = this.game, b = this.body;
     if (!o) return null;
-    if (!this.path) {
-      if (g.time < this.nextPathTime) return null;
-      this.nextPathTime = g.time + 0.5;
-      this.path = g.map.findPath(b.pos, o.pos);
-      this.pathIdx = 1; this.arrived = false;
-      if (!this.path) return null;
+    for (let guard = 0; guard < 4; guard++) {
+      const via = o.via && o.viaIdx < o.via.length ? o.via[o.viaIdx] : null;
+      if (!this.path) {
+        if (g.time < this.nextPathTime) return null;
+        this.nextPathTime = g.time + 0.5;
+        this.path = g.map.findPath(b.pos, via || o.pos);
+        this.pathIdx = 1; this.arrived = false;
+        if (!this.path) {
+          if (!via) return null;
+          o.viaIdx++; this.nextPathTime = 0;   // unreachable waypoint: skip it
+          continue;
+        }
+      }
+      while (this.pathIdx < this.path.length) {
+        const p = this.path[this.pathIdx];
+        const dx = p.x - b.pos.x, dz = p.z - b.pos.z;
+        const d = Math.hypot(dx, dz);
+        const last = this.pathIdx === this.path.length - 1;
+        // waypoints only need passing near, the final spot needs reaching
+        if (d < (last ? (via ? 1.6 : 0.45) : 0.75)) { this.pathIdx++; continue; }
+        return _dir.set(dx / d, 0, dz / d);
+      }
+      if (!via) break;
+      o.viaIdx++; this.path = null; this.nextPathTime = 0;
     }
-    while (this.pathIdx < this.path.length) {
-      const p = this.path[this.pathIdx];
-      const dx = p.x - b.pos.x, dz = p.z - b.pos.z;
-      const d = Math.hypot(dx, dz);
-      const last = this.pathIdx === this.path.length - 1;
-      if (d < (last ? 0.45 : 0.75)) { this.pathIdx++; continue; }
-      return _dir.set(dx / d, 0, dz / d);
-    }
-    this.arrived = true;
+    this.arrived = !(o.via && o.viaIdx < o.via.length);
     return null;
   }
 
@@ -399,8 +414,12 @@ export class Bot extends Combatant {
       if (w && !w.def.melee && !this.reloading && w.mag < w.def.mag * 0.4 && w.reserve > 0 && g.time - this.lastSeen > 1.5) this.startReload();
       if (!frozen && g.time >= this.waitUntil) {
         const dir = this.navigate();
-        if (dir) { wx = dir.x; wz = dir.z; }
         const o = this.objective;
+        if (dir) {
+          wx = dir.x; wz = dir.z;
+          // sneaking up: shift-walk (silent) for the last stretch
+          if (o?.quiet && Math.hypot(o.pos.x - b.pos.x, o.pos.z - b.pos.z) < o.quiet) speedMul = 0.52;
+        }
         // final approach to bomb (it may sit next to a crate, off the nav grid)
         if (o && this.arrived && (o.kind === 'defuse' || o.kind === 'pickup')) {
           const dx = o.pos.x - b.pos.x, dz = o.pos.z - b.pos.z, d = Math.hypot(dx, dz);

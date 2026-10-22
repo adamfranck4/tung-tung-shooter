@@ -1,6 +1,6 @@
 // DOM-based heads-up display: vitals, ammo, radar, kill feed, menus.
 import { WORLD } from './map.js';
-import { BUY_ITEMS } from './weapons.js';
+import { BUY_ITEMS, WEAPONS } from './weapons.js';
 import { drawCrosshair, crosshairScale } from './crosshair.js';
 import { PERKS } from './zmap.js';
 
@@ -212,12 +212,14 @@ export class Hud {
     const p = g.player;
     const rows = BUY_ITEMS.map((it, i) => {
       const price = it.price(p.team);
-      const owned = it.id === 'armor' ? p.armor >= 100 : (p.slots[1] && (it.id === 'rifle' ? ['ak', 'm4'].includes(p.slots[1].key) : p.slots[1].key === it.id));
+      const key = it.key?.(p.team);
+      const owned = it.armor ? p.armor >= 100 : p.slots[WEAPONS[key].slot]?.key === key;
       const cls = owned ? 'own' : p.money < price ? 'no' : '';
-      return `<div class="buy-row ${cls}"><span class="k">${i + 1}</span><span class="n">${it.label(p.team)}</span><span class="p">${owned ? 'OWNED' : '$' + price}</span></div>`;
+      return `<div class="buy-row ${cls}"><span class="k">${i + 1}</span><span class="n">${it.label(p.team)}</span>`
+        + `<span class="c">${it.cat}</span><span class="p">${owned ? 'OWNED' : '$' + price}</span></div>`;
     }).join('');
     const left = Math.max(0, Math.ceil(g.buyEnd() - g.time));
-    const html = `<h3>BUY <span>$${p.money}</span></h3>${rows}<div class="buy-foot">Press 1-4 to buy &middot; B to close &middot; ${left}s left</div>`;
+    const html = `<h3>BUY <span>$${p.money}</span></h3>${rows}<div class="buy-foot">Press 1-${BUY_ITEMS.length} to buy &middot; B to close &middot; ${left}s left</div>`;
     if (this.cache.buy !== html) { this.cache.buy = html; $('buymenu').innerHTML = html; }
   }
 

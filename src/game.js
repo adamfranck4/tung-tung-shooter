@@ -123,7 +123,39 @@ export class Game {
     this.bombMesh.visible = false;
   }
 
+  // Rounds played before the teams switch sides. A match is first to roundsToWin, so it lasts at
+  // most 2 x roundsToWin - 1 rounds, and halftime comes after roundsToWin - 1 of them (CS2's MR24
+  // works the same way: first to 13, switch after 12).
+  halfRounds() { return this.roundsToWin - 1; }
+
+  // Halftime: everyone plays the other side. Scores follow the players, and everyone starts over
+  // with a pistol and $800, like the first round.
+  swapSides() {
+    const flip = (t) => (t === 'T' ? 'CT' : 'T');
+    this.score = { T: this.score.CT, CT: this.score.T };
+    this.lossStreak = { T: 0, CT: 0 };
+    for (const c of this.combatants) {
+      c.team = flip(c.team);
+      c.money = 800; c.armor = 0; c.hasBomb = false;
+      c.slots[1] = null; c.slots[2] = null;   // spawn() hands out a fresh pistol
+    }
+    this.vm.setTeam(this.player.team);
+  }
+
+  // the "Round N" banner, with halftime news when it applies
+  roundBanner(hasBomb, halftime) {
+    const p = this.player, side = p.team === 'CT' ? 'a Counter-Terrorist' : 'a Terrorist';
+    if (halftime) {
+      this.hud.banner('Halftime: switching sides', `You're now ${side}. Back to pistols, $800 each.`, p.team, 4.5);
+      return;
+    }
+    const last = this.round === this.halfRounds() ? 'Last round before halftime. ' : '';
+    this.hud.banner(`Round ${this.round}`, last + (hasBomb ? 'You have the bomb. Plant it at A or B.' : 'Buy time. Press B to buy.'), p.team, 2.5);
+  }
+
   startRound() {
+    const halftime = this.round > 0 && this.round === this.halfRounds();
+    if (halftime) this.swapSides();
     this.round++;
     this.fx.clear();
     const spawnList = { T: SPAWNS.T.slice().sort(() => Math.random() - 0.5), CT: SPAWNS.CT.slice().sort(() => Math.random() - 0.5) };
@@ -147,28 +179,41 @@ export class Game {
     this.spectating = null;
     this.player.buyOpen = false;
     this.director.planRound();
-    this.hud.banner(`Round ${this.round}`, carrier === this.player ? 'You have the bomb. Plant it at A or B.' : 'Buy time. Press B to buy.', this.player.team, 2.5);
+    this.roundBanner(carrier === this.player, halftime);
     this.sound.roundStart();
     if (this.net) {
+      // tm: everyone's side, so players' browsers pick up the halftime switch
       this.net.emit({
         e: 'round', r: this.round, ph: this.phaseEnd, ls: this.liveStart, re: this.roundEnd, c: carrier ? carrier.nid : -1,
         sp: this.combatants.map((c) => [c.nid, r2(c.body.pos.x), r2(c.body.pos.y), r2(c.body.pos.z), r3(c.yaw), c.spawnEpoch || 0]),
+        tm: this.combatants.map((c) => [c.nid, c.team]), hf: halftime ? 1 : 0,
       });
       for (const a of this.avatars) this.syncInv(a, 'spawn');
     }
   }
 
+  // Bots buy like players do: full buys when they can afford a rifle and armor, cheaper guns
+  // (M16, Scout, shotgun, SMG) on force buys, and sometimes a Desert Eagle on eco rounds.
   botBuy(b) {
-    const rifle = b.team === 'T' ? 'ak' : 'm4';
-    const hasPrimary = !!b.slots[1];
+    const W = WEAPONS, rifle = b.team === 'T' ? 'ak' : 'm4';
+    const taken = (k) => this.bots.some((o) => o !== b && o.team === b.team && o.slots[1]?.key === k);
     let m = b.money;
-    if (!hasPrimary) {
-      const snipers = this.bots.filter((o) => o.team === b.team && o.slots[1]?.key === 'sniper').length;
-      if (m >= WEAPONS.sniper.price + ARMOR_PRICE && snipers === 0 && Math.random() < 0.3) { b.give('sniper'); m -= WEAPONS.sniper.price; }
-      else if (m >= WEAPONS[rifle].price + ARMOR_PRICE || (m >= WEAPONS[rifle].price && b.armor > 0)) { b.give(rifle); m -= WEAPONS[rifle].price; }
-      else if (m >= 2000 && Math.random() < 0.6) { b.give('smg'); m -= WEAPONS.smg.price; }
+    const get = (k) => { b.give(k); m -= W[k].price; };
+    if (!b.slots[1]) {
+      const r = Math.random();
+      const armored = (k) => m >= W[k].price + ARMOR_PRICE || (m >= W[k].price && b.armor > 0);
+      if (armored('sniper') && !taken('sniper') && r < 0.25) get('sniper');
+      else if (armored(rifle)) get(r < 0.1 && !taken('scout') ? 'scout' : rifle);
+      else if (armored('m16') && r < 0.7) get('m16');
+      else if (armored('scout') && !taken('scout') && r < 0.4) get('scout');
+      else if (m >= 2000 && r < 0.65) get(Math.random() < 0.55 ? 'smg' : 'shotgun');
     }
     if (b.armor < 50 && m >= ARMOR_PRICE + 200) { b.armor = 100; m -= ARMOR_PRICE; }
+    // pistol upgrade: with money to spare, or as an eco gamble
+    if (b.slots[2]?.key !== 'deagle' && m >= W.deagle.price) {
+      const eco = !b.slots[1];
+      if ((m >= 2500 && Math.random() < 0.45) || (eco && Math.random() < 0.3)) get('deagle');
+    }
     b.money = m;
     b.selectSlot(b.slots[1] ? 1 : 2, true);
   }
@@ -185,17 +230,22 @@ export class Game {
     if (!item || !this.canBuy(c)) return;
     const price = item.price(c.team);
     const broke = () => this.tell(c, { e: 'msg', s: 'Not enough money', d: 1 });
-    if (item.id === 'armor') {
+    if (item.armor) {
       if (c.armor >= 100) return;
       if (c.money < price) { broke(); return; }
       c.money -= price; c.armor = 100; this.tell(c, { e: 'snd', n: 'buy' }); return;
     }
-    const key = item.id === 'rifle' ? (c.team === 'T' ? 'ak' : 'm4') : item.id;
-    if (c.slots[1]?.key === key) return;
+    const key = item.key(c.team), slot = WEAPONS[key].slot;
+    if (c.slots[slot]?.key === key) return;
     if (c.money < price) { broke(); return; }
     c.money -= price;
     c.give(key);
-    c.selectSlot(1, false);
+    // take the new gun out (if it replaced the one in your hands, draw it again)
+    if (c.slot === slot) {
+      c.reloading = false; c.burstLeft = 0; c.scoped = false; c.recoil = 0;
+      c.deployUntil = this.time + (WEAPONS[key].deploy || 0.5);
+      c.onSwitch?.();
+    } else c.selectSlot(slot, false);
     this.tell(c, { e: 'snd', n: 'buy' });
     this.syncInv(c, 'switch');
   }
@@ -537,7 +587,7 @@ export class Game {
     if (p.alive) {
       p.renderEye(cam.position, alpha);
       cam.rotation.set(p.pitch + p.punch, p.yaw, 0);
-      const fov = p.scoped ? this.scopeFov : this.baseFov;
+      const fov = p.scoped ? (p.weapon?.def.zoomFov || this.scopeFov) : this.baseFov;
       if (cam.fov !== fov) { cam.fov = fov; cam.updateProjectionMatrix(); }
       return;
     }
@@ -568,6 +618,7 @@ export class Game {
     this.player.update(dt);
     for (const a of this.avatars) a.update(dt);
     for (const b of this.bots) b.update(dt);
+    this.director.update();
     this.separate();
     this.updateBomb(dt);
     this.checkWin();

@@ -35,14 +35,35 @@ export const WEAPONS = {
     kick: 0.035, recoilSpread: 0, armorPen: 0.98, falloff: 0.99, speed: 0.8, price: 4750, deploy: 0.9,
     reward: 100, sound: 'sniper', vm: 'sniper', scope: true,
   },
+  // hand cannon: one headshot kills, but spamming it ruins your accuracy
+  deagle: {
+    key: 'deagle', name: 'Desert Eagle', slot: 2, damage: 53, headMult: 4, rate: 0.27, auto: false,
+    mag: 7, reserve: 35, reload: 2.2, spread: 0.004, moveSpread: 0.06, airSpread: 0.14, kick: 0.04,
+    recoilSpread: 0.02, armorPen: 0.93, falloff: 0.9, speed: 0.92, price: 700, deploy: 0.55,
+    reward: 300, sound: 'deagle', vm: 'deagle',
+  },
+  // budget rifle: one click fires a 3-round burst
+  m16: {
+    key: 'm16', name: 'M16 Burst', slot: 1, damage: 31, headMult: 4, rate: 0.36, auto: false, burst: 3, burstGap: 0.065,
+    mag: 30, reserve: 90, reload: 2.9, spread: 0.0035, moveSpread: 0.08, airSpread: 0.15, kick: 0.009,
+    recoilSpread: 0.0025, armorPen: 0.7, falloff: 0.97, speed: 0.9, price: 2250, deploy: 0.6,
+    reward: 300, sound: 'm16', vm: 'm16',
+  },
+  // light bolt-action sniper: cheap, fast to carry, accurate in the air, but body shots don't kill
+  scout: {
+    key: 'scout', name: 'Scout', slot: 1, damage: 88, headMult: 4, rate: 1.25, auto: false,
+    mag: 10, reserve: 90, reload: 3.0, spread: 0.06, scopedSpread: 0.0012, moveSpread: 0.07, airSpread: 0.012,
+    kick: 0.03, recoilSpread: 0, armorPen: 0.85, falloff: 0.98, speed: 0.92, price: 1700, deploy: 0.75,
+    reward: 300, sound: 'scout', vm: 'scout', scope: true, zoomFov: 36,
+  },
 };
 
-// ----- extra weapons used in Zombies mode -----
+// ----- extra weapons (the shotgun is in both modes; the rest are Zombies only) -----
 Object.assign(WEAPONS, {
   shotgun: {
     key: 'shotgun', name: 'Pump Shotgun', slot: 1, damage: 24, headMult: 2, pellets: 8, rate: 0.8, auto: false,
     mag: 8, reserve: 48, reload: 3.0, spread: 0.075, moveSpread: 0.02, airSpread: 0.05, kick: 0.05, recoilSpread: 0,
-    armorPen: 0.5, falloff: 0.72, speed: 0.88, price: 1500, deploy: 0.6, reward: 900, sound: 'shotgun', vm: 'shotgun',
+    armorPen: 0.5, falloff: 0.72, speed: 0.88, price: 1050, deploy: 0.6, reward: 900, sound: 'shotgun', vm: 'shotgun',
   },
   lmg: {
     key: 'lmg', name: 'Drum LMG', slot: 1, damage: 34, headMult: 3, rate: 0.085, auto: true,
@@ -69,10 +90,18 @@ export function papDef(def) {
 
 export const ARMOR_PRICE = 1000;
 
-// buy menu entries (key 1..4)
+// Buy menu entries, bought with keys 1..8 in this order. key(team) is the weapon you get
+// (the AK / M4 slot depends on your side); armor has no weapon key.
+const weaponItem = (cat, key) => ({
+  cat, key, label: (team) => WEAPONS[key(team)].name, price: (team) => WEAPONS[key(team)].price,
+});
 export const BUY_ITEMS = [
-  { id: 'smg', label: () => WEAPONS.smg.name, price: () => WEAPONS.smg.price },
-  { id: 'rifle', label: (team) => (team === 'T' ? WEAPONS.ak : WEAPONS.m4).name, price: (team) => (team === 'T' ? WEAPONS.ak : WEAPONS.m4).price },
-  { id: 'sniper', label: () => WEAPONS.sniper.name, price: () => WEAPONS.sniper.price },
-  { id: 'armor', label: () => 'Kevlar + Helmet', price: () => ARMOR_PRICE },
+  weaponItem('Pistol', () => 'deagle'),
+  weaponItem('Shotgun', () => 'shotgun'),
+  weaponItem('SMG', () => 'smg'),
+  weaponItem('Rifle', () => 'm16'),
+  weaponItem('Rifle', (team) => (team === 'T' ? 'ak' : 'm4')),
+  weaponItem('Sniper', () => 'scout'),
+  weaponItem('Sniper', () => 'sniper'),
+  { cat: 'Gear', key: null, armor: true, label: () => 'Kevlar + Helmet', price: () => ARMOR_PRICE },
 ];

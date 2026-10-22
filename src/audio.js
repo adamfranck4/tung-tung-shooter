@@ -6,6 +6,9 @@ const SHOTS = {
   rifle2: { freq: 3000, decay: 0.16, vol: 0.6,  thump: 100, thumpVol: 0.55 },
   sniper: { freq: 1800, decay: 0.55, vol: 0.95, thump: 55,  thumpVol: 1.0 },
   shotgun: { freq: 1500, decay: 0.32, vol: 0.95, thump: 65, thumpVol: 1.0 },
+  deagle: { freq: 2100, decay: 0.26, vol: 0.85, thump: 78, thumpVol: 0.85 },
+  m16:    { freq: 2800, decay: 0.15, vol: 0.62, thump: 95,  thumpVol: 0.6 },
+  scout:  { freq: 2600, decay: 0.38, vol: 0.85, thump: 70,  thumpVol: 0.8 },
 };
 
 export class Sound {
@@ -92,6 +95,8 @@ export class Sound {
     this.noiseBurst(o.node, { freq: s.freq * (1 - far * 0.7), decay: s.decay * (1 + far * 0.8), vol: 1 });
     this.tone(o.node, { freq: s.thump, end: s.thump * 0.4, decay: s.decay * 0.9, vol: s.thumpVol });
     if (kind === 'sniper') this.noiseBurst(o.node, { freq: 600, decay: 0.9, vol: 0.4, delay: 0.05 });
+    if (kind === 'scout') this.noiseBurst(o.node, { freq: 900, decay: 0.6, vol: 0.25, delay: 0.04 });
+    if (kind === 'deagle') this.noiseBurst(o.node, { freq: 700, decay: 0.35, vol: 0.3, delay: 0.03 });
   }
   knife(pos) { const o = this.out(pos, 0.35, 20); if (o) this.noiseBurst(o.node, { freq: 2500, type: 'bandpass', q: 2, decay: 0.12, attack: 0.03 }); }
   step(pos, self) {

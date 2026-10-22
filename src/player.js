@@ -1,5 +1,6 @@
 // The human player: reads keyboard/mouse input and drives a Combatant.
 import { Combatant } from './combatant.js';
+import { BUY_ITEMS } from './weapons.js';
 
 // CS2's m_yaw / m_pitch: 0.022 degrees per mouse count, times the sensitivity setting.
 export const CS_DEG_PER_COUNT = 0.022 * Math.PI / 180;
@@ -18,7 +19,7 @@ export class Player extends Combatant {
   look() {
     const g = this.game, inp = g.input;
     if (!this.alive) return;
-    const zoom = this.scoped ? g.scopeFov / g.baseFov : 1;
+    const zoom = this.scoped ? (this.weapon?.def.zoomFov || g.scopeFov) / g.baseFov : 1;
     const k = CS_DEG_PER_COUNT * g.settings.sens * zoom;
     this.yaw -= inp.dx * k;
     this.pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, this.pitch - inp.dy * k));
@@ -37,7 +38,7 @@ export class Player extends Combatant {
     }
     if (this.buyOpen && !g.canBuy(this)) this.buyOpen = false;
     if (this.buyOpen) {
-      for (let i = 1; i <= 4; i++) if (inp.pressed('Digit' + i)) g.buy(this, i - 1);
+      for (let i = 1; i <= BUY_ITEMS.length; i++) if (inp.pressed('Digit' + i)) g.buy(this, i - 1);
       if (inp.pressed('Escape')) this.buyOpen = false;
     } else {
       // ----- weapon switching -----
