@@ -9,7 +9,10 @@ No build step, no server code, no assets to download — every texture, model an
 - Bomb plant / defuse, round timer, radar, kill feed, scoreboard, spectating
 - Every fighter is a "Tung Tung Tung Sahur" kentongan log: dome top, bulging eyes, toothy grin, bare feet,
   and a baseball bat (slung on the back, swung in melee). Team color is the hanging rope: orange = T, blue = CT.
-- Knife skins picked in the menu: Knife, Karambit, Flip, Butterfly (with flips), Sword. Skins are cosmetic.
+- Knife skins picked in the menu: Knife, Karambit, Flip, Butterfly (with flips), Sword, Katana. Skins are cosmetic.
+  Every knife has its own CS2-style draw and inspect (**F**) animation, held in a jointed hand that lets go
+  for spins and tosses. Attacks alternate forehand and backhand slashes with a glowing trail. The Katana does an
+  iai draw: it comes out of a scabbard held in your left hand, straight into a cut across the screen.
 - 10 static crosshairs (no spread): Classic Green, s1mple, ZywOo, NiKo, donk, m0NESY, T-Shape, Dot Only,
   Cross + Dot, Circle + Dot. Pro presets use the most commonly reported 2026 settings; pros change them often.
   Add or edit presets in `src/crosshair.js`.

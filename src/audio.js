@@ -107,6 +107,31 @@ export class Sound {
     this.tone(o.node, { freq: 900, end: 700, decay: 0.04, type: 'square', vol: 0.15, delay: 1.2 });
   }
   deploy() { const o = this.out(null, 0.2); if (o) this.noiseBurst(o.node, { freq: 2200, type: 'bandpass', q: 2, decay: 0.06 }); }
+  // a long blade leaving its sheath: a rising scrape that ends in a metallic ring
+  bladeDraw() {
+    const o = this.out(null, 0.34); if (!o) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const src = ctx.createBufferSource(); src.buffer = this.noise;
+    const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 5;
+    f.frequency.setValueAtTime(1600, t); f.frequency.exponentialRampToValueAtTime(7800, t + 0.2);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.75, t + 0.06);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
+    src.connect(f); f.connect(g); g.connect(o.node);
+    src.start(t, Math.random() * 1.5); src.stop(t + 0.32);
+    for (const [fr, vol, decay] of [[3150, 0.22, 1.0], [4730, 0.14, 0.75], [6290, 0.09, 0.55]]) {
+      this.tone(o.node, { freq: fr, end: fr * 0.996, decay, vol, delay: 0.15 });
+    }
+  }
+  // a blade or latch snapping into place
+  bladeClick() {
+    const o = this.out(null, 0.26); if (!o) return;
+    this.tone(o.node, { freq: 3900, end: 2700, decay: 0.03, type: 'square', vol: 0.25 });
+    this.noiseBurst(o.node, { freq: 5200, type: 'highpass', decay: 0.035 });
+  }
+  // a knife cutting the air during tricks
+  swish() { const o = this.out(null, 0.16); if (o) this.noiseBurst(o.node, { freq: 1500, type: 'bandpass', q: 1.4, decay: 0.15, attack: 0.05 }); }
   zoom() { const o = this.out(null, 0.2); if (o) this.tone(o.node, { freq: 2400, end: 1800, decay: 0.04, type: 'square', vol: 0.2 }); }
   hit(head) {
     const o = this.out(null, head ? 0.55 : 0.35); if (!o) return;

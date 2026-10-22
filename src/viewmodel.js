@@ -6,6 +6,42 @@ const M = {};
 function mat(c) { return M[c] || (M[c] = new THREE.MeshLambertMaterial({ color: c })); }
 const SHINY = {};
 function shiny(c) { return SHINY[c] || (SHINY[c] = new THREE.MeshPhongMaterial({ color: c, shininess: 90, specular: 0x9a9a9a })); }
+// polished steel: a bright "studio" reflection map so blades flash as they turn
+let ENV = null;
+function studioEnv() {
+  if (ENV) return ENV;
+  const c = document.createElement('canvas'); c.width = 512; c.height = 256;
+  const ctx = c.getContext('2d');
+  const sky = ctx.createLinearGradient(0, 0, 0, 256);
+  sky.addColorStop(0, '#f2f6fb'); sky.addColorStop(0.42, '#9aa6b6'); sky.addColorStop(0.55, '#4a4e57'); sky.addColorStop(1, '#17161a');
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, 512, 256);
+  ctx.filter = 'blur(6px)';
+  ctx.fillStyle = 'rgba(255,255,255,0.95)';
+  ctx.fillRect(0, 96, 512, 12);                                   // a long softbox along the horizon
+  for (const x of [70, 230, 390]) ctx.fillRect(x, 34, 52, 44);     // and three windows above it
+  ctx.filter = 'none';
+  ENV = new THREE.CanvasTexture(c);
+  ENV.mapping = THREE.EquirectangularReflectionMapping;
+  ENV.colorSpace = THREE.SRGBColorSpace;
+  return ENV;
+}
+const STEEL = {};
+function steel(c) {
+  return STEEL[c] || (STEEL[c] = new THREE.MeshPhongMaterial({
+    color: c, shininess: 160, specular: 0xf0f4fa, envMap: studioEnv(), reflectivity: 0.55, combine: THREE.MixOperation,
+  }));
+}
+// katana steel: a dark mirror body with a frosted white hamon along the edge
+function darkSteel(c) {
+  return STEEL['d' + c] || (STEEL['d' + c] = new THREE.MeshPhongMaterial({
+    color: c, shininess: 180, specular: 0xffffff, envMap: studioEnv(), reflectivity: 0.42, combine: THREE.MixOperation,
+  }));
+}
+function frost(c) {
+  return STEEL['f' + c] || (STEEL['f' + c] = new THREE.MeshPhongMaterial({
+    color: c, shininess: 50, specular: 0x9aa4b0, envMap: studioEnv(), reflectivity: 0.12, combine: THREE.MixOperation,
+  }));
+}
 const box = new THREE.BoxGeometry(1, 1, 1);
 function b(parent, w, h, d, color, x, y, z, rx = 0, ry = 0, rz = 0, material = null) {
   const m = new THREE.Mesh(box, material || mat(color));
@@ -40,13 +76,54 @@ function arms(g, band, twoHands, leftZ = -0.26) {
   }
 }
 
+// ---------- knife hands ----------
+// A hand is built in "wrist space": wrist at the origin, forearm toward +z, fingers forward (-z),
+// palm facing -x, thumb up (+y). The handle it holds runs along y through GRIP, so the blade comes
+// out of the top of the fist (thumb side) and the pommel out of the bottom (little finger side).
+// The fingers are jointed, so the hand can let go of the knife while it spins and catch it again.
+const GRIP = new THREE.Vector3(-0.025, 0, -0.052);
+const KNUCKLE = 0x7fb64e;
+const FIST = [1.32, 1.55, 0.3];    // finger joint angles when gripping
+const SPLAY = [0.2, 0.25, 0.12];   // ...and with the hand open
+function buildHand(band) {
+  const h = new THREE.Group();
+  b(h, 0.024, 0.066, 0.08, KNOB, 0, 0, -0.036);                // back of the hand
+  b(h, 0.03, 0.05, 0.026, band, 0.001, -0.002, 0.008);         // wristband
+  const fingers = [];
+  for (const [y, s] of [[0.0255, 1.04], [0.0085, 1.0], [-0.0085, 0.95], [-0.0255, 0.83]]) {
+    b(h, 0.012, 0.0135, 0.018, KNUCKLE, 0.008, y, -0.071);       // knuckle
+    const joints = [];
+    let parent = h, at = [-0.005, y, -0.072];
+    for (const len of [0.034, 0.024, 0.018]) {
+      const j = new THREE.Group(); j.position.set(...at); parent.add(j);
+      b(j, 0.0145, 0.0145, len * s + 0.006, KNOB, 0, 0, -len * s / 2);
+      joints.push(j); parent = j; at = [0, 0, -len * s];
+    }
+    fingers.push(joints);
+  }
+  const t1 = new THREE.Group(); t1.position.set(-0.011, 0.024, -0.026); t1.rotation.order = 'YXZ'; h.add(t1);
+  b(t1, 0.017, 0.017, 0.036, KNOB, 0, 0, -0.018);
+  const t2 = new THREE.Group(); t2.position.set(0, 0, -0.036); t1.add(t2);
+  b(t2, 0.0155, 0.0155, 0.028, KNOB, 0, 0, -0.012);
+  return { group: h, fingers, thumb: [t1, t2] };
+}
+function setGrip(hand, open, keepIndex) {
+  hand.fingers.forEach((f, i) => {
+    const o = keepIndex && i === 0 ? 0 : open;
+    f.forEach((j, k) => { j.rotation.y = FIST[k] + (SPLAY[k] - FIST[k]) * o; });
+  });
+  // the thumb wraps over the index finger, and lifts off when the hand opens
+  hand.thumb[0].rotation.set(-0.12 + 0.35 * open, 0.62 - 0.45 * open, 0);
+  hand.thumb[1].rotation.y = 0.55 - 0.45 * open;
+}
+
 // ---------- knife skins ----------
 // Blades are drawn as 2D outlines (x = forward, y = up) and extruded a few mm thick.
 // Each build(k, parts) adds meshes to k and registers moving parts for the animations.
-function bladeMesh(shape, depth, color) {
+function bladeMesh(shape, depth, color, material = steel) {
   const g = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: true, bevelThickness: 0.0015, bevelSize: 0.0015, bevelSegments: 1, curveSegments: 12 });
   g.translate(0, 0, -depth / 2);
-  return new THREE.Mesh(g, shiny(color));
+  return new THREE.Mesh(g, material(color));
 }
 function shapeFrom(fn) { const s = new THREE.Shape(); fn(s); return s; }
 
@@ -56,9 +133,10 @@ function knifeRegular(k) {
     s.quadraticCurveTo(0.168, -0.008, 0.18, 0.012);
     s.lineTo(0.13, 0.021); s.lineTo(0, 0.02);
   }), 0.006, 0xc8ccd2));
-  b(k, 0.012, 0.055, 0.026, 0, 0, 0.003, 0, 0, 0, 0, shiny(0x3a3c40));          // guard
-  b(k, 0.11, 0.032, 0.026, 0x1d1d1f, -0.06, 0.002, 0);                          // handle
-  b(k, 0.014, 0.036, 0.03, 0x3a3c40, -0.118, 0.002, 0);                         // pommel
+  b(k, 0.1, 0.004, 0.0095, 0, 0.065, 0.009, 0, 0, 0, 0, steel(0x80868f));           // fuller
+  b(k, 0.012, 0.055, 0.026, 0, 0, 0.003, 0, 0, 0, 0, shiny(0x3a3c40));              // guard
+  b(k, 0.11, 0.032, 0.026, 0x1d1d1f, -0.06, 0.002, 0);                              // handle
+  b(k, 0.014, 0.036, 0.03, 0x3a3c40, -0.118, 0.002, 0);                             // pommel
 }
 
 function knifeKarambit(k) {
@@ -84,26 +162,28 @@ function knifeFlip(k, parts) {
     s.lineTo(0.008, 0.029); s.lineTo(-0.004, 0.027); // flipper tab
     s.lineTo(-0.004, -0.018);
   }), 0.005, 0xb9bec6));
-  parts.blade = hinge;
+  parts.blade = hinge; parts.trailParent = hinge;
   b(k, 0.11, 0.03, 0.024, 0x2b2e33, -0.062, 0.003, 0);
   b(k, 0.02, 0.032, 0.026, 0x8a9099, -0.005, 0.003, 0, 0, 0, 0, shiny(0x8a9099)); // bolster
 }
 
 function knifeButterfly(k, parts) {
-  k.add(bladeMesh(shapeFrom((s) => {
-    s.moveTo(0, -0.012); s.lineTo(0.14, -0.012);
-    s.lineTo(0.175, 0.004);
-    s.lineTo(0.14, 0.018); s.lineTo(0, 0.016);
-  }), 0.005, 0xcfd3d9));
-  // two handle halves that swing around their pins during flips
-  const mk = (y, z) => {
-    const piv = new THREE.Group(); piv.position.set(0, y, z); k.add(piv);
+  // the fist holds handle B; the blade swings around B's pin, and handle A swings around the blade's other pin
+  const handle = (parent, x, y, z) => {
+    const piv = new THREE.Group(); piv.position.set(x, y, z); parent.add(piv);
     b(piv, 0.12, 0.014, 0.012, 0, -0.06, 0, 0, 0, 0, 0, shiny(0x6d7480));
     b(piv, 0.1, 0.006, 0.013, 0x22262c, -0.06, 0, 0);
     return piv;
   };
-  parts.bfA = mk(0.009, 0.007);
-  parts.bfB = mk(-0.006, -0.007);
+  handle(k, 0, -0.006, -0.007);
+  const swing = new THREE.Group(); swing.position.set(0, -0.006, 0); k.add(swing);
+  swing.add(bladeMesh(shapeFrom((s) => {
+    s.moveTo(0, -0.006); s.lineTo(0.14, -0.006);
+    s.lineTo(0.175, 0.01);
+    s.lineTo(0.14, 0.024); s.lineTo(0, 0.022);
+  }), 0.005, 0xcfd3d9));
+  parts.bfA = handle(swing, 0, 0.015, 0.007);
+  parts.bfSwing = swing; parts.trailParent = swing;
 }
 
 function knifeSword(k) {
@@ -112,106 +192,276 @@ function knifeSword(k) {
     s.moveTo(0, -0.021); s.lineTo(0.62, -0.021);
     s.lineTo(0.7, 0); s.lineTo(0.62, 0.021); s.lineTo(0, 0.021);
   }), 0.007, 0xd7dbe2));
-  b(blade, 0.56, 0.006, 0.009, 0x8d939c, 0.31, 0, 0);                                 // fuller
+  b(blade, 0.56, 0.006, 0.009, 0, 0.31, 0, 0, 0, 0, 0, steel(0x8d939c));             // fuller
   b(blade, 0.016, 0.13, 0.032, 0, 0, 0, 0, 0, 0, 0, shiny(0xc9a13b));                // crossguard
   b(blade, 0.13, 0.028, 0.026, 0x3b2414, -0.07, 0, 0);                                // grip
   const pommel = new THREE.Mesh(new THREE.SphereGeometry(0.02, 10, 8), shiny(0xc9a13b));
   pommel.position.set(-0.14, 0, 0); blade.add(pommel);
 }
 
-// ---------- CS2-style draw and inspect animations ----------
+// ----- katana -----
+// The blade bends along a circle of radius KAT_R (its curve), so the sheath can slide along it.
+// Shape points are given as [distance along the blade, offset toward the spine].
+const KAT_L = 0.6, KAT_R = 3.6;
+function arcPt(x, off) { const a = x / KAT_R, r = KAT_R - off; return [Math.sin(a) * r, KAT_R - Math.cos(a) * r]; }
+function arcShape(pts) {
+  const s = new THREE.Shape();
+  pts.forEach(([x, o], i) => { const [px, py] = arcPt(x, o); if (i) s.lineTo(px, py); else s.moveTo(px, py); });
+  return s;
+}
+const bez = (a, c, d, u) => [0, 1].map((i) => (1 - u) * (1 - u) * a[i] + 2 * (1 - u) * u * c[i] + u * u * d[i]);
+
+function knifeKatana(k) {
+  const L = KAT_L, N = 30;
+  const outline = [];
+  for (let i = 0; i <= N; i++) outline.push([L * i / N, 0.012 - 0.003 * i / N]);       // spine
+  for (let i = 0; i <= 8; i++) outline.push(bez([L + 0.018, 0.007], [L + 0.004, -0.016], [L - 0.05, -0.016], i / 8)); // tip
+  for (let i = N; i >= 0; i--) outline.push([(L - 0.05) * i / N, -0.019 + 0.003 * (1 - i / N)]);           // edge
+  k.add(bladeMesh(arcShape(outline), 0.0055, 0x5f6874, darkSteel));
+  // hamon: the bright hardened edge, with its wavy border
+  const hamon = [];
+  for (let i = 0; i <= 44; i++) { const x = 0.035 + (L - 0.09) * i / 44; hamon.push([x, -0.0085 + 0.0024 * Math.sin(i * 1.9)]); }
+  for (let i = 0; i <= 6; i++) hamon.push(bez([L - 0.055, -0.009], [L, -0.008], [L + 0.012, 0.002], i / 6));
+  hamon.push([L + 0.006, -0.008]);
+  for (let i = 0; i <= 6; i++) hamon.push(bez([L - 0.002, -0.0145], [L - 0.03, -0.0158], [L - 0.055, -0.0158], i / 6));
+  for (let i = 44; i >= 0; i--) hamon.push([0.035 + (L - 0.09) * i / 44, -0.0168 + 0.002 * (1 - i / 44)]);
+  k.add(bladeMesh(arcShape(hamon), 0.0062, 0xf2f5f9, frost));
+  const hi = [];   // bo-hi: the groove along the spine
+  for (let i = 0; i <= 20; i++) hi.push([0.04 + 0.42 * i / 20, 0.0072 - 0.001 * i / 20]);
+  for (let i = 20; i >= 0; i--) hi.push([0.04 + 0.42 * i / 20, 0.0032 - 0.0006 * i / 20]);
+  k.add(bladeMesh(arcShape(hi), 0.0063, 0x3a4048, darkSteel));
+  const gold = shiny(0xc9a13b);
+  b(k, 0.028, 0.034, 0.011, 0, 0.014, -0.003, 0, 0, 0, 0.004, gold);                 // habaki
+  const tsuba = new THREE.Mesh(new THREE.CylinderGeometry(0.037, 0.037, 0.008, 20), shiny(0x24242a));
+  tsuba.rotation.z = Math.PI / 2; tsuba.position.set(-0.005, -0.002, 0); tsuba.scale.set(1, 1, 0.82); k.add(tsuba);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.036, 0.0028, 6, 24), gold);
+  rim.rotation.y = Math.PI / 2; rim.position.copy(tsuba.position); rim.scale.set(1, 1, 0.82); k.add(rim);
+  b(k, 0.01, 0.033, 0.027, 0, -0.014, -0.001, 0, 0, 0, 0, gold);                      // fuchi
+  b(k, 0.19, 0.029, 0.023, 0xe9e3d3, -0.112, -0.001, 0);                               // tsuka (ray skin)
+  const ito = mat(0x1b1c2e);                                                            // diamond cord wrap
+  for (let i = 0; i < 8; i++) {
+    const x = -0.031 - i * 0.0225;
+    b(k, 0.04, 0.0085, 0.0255, 0, x, -0.001, 0, 0, 0, 0.62, ito);
+    b(k, 0.04, 0.0085, 0.0255, 0, x, -0.001, 0, 0, 0, -0.62, ito);
+  }
+  b(k, 0.022, 0.009, 0.0262, 0, -0.1, -0.001, 0, 0, 0, 0, gold);                       // menuki
+  b(k, 0.014, 0.032, 0.027, 0, -0.212, -0.001, 0, 0, 0, 0, shiny(0x24242a));           // kashira
+}
+
+// the scabbard, built around the sheathed blade (same coordinates as the katana)
+function buildSaya(parent) {
+  const L = KAT_L + 0.05, N = 30, pts = [];
+  for (let i = 0; i <= N; i++) pts.push([L * i / N, 0.019]);
+  pts.push([L + 0.014, 0.013], [L + 0.02, -0.003], [L + 0.014, -0.021]);
+  for (let i = N; i >= 0; i--) pts.push([L * i / N, -0.027]);
+  const lacquer = new THREE.MeshPhongMaterial({ color: 0x18161d, shininess: 70, specular: 0x3c3c46 });
+  const body = bladeMesh(arcShape(pts), 0.019, 0, () => lacquer);
+  parent.add(body);
+  const ring = (x0, x1, color, extra) => {
+    const r = [[x0, 0.019 + extra], [x1, 0.019 + extra], [x1, -0.027 - extra], [x0, -0.027 - extra]];
+    parent.add(bladeMesh(arcShape(r), 0.019 + extra * 2, 0, () => shiny(color)));
+  };
+  ring(0, 0.014, 0x3a332c, 0.0015);              // koiguchi (horn mouth)
+  ring(0.15, 0.158, 0xc9a13b, 0.001);            // gold band
+  ring(L - 0.006, L + 0.004, 0xc9a13b, 0.001);
+  const [kx, ky] = arcPt(0.118, 0.025);           // kurikata knob with the red sageo cord
+  b(parent, 0.016, 0.01, 0.01, 0x3a332c, kx, ky, 0);
+  b(parent, 0.012, 0.03, 0.024, 0x9b1d22, kx + 0.01, ky + 0.004, 0, 0, 0, -0.35);
+}
+
+// ---------- CS2-style animations ----------
 // Keyframe tracks [time, value]; values blend with an ease-in-out between keys.
-//   px py pz rx ry rz : whole hand + knife offset (meters / radians)
-//   roll  : twirl around the blade's length      spin : rotate in the blade's plane around the pivot
-//   blade : flip knife blade (0 open, PI folded)  bfA / bfB : butterfly handles (0 open, ±PI closed)
+//   px py pz : the wrist's offset from its rest position (meters)
+//   rx ry rz : the hand turned around the wrist, in screen axes (rz spins it like a clock hand, ry swings it
+//              left/right, rx tips the blade toward/away from you)            roll : wrist roll around the forearm
+//   twirl : knife spins around its handle         spin : knife rotates in the blade's plane around its pivot
+//   open  : 0 = gripping, 1 = fingers open       blade : flip knife blade (0 open, PI folded)
+//   bfB : butterfly blade folding into the held handle, bfA : the free handle (0 open, ±PI closed)
+//   trail : brightness of the slash trail        glint / glintAt : sparkle on the blade and where (0 base .. 1 tip)
+//   katana draw: lvis (scabbard shown), attach (1 = scabbard on the blade), sheath (meters slid off the blade),
+//                lpx..lrz (how the scabbard falls once let go)
+// events: [time, sound] pairs played as the clip passes them.
 const PI = Math.PI, TAU = Math.PI * 2;
+const SLASH = {
+  // forehand: cocked back to the right, ripped across to the left
+  a: { dur: 0.42, events: [[0.06, 'swish']], tracks: {
+    px: [[0, 0], [0.07, 0.05], [0.18, -0.19], [0.26, -0.22], [0.42, 0]],
+    py: [[0, 0], [0.07, 0.03], [0.18, -0.02], [0.26, -0.05], [0.42, 0]],
+    pz: [[0, 0], [0.07, 0.02], [0.18, -0.05], [0.42, 0]],
+    ry: [[0, 0], [0.07, -0.55], [0.18, 0.75], [0.26, 0.85], [0.42, 0]],
+    rz: [[0, 0], [0.07, -0.35], [0.18, 0.45], [0.26, 0.5], [0.42, 0]],
+    rx: [[0, 0], [0.07, 0.25], [0.18, -0.3], [0.42, 0]],
+    trail: [[0, 0], [0.08, 0.15], [0.12, 1], [0.21, 1], [0.27, 0]],
+  } },
+  // backhand: wound up to the left, swept back across to the right
+  b: { dur: 0.42, events: [[0.06, 'swish']], tracks: {
+    px: [[0, 0], [0.07, -0.13], [0.18, 0.08], [0.26, 0.09], [0.42, 0]],
+    py: [[0, 0], [0.07, 0.05], [0.18, -0.04], [0.42, 0]],
+    pz: [[0, 0], [0.07, 0.02], [0.18, -0.05], [0.42, 0]],
+    ry: [[0, 0], [0.07, 0.8], [0.18, -0.6], [0.26, -0.68], [0.42, 0]],
+    rz: [[0, 0], [0.07, 0.45], [0.18, -0.45], [0.26, -0.5], [0.42, 0]],
+    rx: [[0, 0], [0.07, -0.15], [0.18, 0.2], [0.42, 0]],
+    trail: [[0, 0], [0.08, 0.15], [0.12, 1], [0.21, 1], [0.27, 0]],
+  } },
+};
 const CLIPS = {
   knife: {
-    // pulled up with a quick twirl
-    draw: { dur: 0.9, tracks: {
-      px: [[0, 0], [0.3, -0.04], [0.6, -0.02], [0.9, 0]],
-      py: [[0, -0.22], [0.3, 0.05], [0.6, 0.02], [0.9, 0]], rx: [[0, -0.7], [0.3, 0.08], [0.55, 0]],
-      roll: [[0, -TAU], [0.55, 0]], rz: [[0, 0.3], [0.4, -0.05], [0.7, 0]],
+    // flipped up from below, spun once in the open hand and caught
+    draw: { dur: 0.95, events: [[0.1, 'swish']], tracks: {
+      px: [[0, 0.05], [0.3, -0.03], [0.7, 0]], py: [[0, -0.24], [0.3, 0.04], [0.65, 0]],
+      rx: [[0, 0.7], [0.3, -0.1], [0.6, 0]], rz: [[0, -0.2], [0.3, 0.1], [0.52, -0.12], [0.75, 0.03], [0.95, 0]],
+      spin: [[0, -TAU], [0.5, 0]], open: [[0, 0.65], [0.42, 0.65], [0.52, 0]],
+      trail: [[0, 0], [0.08, 0.35], [0.42, 0.35], [0.5, 0]],
     } },
-    // brings it up, turns it to show one face, flips it to the other side, checks the edge
-    inspect: { dur: 3.6, tracks: {
-      px: [[0, 0], [0.45, -0.13], [3.1, -0.13], [3.6, 0]], py: [[0, 0], [0.45, 0.09], [3.1, 0.09], [3.6, 0]],
-      ry: [[0, 0], [0.45, 0.7], [1.5, 0.7], [1.9, 0.35], [3.1, 0.35], [3.6, 0]],
-      rz: [[0, 0], [0.45, -0.6], [1.5, -0.6], [1.9, 0.25], [3.1, 0.25], [3.6, 0]],
-      roll: [[0, 0], [1.5, 0], [1.9, PI], [2.6, PI], [2.85, PI * 0.82], [3.1, PI], [3.6, TAU]],
-      rx: [[0, 0], [2.3, 0], [2.6, 0.35], [3.0, 0.35], [3.3, 0]],
+    // brings the blade up to show it off, tosses it to flip it over, checks the edge, flips it back
+    inspect: { dur: 3.9, events: [[1.45, 'swish'], [2.95, 'swish']], tracks: {
+      px: [[0, 0], [0.5, -0.085], [3.35, -0.085], [3.9, 0]],
+      py: [[0, 0], [0.5, 0.1], [1.4, 0.1], [1.65, 0.14], [1.95, 0.1], [3.35, 0.1], [3.9, 0]],
+      pz: [[0, 0], [0.5, 0.06], [3.35, 0.06], [3.9, 0]],
+      rz: [[0, 0], [0.5, 0.9], [1.4, 0.95], [1.95, 0.9], [3.35, 0.9], [3.9, 0]],
+      ry: [[0, 0], [0.5, 0.35], [1.4, 0.48], [1.95, 0.4], [3.35, 0.4], [3.9, 0]],
+      roll: [[0, 0], [0.5, -0.5], [1.4, -0.5], [1.95, -0.3], [2.4, -0.3], [2.65, -1.25], [2.85, -1.25], [3.05, -0.3], [3.9, 0]],
+      spin: [[0, 0], [1.42, 0], [1.92, TAU], [3.9, TAU]],
+      twirl: [[0, 0], [1.42, 0], [1.92, PI], [2.95, PI], [3.35, TAU], [3.9, TAU]],
+      open: [[0, 0], [1.38, 0], [1.45, 1], [1.88, 1], [1.95, 0], [2.92, 0], [2.98, 0.45], [3.3, 0.45], [3.38, 0]],
+      trail: [[0, 0], [1.45, 0], [1.52, 0.4], [1.85, 0.4], [1.92, 0]],
+      glint: [[0, 0], [0.55, 0], [0.75, 1], [1.2, 0], [2.0, 0], [2.2, 1], [2.55, 0]],
+      glintAt: [[0, 0.1], [0.55, 0.12], [1.2, 0.95], [2.0, 0.15], [2.55, 0.9]],
     } },
   },
   karambit: {
-    // brought up and spun twice around the index finger through the ring, then caught in a reverse grip
-    draw: { dur: 1.15, tracks: {
-      px: [[0, 0], [0.3, -0.07], [0.8, -0.06], [1.15, 0]],
-      py: [[0, -0.24], [0.3, 0.08], [0.8, 0.06], [1.15, 0]], rx: [[0, -0.6], [0.3, 0.06], [0.55, 0]],
-      spin: [[0, -2 * TAU], [0.8, 0], [1.15, 0]], rz: [[0, 0.25], [0.45, 0], [0.8, -0.08], [1.15, 0]],
+    // brought up spinning twice around the index finger through the ring, then caught in the fist
+    draw: { dur: 1.15, events: [[0.18, 'swish'], [0.5, 'swish']], tracks: {
+      px: [[0, 0.04], [0.3, -0.03], [0.85, -0.03], [1.15, 0]],
+      py: [[0, -0.24], [0.3, 0.04], [0.85, 0.03], [1.15, 0]],
+      rx: [[0, 0.6], [0.3, -0.06], [0.55, 0]],
+      spin: [[0, -2 * TAU], [0.82, 0]], open: [[0, 1], [0.72, 1], [0.86, 0]],
+      rz: [[0, -0.25], [0.45, 0], [0.86, 0.12], [1.15, 0]],
+      trail: [[0, 0], [0.12, 0.45], [0.72, 0.45], [0.84, 0]],
     } },
-    // shows the claw, spins it on the finger, flips to the other side, spins twice more
-    inspect: { dur: 4.0, tracks: {
-      px: [[0, 0], [0.45, -0.14], [3.5, -0.14], [4.0, 0]], py: [[0, 0], [0.45, 0.1], [3.5, 0.1], [4.0, 0]],
-      ry: [[0, 0], [0.45, 0.6], [1.7, 0.6], [2.1, 0.15], [3.5, 0.15], [4.0, 0]],
-      rz: [[0, 0], [0.45, -0.55], [1.7, -0.55], [2.1, 0.2], [3.5, 0.2], [4.0, 0]],
-      spin: [[0, 0], [0.9, 0], [1.5, TAU], [2.3, TAU], [3.2, 3 * TAU], [4.0, 3 * TAU]],
-      roll: [[0, 0], [1.7, 0], [2.1, PI], [3.3, PI], [3.8, TAU], [4.0, TAU]],
+    // shows the claw, spins it on the finger, turns it over, spins twice more
+    inspect: { dur: 4.2, events: [[0.95, 'swish'], [2.45, 'swish'], [2.95, 'swish']], tracks: {
+      px: [[0, 0], [0.45, -0.07], [3.7, -0.07], [4.2, 0]],
+      py: [[0, 0], [0.45, 0.07], [3.7, 0.07], [4.2, 0]],
+      pz: [[0, 0], [0.45, 0.03], [3.7, 0.03], [4.2, 0]],
+      rz: [[0, 0], [0.45, -0.35], [1.75, -0.35], [2.15, -0.1], [3.7, -0.1], [4.2, 0]],
+      ry: [[0, 0], [0.45, -0.25], [1.75, -0.25], [2.15, 0.2], [3.7, 0.2], [4.2, 0]],
+      twirl: [[0, 0], [1.75, 0], [2.15, PI], [3.7, PI], [4.2, TAU]],
+      spin: [[0, 0], [0.85, 0], [1.45, -TAU], [2.35, -TAU], [3.35, -3 * TAU], [4.2, -3 * TAU]],
+      open: [[0, 0], [0.78, 0], [0.86, 1], [1.45, 1], [1.55, 0], [1.75, 0], [1.8, 0.4], [2.1, 0.4], [2.28, 0], [2.36, 1], [3.35, 1], [3.45, 0]],
+      trail: [[0, 0], [0.88, 0], [0.98, 0.4], [1.4, 0.4], [1.45, 0], [2.36, 0], [2.46, 0.4], [3.3, 0.4], [3.35, 0]],
+      glint: [[0, 0], [0.4, 0], [0.55, 1], [0.8, 0]], glintAt: [[0, 0.2], [0.4, 0.2], [0.8, 0.95]],
     } },
   },
   flip: {
     // comes out folded, a flick of the wrist snaps the blade open
-    draw: { dur: 1.0, tracks: {
-      px: [[0, 0], [0.25, -0.05], [0.6, -0.04], [1.0, 0]],
-      py: [[0, -0.2], [0.25, 0.06], [0.6, 0.04], [1.0, 0]], rx: [[0, -0.55], [0.25, 0.05], [0.5, 0]],
-      blade: [[0, PI], [0.28, PI], [0.46, 0]],
-      rz: [[0, 0.15], [0.3, 0.2], [0.46, -0.3], [0.65, 0.05], [1.0, 0]],
+    draw: { dur: 1.0, events: [[0.42, 'bladeClick']], tracks: {
+      px: [[0, 0.04], [0.25, -0.03], [0.6, -0.02], [1.0, 0]],
+      py: [[0, -0.22], [0.25, 0.04], [0.6, 0.02], [1.0, 0]],
+      rx: [[0, 0.6], [0.25, -0.05], [0.5, 0]],
+      blade: [[0, PI], [0.28, PI], [0.44, 0]],
+      rz: [[0, -0.1], [0.3, -0.3], [0.44, 0.3], [0.65, -0.05], [1.0, 0]],
+      glint: [[0, 0], [0.44, 0], [0.55, 1], [0.8, 0]], glintAt: [[0, 0.95], [0.8, 0.45]],
     } },
-    // turns it over, folds the blade, flicks it open again, little toss and catch
-    inspect: { dur: 4.2, tracks: {
-      px: [[0, 0], [0.4, -0.13], [3.7, -0.13], [4.2, 0]],
-      py: [[0, 0], [0.4, 0.09], [2.95, 0.09], [3.15, 0.15], [3.45, 0.09], [3.7, 0.09], [4.2, 0]],
-      ry: [[0, 0], [0.4, 0.65], [3.7, 0.65], [4.2, 0]],
-      rz: [[0, 0], [0.4, -0.5], [2.35, -0.5], [2.5, -0.85], [2.7, -0.4], [3.7, -0.5], [4.2, 0]],
-      roll: [[0, 0], [0.5, 0], [1.1, PI], [1.7, PI], [2.2, TAU], [4.2, TAU]],
-      blade: [[0, 0], [1.75, 0], [2.05, PI], [2.4, PI], [2.55, 0], [4.2, 0]],
-      spin: [[0, 0], [2.95, 0], [3.45, TAU], [4.2, TAU]],
+    // turns it to the light, folds the blade, flicks it open again, little toss and catch
+    inspect: { dur: 4.3, events: [[1.95, 'bladeClick'], [2.55, 'bladeClick'], [3.05, 'swish']], tracks: {
+      px: [[0, 0], [0.4, -0.08], [3.8, -0.08], [4.3, 0]],
+      py: [[0, 0], [0.4, 0.06], [3.0, 0.06], [3.25, 0.13], [3.55, 0.06], [3.8, 0.06], [4.3, 0]],
+      pz: [[0, 0], [0.4, 0.03], [3.8, 0.03], [4.3, 0]],
+      rz: [[0, 0], [0.4, 0.5], [1.1, 0.55], [1.6, 0.3], [2.4, 0.3], [2.5, 0.7], [2.7, 0.2], [3.8, 0.3], [4.3, 0]],
+      ry: [[0, 0], [0.4, -0.3], [1.1, -0.3], [1.6, 0.25], [3.8, 0.25], [4.3, 0]],
+      twirl: [[0, 0], [1.05, 0], [1.6, PI], [3.8, PI], [4.3, TAU]],
+      blade: [[0, 0], [1.8, 0], [2.1, PI], [2.4, PI], [2.56, 0], [4.3, 0]],
+      spin: [[0, 0], [3.0, 0], [3.55, TAU], [4.3, TAU]],
+      open: [[0, 0], [1.05, 0], [1.1, 0.4], [1.55, 0.4], [1.62, 0], [2.98, 0], [3.05, 1], [3.5, 1], [3.6, 0]],
+      trail: [[0, 0], [3.05, 0], [3.15, 0.45], [3.45, 0.45], [3.55, 0]],
+      glint: [[0, 0], [0.45, 0], [0.65, 1], [0.95, 0], [2.6, 0], [2.75, 1], [3.0, 0]],
+      glintAt: [[0, 0.15], [0.95, 0.9], [2.6, 0.9], [3.0, 0.3]],
     } },
   },
   butterfly: {
     // starts closed: one handle swings open, the knife rolls over, the second handle swings, locked open
-    draw: { dur: 1.35, tracks: {
-      px: [[0, 0], [0.3, -0.07], [0.98, -0.06], [1.35, 0]],
-      py: [[0, -0.22], [0.3, 0.07], [0.98, 0.06], [1.35, 0]], rx: [[0, -0.5], [0.3, 0.04], [0.5, 0]],
+    draw: { dur: 1.35, events: [[0.4, 'swish'], [0.98, 'bladeClick']], tracks: {
+      px: [[0, 0.04], [0.3, -0.04], [0.98, -0.03], [1.35, 0]],
+      py: [[0, -0.22], [0.3, 0.05], [0.98, 0.04], [1.35, 0]],
+      rx: [[0, 0.5], [0.3, -0.04], [0.5, 0]],
       bfA: [[0, PI], [0.3, PI], [0.62, 0]], bfB: [[0, -PI], [0.62, -PI], [0.98, 0]],
-      roll: [[0, 0], [0.3, 0], [0.62, PI], [0.98, TAU], [1.35, TAU]],
-      rz: [[0, 0.2], [0.98, -0.1], [1.35, 0]],
+      roll: [[0, 0], [0.3, -0.55], [0.62, 0.9], [0.98, -0.35], [1.35, 0]],
+      rz: [[0, -0.2], [0.98, 0.1], [1.35, 0]],
+      trail: [[0, 0], [0.32, 0], [0.4, 0.35], [0.95, 0.35], [1.0, 0]],
     } },
     // two full open/close flips, then an aerial: tossed, spun and caught by the handle
-    inspect: { dur: 4.8, tracks: {
-      px: [[0, 0], [0.4, -0.13], [4.3, -0.13], [4.8, 0]],
-      py: [[0, 0], [0.4, 0.09], [3.0, 0.09], [3.25, 0.17], [3.6, 0.09], [4.3, 0.09], [4.8, 0]],
-      ry: [[0, 0], [0.4, 0.55], [4.3, 0.55], [4.8, 0]],
-      rz: [[0, 0], [0.4, -0.45], [4.3, -0.45], [4.8, 0]],
+    inspect: { dur: 4.8, events: [[0.8, 'bladeClick'], [1.3, 'bladeClick'], [2.2, 'bladeClick'], [2.95, 'bladeClick'], [3.05, 'swish']], tracks: {
+      px: [[0, 0], [0.4, -0.08], [4.3, -0.08], [4.8, 0]],
+      py: [[0, 0], [0.4, 0.06], [3.0, 0.06], [3.3, 0.15], [3.6, 0.06], [4.3, 0.06], [4.8, 0]],
+      pz: [[0, 0], [0.4, 0.03], [4.3, 0.03], [4.8, 0]],
+      rz: [[0, 0], [0.4, 0.45], [4.3, 0.45], [4.8, 0]],
+      ry: [[0, 0], [0.4, -0.25], [4.3, -0.25], [4.8, 0]],
       bfA: [[0, 0], [0.5, 0], [0.8, PI], [1.1, 0], [1.9, 0], [2.2, PI], [2.5, PI], [2.8, 0], [4.8, 0]],
       bfB: [[0, 0], [0.6, 0], [0.95, -PI], [1.3, 0], [2.0, 0], [2.3, -PI], [2.6, -PI], [2.95, 0], [4.8, 0]],
-      roll: [[0, 0], [0.5, 0], [1.3, TAU], [1.9, TAU], [2.95, 2 * TAU], [4.8, 2 * TAU]],
+      roll: [[0, 0], [0.5, 0], [0.8, 0.8], [1.1, -0.6], [1.3, 0], [1.9, 0], [2.2, 0.8], [2.6, -0.6], [2.95, 0], [4.8, 0]],
       spin: [[0, 0], [3.0, 0], [3.6, TAU], [4.8, TAU]],
+      open: [[0, 0], [2.98, 0], [3.04, 1], [3.55, 1], [3.65, 0]],
+      trail: [[0, 0], [0.5, 0], [0.6, 0.3], [1.25, 0.3], [1.3, 0], [1.9, 0], [2.0, 0.3], [2.9, 0.3], [3.0, 0], [3.1, 0.45], [3.5, 0.45], [3.6, 0]],
+      glint: [[0, 0], [3.65, 0], [3.8, 1], [4.1, 0]], glintAt: [[0, 0.2], [3.65, 0.2], [4.1, 0.9]],
     } },
   },
   sword: {
     // drawn from over the shoulder and swung down into the ready position
-    draw: { dur: 1.15, tracks: {
-      rx: [[0, 1.3], [0.45, -0.18], [0.7, 0.05], [1.15, 0]], ry: [[0, -0.5], [0.45, 0.12], [1.15, 0]],
-      py: [[0, 0.12], [0.45, -0.04], [1.15, 0]],
+    draw: { dur: 1.15, events: [[0.05, 'bladeDraw'], [0.2, 'swish']], tracks: {
+      px: [[0, 0.08], [0.42, -0.06], [1.15, 0]], py: [[0, 0.16], [0.42, -0.06], [0.75, 0.01], [1.15, 0]],
+      rx: [[0, 1.4], [0.42, -0.4], [0.75, 0.06], [1.15, 0]], ry: [[0, -0.5], [0.42, 0.2], [1.15, 0]],
+      trail: [[0, 0], [0.12, 0.8], [0.42, 0.8], [0.52, 0]],
+      glint: [[0, 0], [0.7, 0], [0.85, 1], [1.1, 0]], glintAt: [[0, 0.3], [1.1, 0.95]],
     } },
-    // two twirls around the grip, shows the blade, then a salute
-    inspect: { dur: 4.0, tracks: {
-      spin: [[0, 0], [0.35, 0], [1.35, 2 * TAU], [4.0, 2 * TAU]],
-      px: [[0, 0], [1.35, 0], [1.7, -0.1], [2.8, -0.1], [3.1, -0.04], [3.7, -0.04], [4.0, 0]],
-      py: [[0, 0], [1.35, 0], [1.7, 0.05], [2.8, 0.05], [3.1, 0], [4.0, 0]],
-      ry: [[0, 0], [1.35, 0], [1.7, 0.55], [2.8, 0.55], [3.1, 0], [4.0, 0]],
-      rz: [[0, 0], [1.35, 0], [1.7, -0.45], [2.8, -0.45], [3.1, 0]],
-      rx: [[0, 0], [3.0, 0], [3.3, 0.85], [3.7, 0.85], [4.0, 0]],
+    // two windmill spins around the grip, shows the blade, then a salute
+    inspect: { dur: 4.2, events: [[0.45, 'swish'], [0.95, 'swish']], tracks: {
+      spin: [[0, 0], [0.35, 0], [1.4, -2 * TAU], [4.2, -2 * TAU]],
+      open: [[0, 0], [0.3, 0], [0.38, 0.55], [1.35, 0.55], [1.45, 0]],
+      px: [[0, 0], [1.4, 0], [1.75, -0.08], [2.85, -0.08], [3.15, -0.03], [3.8, -0.03], [4.2, 0]],
+      py: [[0, 0], [1.4, 0], [1.75, 0.03], [2.85, 0.03], [3.15, 0], [4.2, 0]],
+      rz: [[0, 0], [1.4, 0], [1.75, 0.6], [2.85, 0.65], [3.15, 0]],
+      ry: [[0, 0], [1.4, 0], [1.75, -0.35], [2.85, -0.4], [3.15, 0]],
+      rx: [[0, 0], [3.1, 0], [3.4, 0.75], [3.8, 0.75], [4.2, 0]],
+      trail: [[0, 0], [0.4, 0], [0.5, 0.45], [1.3, 0.45], [1.4, 0]],
+      glint: [[0, 0], [1.8, 0], [2.0, 1], [2.7, 0]], glintAt: [[0, 0.1], [1.8, 0.1], [2.7, 1]],
+    } },
+  },
+  katana: {
+    // Iai draw: the sheathed katana comes up across the view with the left hand on the scabbard, the thumb pops
+    // it loose, the right hand rips the blade out as the left pulls the scabbard away, straight into a cut
+    // across the screen; the scabbard drops, a chiburi flick, and back to ready.
+    draw: { dur: 1.75, events: [[0.31, 'bladeClick'], [0.41, 'bladeDraw'], [0.64, 'swish'], [1.0, 'swish']], tracks: {
+      px: [[0, 0.04], [0.28, 0], [0.4, 0], [0.6, 0.06], [0.7, 0.02], [0.8, -0.03], [0.88, -0.06], [0.98, -0.05], [1.08, 0], [1.6, 0]],
+      py: [[0, -0.2], [0.28, 0.09], [0.31, 0.09], [0.34, 0.1], [0.4, 0.09], [0.6, 0.08], [0.8, 0.09], [0.88, 0.1], [0.98, 0.12], [1.08, 0.0], [1.2, 0.02], [1.6, 0]],
+      pz: [[0, 0.02], [0.28, 0], [0.4, 0], [0.6, 0.04], [0.8, -0.02], [1.3, 0]],
+      rx: [[0, 0.3], [0.28, -0.3], [0.6, -0.3], [0.7, -0.25], [0.8, -0.2], [0.98, 0.25], [1.08, -0.45], [1.2, -0.3], [1.65, 0]],
+      ry: [[0, 0.65], [0.6, 0.65], [0.7, 0.0], [0.8, -0.3], [0.88, -0.25], [1.08, -0.15], [1.65, 0]],
+      rz: [[0, 0.75], [0.6, 0.75], [0.7, 0.3], [0.8, -0.6], [0.88, -1.35], [0.98, -1.2], [1.08, -0.5], [1.2, -0.3], [1.65, 0]],
+      lvis: [[0, 1], [1.05, 1], [1.06, 0]],
+      attach: [[0, 1], [0.6, 1], [0.601, 0]],
+      sheath: [[0, 0], [0.3, 0], [0.35, 0.03], [0.41, 0.03], [0.6, 0.64]],
+      lpx: [[0, 0], [0.6, 0], [0.8, -0.05], [1.05, -0.12]],
+      lpy: [[0, 0], [0.6, 0], [0.8, -0.1], [1.05, -0.38]],
+      lpz: [[0, 0], [0.6, 0], [1.05, 0.06]],
+      lrz: [[0, 0], [0.6, 0], [1.05, 0.5]],
+      lrx: [[0, 0], [0.6, 0], [1.05, -0.4]],
+      trail: [[0, 0], [0.45, 0], [0.56, 0.5], [0.64, 1], [0.86, 1], [0.93, 0]],
+      glint: [[0, 0], [0.3, 0], [0.35, 1], [0.46, 0], [1.3, 0], [1.42, 1], [1.7, 0]],
+      glintAt: [[0, 0.01], [0.46, 0.02], [1.3, 0.1], [1.7, 1]],
+    } },
+    // windmill spins around the grip, turns the blade flat to run the light along it, chiburi flick
+    inspect: { dur: 4.6, events: [[0.45, 'swish'], [0.95, 'swish'], [3.6, 'swish']], tracks: {
+      spin: [[0, 0], [0.35, 0], [1.45, -2 * TAU], [4.6, -2 * TAU]],
+      open: [[0, 0], [0.3, 0], [0.38, 0.55], [1.4, 0.55], [1.5, 0]],
+      px: [[0, 0], [1.45, 0], [1.85, -0.09], [3.3, -0.09], [3.55, 0.03], [3.75, 0.04], [4.6, 0]],
+      py: [[0, 0], [1.45, 0], [1.85, 0.03], [3.3, 0.03], [3.55, -0.04], [4.6, 0]],
+      pz: [[0, 0], [1.45, 0], [1.85, 0.02], [3.3, 0.02], [3.55, 0], [4.6, 0]],
+      rz: [[0, 0], [1.45, 0], [1.85, 0.75], [3.3, 0.8], [3.55, -0.2], [4.6, 0]],
+      ry: [[0, 0], [1.45, 0], [1.85, -0.25], [3.3, -0.3], [3.55, 0.2], [4.6, 0]],
+      rx: [[0, 0], [1.45, 0], [1.85, 0.1], [3.3, 0.1], [3.5, -0.35], [3.65, 0.1], [4.6, 0]],
+      trail: [[0, 0], [0.4, 0], [0.5, 0.45], [1.35, 0.45], [1.45, 0], [3.35, 0], [3.45, 0.8], [3.62, 0.8], [3.7, 0]],
+      glint: [[0, 0], [1.95, 0], [2.15, 1], [3.05, 1], [3.25, 0]], glintAt: [[0, 0.05], [1.95, 0.05], [3.25, 1]],
     } },
   },
 };
@@ -226,33 +476,96 @@ function sampleTrack(keys, t) {
 }
 
 export const KNIFE_SKINS = [
-  // pivot = the point (in blade space) the knife spins around: the karambit's finger ring, a sword's grip...
-  { id: 'knife', name: 'Knife', build: knifeRegular, pivot: [-0.05, 0] },
-  { id: 'karambit', name: 'Karambit', build: knifeKarambit, pivot: [-0.1163, -0.0297] },
-  { id: 'flip', name: 'Flip Knife', build: knifeFlip, pivot: [-0.05, 0] },
-  { id: 'butterfly', name: 'Butterfly Knife', build: knifeButterfly, pivot: [-0.03, 0] },
-  { id: 'sword', name: 'Sword', build: knifeSword, pivot: [-0.06, 0] },
+  // grip: the point (in blade space) the fist closes around; pivot: what `spin` turns around (karambit: its ring);
+  // gripAngle: how far the handle is tilted from the blade; reverse: blade comes out of the little-finger side;
+  // trail: blade base and tip, for glints and the slash trail (which starts trailFrom of the way up long blades).
+  { id: 'knife', name: 'Knife', build: knifeRegular, grip: [-0.058, 0.002], pivot: [-0.058, 0.002],
+    trail: [[0.02, 0.003], [0.178, 0.01]] },
+  { id: 'karambit', name: 'Karambit', build: knifeKarambit, reverse: true, gripAngle: 0.25, ring: true,
+    grip: [-0.072, -0.018], pivot: [-0.1163, -0.0297], trail: [[0.02, 0.006], [0.118, -0.056]] },
+  { id: 'flip', name: 'Flip Knife', build: knifeFlip, grip: [-0.064, 0.003], pivot: [-0.064, 0.003],
+    trail: [[0.02, 0.0], [0.178, -0.002]] },
+  { id: 'butterfly', name: 'Butterfly Knife', build: knifeButterfly, grip: [-0.06, -0.004], pivot: [-0.03, -0.004],
+    trail: [[0.02, 0.008], [0.172, 0.01]] },
+  { id: 'sword', name: 'Sword', build: knifeSword, gripAngle: 0.12, grip: [-0.07, -0.0084], pivot: [-0.07, -0.0084],
+    trail: [[0.04, 0.005], [0.69, 0.083]], trailFrom: 0.5, big: true },
+  { id: 'katana', name: 'Katana', build: knifeKatana, grip: [-0.06, 0], pivot: [-0.07, 0],
+    trail: [arcPt(0.03, -0.004), arcPt(KAT_L + 0.012, 0.004)], trailFrom: 0.5, big: true, katana: true },
 ];
 export function knifeName(id) { return (KNIFE_SKINS.find((s) => s.id === id) || KNIFE_SKINS[0]).name; }
 
+// rest poses of the right hand in view space (before the whole view model's 0.85 scale)
+// p: wrist position, r: hand rotation (YXZ), elbow: where the forearm goes back to (below the screen edge)
+const POSE = {
+  base: { p: [-0.01, 0.03, 0.09], r: [1.11, -0.66, 0.75], elbow: [0.3, -0.3, 0.22] },
+  karambit: { p: [-0.03, 0.07, 0.08], r: [-0.34, 2.43, 2.11], elbow: [0.3, -0.3, 0.22] },
+  big: { p: [0.02, -0.02, 0.06], r: [0.7, -0.51, 0.9], elbow: [0.3, -0.3, 0.22] },
+};
+const TILT = 0.8;          // saber grip: the handle runs diagonally across the palm so the blade leans forward
+const L_FOREARM = new THREE.Vector3(-0.45, -0.75, 0.5).normalize().multiplyScalar(0.32); // left wrist -> elbow
+// basis that maps blade space (x along the blade, y spine, z flat side) into a fist
+const FWD = new THREE.Matrix4().makeBasis(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1), new THREE.Vector3(1, 0, 0));
+const REV = new THREE.Matrix4().makeBasis(new THREE.Vector3(0, -1, 0), new THREE.Vector3(0, 0, 1), new THREE.Vector3(-1, 0, 0));
+
+// a forearm: a stick from the wrist back to an elbow below the screen edge
+function forearm(g) {
+  const m = new THREE.Mesh(box, mat(WOOD));
+  g.add(m);
+  return m;
+}
+const _v = new THREE.Vector3(), _zAxis = new THREE.Vector3(0, 0, 1);
+function aimLimb(m, from, to, thick = 0.036) {
+  _v.subVectors(to, from);
+  const len = _v.length();
+  m.position.copy(from).addScaledVector(_v, 0.5);
+  m.scale.set(thick, thick, len);
+  m.quaternion.setFromUnitVectors(_zAxis, _v.normalize());
+}
+
 function buildKnife(skin, band) {
   const g = new THREE.Group();
-  const holder = new THREE.Group();
-  holder.position.set(0, -0.055, 0.04);
-  holder.rotation.set(0.25, 0.35, 0); // tip angled up and toward the screen center
-  const k = new THREE.Group();        // knife in "shape space" (x forward, y up)
-  k.rotation.order = 'YXZ';           // so rotation.x twirls around the blade's length
-  k.rotation.set(0, Math.PI / 2, 0);  // shape +x -> view -z
-  const spin = new THREE.Group();     // spins in the blade's plane around the skin's pivot
-  spin.position.set(skin.pivot[0], skin.pivot[1], 0);
-  const inner = new THREE.Group();
-  inner.position.set(-skin.pivot[0], -skin.pivot[1], 0);
+  const hand = buildHand(band);
+  const H = hand.group; g.add(H);
+  const holder = new THREE.Group();       // puts the knife's grip in the fist
+  holder.quaternion.setFromRotationMatrix(skin.reverse ? REV : FWD)
+    .premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), skin.reverse ? 0 : -TILT));
+  holder.position.copy(GRIP);
+  H.add(holder);
+  const k = new THREE.Group(); holder.add(k);                 // twirl: rotation.x turns it around the handle
+  const align = new THREE.Group(); align.rotation.z = -(skin.gripAngle || 0); k.add(align);
+  const spin = new THREE.Group();                             // spins in the blade's plane around the pivot
+  spin.position.set(skin.pivot[0] - skin.grip[0], skin.pivot[1] - skin.grip[1], 0); align.add(spin);
+  const inner = new THREE.Group(); inner.position.set(-skin.pivot[0], -skin.pivot[1], 0); spin.add(inner);
   const parts = {};
   skin.build(inner, parts);
-  spin.add(inner); k.add(spin); holder.add(k); g.add(holder);
-  arms(g, band, false);
+  const tp = parts.trailParent || inner;
+  const tA = new THREE.Object3D(); tA.position.set(skin.trail[0][0], skin.trail[0][1], 0); tp.add(tA);
+  const tB = new THREE.Object3D(); tB.position.set(skin.trail[1][0], skin.trail[1][1], 0); tp.add(tB);
+  const pose = POSE[skin.id] || (skin.big ? POSE.big : POSE.base);
+  const elbow = new THREE.Vector3(...pose.elbow);   // stays put; the forearm swings from it as the hand moves
+  const kn = { skin, hand, H, k, spin, parts, tA, tB, pose, elbow, clips: CLIPS[skin.id], arm: forearm(g) };
+  if (skin.katana) {
+    // left hand holding the scabbard, used by the draw
+    const S = new THREE.Group(); S.visible = false; g.add(S);
+    buildSaya(S);
+    const lh = buildHand(band);
+    const mirror = new THREE.Group(); mirror.scale.x = -1; mirror.add(lh.group);
+    const LH = new THREE.Group(); LH.add(mirror); S.add(LH);
+    // the left fist closes around the scabbard near its mouth, thumb toward the guard
+    const toHand = new THREE.Matrix4().copy(REV);
+    const gp = new THREE.Vector3(0.075, -0.004, 0).applyMatrix4(toHand);
+    toHand.setPosition(GRIP.x * -1 - gp.x, GRIP.y - gp.y, GRIP.z - gp.z);
+    toHand.invert().decompose(LH.position, LH.quaternion, LH.scale);
+    setGrip(lh, 0, false);
+    // blade space -> right hand space, to put the scabbard on the blade
+    holder.updateMatrix(); k.updateMatrix(); align.updateMatrix(); spin.updateMatrix(); inner.updateMatrix();
+    const shapeToHand = new THREE.Matrix4().copy(holder.matrix).multiply(k.matrix).multiply(align.matrix)
+      .multiply(spin.matrix).multiply(inner.matrix);
+    Object.assign(kn, { S, LH, lhand: lh, larm: forearm(g), shapeToHand,
+      drop: { p: new THREE.Vector3(), q: new THREE.Quaternion() } });
+  }
   g.userData.muzzle = null;
-  g.userData.knife = { k, spin, parts, clips: CLIPS[skin.id] };
+  g.userData.knife = kn;
   return g;
 }
 
@@ -345,23 +658,115 @@ function buildModels(team) {
   return models;
 }
 
+// ---------- slash trail + glint ----------
+// A ribbon swept by the blade over the last fraction of a second, drawn additively so it glows.
+class Trail {
+  constructor() {
+    this.max = 160;
+    const geo = new THREE.BufferGeometry();
+    this.pos = new Float32Array(this.max * 6);
+    this.col = new Float32Array(this.max * 8);
+    geo.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
+    geo.setAttribute('color', new THREE.BufferAttribute(this.col, 4).setUsage(THREE.DynamicDrawUsage));
+    const idx = [];
+    for (let i = 0; i < this.max - 1; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+    geo.setIndex(idx);
+    this.mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+      vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    }));
+    this.mesh.frustumCulled = false; this.mesh.visible = false; this.mesh.renderOrder = 2;
+    this.samples = [];
+    this.life = 0.13;
+    this.color = new THREE.Color(0xd8ecff);
+  }
+  clear() { this.samples.length = 0; this.mesh.visible = false; }
+  add(a, b, s, t) {
+    const last = this.samples[this.samples.length - 1];
+    if (last && t - last.t < 1 / 200) return;
+    this.samples.push({ a: a.clone(), b: b.clone(), s, t });
+  }
+  update(now) {
+    const S = this.samples;
+    while (S.length && now - S[0].t > this.life) S.shift();
+    if (S.length < 2) { this.mesh.visible = false; return; }
+    const sub = Math.max(1, Math.min(6, Math.floor((this.max - 1) / (S.length - 1))));
+    let n = 0;
+    const put = (p0, p1, p2, p3, u) => {
+      const t = p1.t + (p2.t - p1.t) * u, s = p1.s + (p2.s - p1.s) * u;
+      const fade = Math.max(0, 1 - (now - t) / this.life), al = s * fade * fade;
+      for (const [key, off, alpha] of [['a', 0, al * 0.12], ['b', 1, al * 0.75]]) {
+        const i = (n * 2 + off);
+        for (let c = 0; c < 3; c++) {
+          const ax = 'xyz'[c];
+          const v0 = p0[key][ax], v1 = p1[key][ax], v2 = p2[key][ax], v3 = p3[key][ax];
+          this.pos[i * 3 + c] = 0.5 * ((2 * v1) + (-v0 + v2) * u + (2 * v0 - 5 * v1 + 4 * v2 - v3) * u * u + (-v0 + 3 * v1 - 3 * v2 + v3) * u * u * u);
+        }
+        this.col[i * 4] = this.color.r; this.col[i * 4 + 1] = this.color.g; this.col[i * 4 + 2] = this.color.b;
+        this.col[i * 4 + 3] = alpha;
+      }
+      n++;
+    };
+    for (let i = 0; i < S.length - 1; i++) {
+      const p0 = S[Math.max(0, i - 1)], p1 = S[i], p2 = S[i + 1], p3 = S[Math.min(S.length - 1, i + 2)];
+      for (let j = 0; j < sub && n < this.max - 1; j++) put(p0, p1, p2, p3, j / sub);
+    }
+    const L = S.length - 1;
+    put(S[Math.max(0, L - 1)], S[L], S[L], S[L], 0);
+    const geo = this.mesh.geometry;
+    geo.attributes.position.needsUpdate = true; geo.attributes.color.needsUpdate = true;
+    geo.setDrawRange(0, (n - 1) * 6);
+    this.mesh.visible = true;
+  }
+}
+
+function sparkleTexture() {
+  const S = 128, c = document.createElement('canvas'); c.width = c.height = S;
+  const ctx = c.getContext('2d');
+  ctx.translate(S / 2, S / 2);
+  const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, S * 0.22);
+  glow.addColorStop(0, 'rgba(255,255,255,1)'); glow.addColorStop(0.35, 'rgba(210,235,255,0.55)'); glow.addColorStop(1, 'rgba(160,200,255,0)');
+  ctx.fillStyle = glow; ctx.fillRect(-S / 2, -S / 2, S, S);
+  ctx.fillStyle = '#fff';
+  for (const [len, w, rot] of [[0.5, 0.035, 0], [0.5, 0.035, Math.PI / 2], [0.26, 0.025, Math.PI / 4], [0.26, 0.025, -Math.PI / 4]]) {
+    ctx.save(); ctx.rotate(rot);
+    ctx.beginPath(); ctx.moveTo(-S * len, 0); ctx.lineTo(0, -S * w); ctx.lineTo(S * len, 0); ctx.lineTo(0, S * w); ctx.fill();
+    ctx.restore();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+const TRACKS = ['px', 'py', 'pz', 'rx', 'ry', 'rz', 'roll', 'twirl', 'spin', 'open', 'blade', 'bfA', 'bfB', 'trail', 'glint', 'glintAt',
+  'sheath', 'attach', 'lpx', 'lpy', 'lpz', 'lrx', 'lry', 'lrz', 'lvis'];
+const _e = new THREE.Euler(), _q = new THREE.Quaternion(), _m = new THREE.Matrix4(), _m2 = new THREE.Matrix4();
+const _p = new THREE.Vector3(), _s = new THREE.Vector3(), _a = new THREE.Vector3(), _b = new THREE.Vector3();
+
 export class ViewModel {
   constructor() {
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.01, 10);
     this.scene.add(new THREE.HemisphereLight(0xfff4e0, 0x6a5a48, 2.2));
     const sun = new THREE.DirectionalLight(0xfff1d6, 1.8); sun.position.set(1, 2, 1); this.scene.add(sun);
+    const rim = new THREE.DirectionalLight(0xcfe2ff, 0.9); rim.position.set(-1.5, 0.6, -0.4); this.scene.add(rim); // picks out blade edges
     this.root = new THREE.Group();
     this.root.scale.setScalar(0.85);
     this.scene.add(this.root);
     this.flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: flashTexture(), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
     this.flash.scale.set(0.16, 0.16, 0.16); this.flash.visible = false;
     this.scene.add(this.flash);
+    this.trail = new Trail();
+    this.scene.add(this.trail.mesh);
+    this.glint = new THREE.Sprite(new THREE.SpriteMaterial({ map: sparkleTexture(), blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, transparent: true }));
+    this.glint.visible = false; this.glint.renderOrder = 3;
+    this.scene.add(this.glint);
     this.team = null; this.models = null; this.current = null; this.key = null;
     this.knifeSkin = 'knife';
-    this.bob = 0; this.swayX = 0; this.swayY = 0; this.kick = 0; this.flashT = 0; this.swing = 0;
+    this.bob = 0; this.swayX = 0; this.swayY = 0; this.kick = 0; this.flashT = 0;
     this.inspectT = 0;           // generic gun inspect
-    this.clip = null; this.clipT = 0; // knife draw / inspect keyframe animation
+    this.clip = null; this.clipT = 0; // knife draw / inspect / slash keyframe animation
+    this.slashN = 0; this.clock = 0;
+    this.v = Object.fromEntries(TRACKS.map((n) => [n, 0]));
   }
 
   setTeam(team) {
@@ -382,6 +787,7 @@ export class ViewModel {
     this.current = this.models[vmKey];
     if (this.current) this.current.visible = true;
     this.inspectT = 0; this.clip = null;
+    this.trail.clear();
     const knife = this.current?.userData.knife;
     if (knife) this.play(knife.clips.draw);   // every knife has its own draw animation
   }
@@ -389,8 +795,13 @@ export class ViewModel {
   play(clip) { this.clip = clip; this.clipT = 0; }
 
   fire(melee) {
-    this.inspectT = 0; this.clip = null;      // attacking cancels draw / inspect
-    if (melee) { this.swing = 1; return; }
+    this.inspectT = 0;
+    if (melee) {                               // attacking cancels draw / inspect: alternate forehand and backhand slashes
+      this.slashN ^= 1;
+      this.play(this.slashN ? SLASH.a : SLASH.b);
+      return;
+    }
+    this.clip = null;
     this.kick = 1;
     this.flashT = 0.045;
     this.flash.material.rotation = Math.random() * 6;
@@ -408,6 +819,7 @@ export class ViewModel {
     const w = p.weapon;
     if (!w) return;
     this.setWeapon(w.def.melee ? 'knife_' + this.knifeSkin : w.def.vm);
+    this.clock += dt;
     const t = game.time;
     const sp = p.horizSpeed();
     const moving = p.body.onGround ? Math.min(1, sp / 5) : 0;
@@ -417,13 +829,11 @@ export class ViewModel {
     this.swayX = Math.max(-0.05, Math.min(0.05, this.swayX));
     this.swayY = Math.max(-0.05, Math.min(0.05, this.swayY));
     this.kick = Math.max(0, this.kick - dt * 12);
-    this.swing = Math.max(0, this.swing - dt * 3.5);
 
     let x = 0.16 + Math.sin(this.bob) * 0.012 * moving + this.swayX;
     let y = -0.17 - Math.abs(Math.cos(this.bob)) * 0.012 * moving + this.swayY + (p.body.onGround ? 0 : 0.02);
     let z = -0.38 + this.kick * 0.04;
     let rx = this.kick * 0.06, ry = 0, rz = 0;
-    if (w.def.melee) { x -= 0.02; y += 0.07; z -= 0.02; rz += 0.1; } // knives sit higher in view
 
     if (p.reloading) {
       this.inspectT = 0;
@@ -435,11 +845,6 @@ export class ViewModel {
       const k = (p.deployUntil - t) / (w.def.deploy || 0.5);
       y -= k * k * 0.3; rx -= k * 0.6;
     }
-    if (this.swing > 0) {
-      const s = Math.sin(this.swing * Math.PI);
-      const big = this.key === 'knife_sword' ? 1.5 : 1;
-      ry += s * 0.9 * big; rz -= s * 0.6 * big; x -= s * 0.08; z -= s * 0.06;
-    }
     // gun inspect: turn the weapon to show it off
     if (this.inspectT > 0) {
       this.inspectT -= dt;
@@ -448,25 +853,13 @@ export class ViewModel {
       x -= e * 0.07; y += e * 0.04; z += e * 0.05;
       ry += e * 0.75; rz -= e * 0.55 + Math.sin(k * Math.PI * 2) * 0.15 * e; rx += e * 0.2;
     }
-    // knife draw / inspect keyframes
-    const knife = this.current?.userData.knife;
-    if (knife) {
-      const v = { px: 0, py: 0, pz: 0, rx: 0, ry: 0, rz: 0, roll: 0, spin: 0, blade: 0, bfA: 0, bfB: 0 };
-      if (this.clip) {
-        this.clipT += dt;
-        for (const [name, keys] of Object.entries(this.clip.tracks)) v[name] = sampleTrack(keys, this.clipT);
-        if (this.clipT >= this.clip.dur) this.clip = null;
-      }
-      x += v.px; y += v.py; z += v.pz; rx += v.rx; ry += v.ry; rz += v.rz;
-      knife.k.rotation.x = v.roll;
-      knife.spin.rotation.z = v.spin;
-      const P = knife.parts;
-      if (P.blade) P.blade.rotation.z = v.blade;
-      if (P.bfA) { P.bfA.rotation.z = v.bfA; P.bfB.rotation.z = v.bfB; }
-    }
     this.root.position.set(x, y, z);
     this.root.rotation.set(rx, ry, rz);
     this.root.visible = !p.scoped;
+
+    const knife = this.current?.userData.knife;
+    if (knife) this.animateKnife(knife, dt, game);
+    else { this.trail.clear(); this.glint.visible = false; }
 
     this.flashT -= dt;
     const mz = this.current?.userData.muzzle;
@@ -475,5 +868,74 @@ export class ViewModel {
       mz.getWorldPosition(this.flash.position);
       this.flash.visible = true;
     } else this.flash.visible = false;
+  }
+
+  // knife draw / inspect / slash keyframes, the hands, the trail and the glint
+  animateKnife(kn, dt, game) {
+    const v = this.v;
+    for (const n of TRACKS) v[n] = 0;
+    if (this.clip) {
+      const c = this.clip, t0 = this.clipT;
+      this.clipT += dt;
+      for (const name in c.tracks) v[name] = sampleTrack(c.tracks[name], this.clipT);
+      if (c.events && game?.sound) {
+        for (const [et, snd] of c.events) if ((et > t0 || (et === 0 && t0 === 0)) && et <= this.clipT) game.sound[snd]?.();
+      }
+      if (this.clipT >= c.dur) this.clip = null;
+    }
+    const { H, pose } = kn;
+    // hand = screen-space turn (rx ry rz) * rest pose * wrist roll around the forearm
+    H.quaternion.setFromEuler(_e.set(v.rx, v.ry, v.rz, 'YXZ'))
+      .multiply(_q.setFromEuler(_e.set(pose.r[0], pose.r[1], pose.r[2], 'YXZ')))
+      .multiply(_q.setFromAxisAngle(_zAxis, v.roll));
+    H.position.set(pose.p[0] + v.px, pose.p[1] + v.py, pose.p[2] + v.pz);
+    kn.k.rotation.x = v.twirl;
+    kn.spin.rotation.z = v.spin;
+    setGrip(kn.hand, Math.min(1, Math.max(0, v.open)), kn.skin.ring);
+    const P = kn.parts;
+    if (P.blade) P.blade.rotation.z = v.blade;
+    if (P.bfSwing) { P.bfSwing.rotation.z = -v.bfB; P.bfA.rotation.z = v.bfA; }
+
+    if (kn.S) {
+      const S = kn.S;
+      S.visible = kn.larm.visible = v.lvis > 0.5;
+      if (S.visible) {
+        if (v.attach > 0.5) {
+          // the scabbard rides the blade, slid `sheath` meters along its curve toward the tip (the left hand
+          // pulls it off while the right hand draws)
+          H.updateMatrix();
+          const beta = v.sheath / KAT_R;
+          _m.makeTranslation(0, KAT_R, 0).multiply(_m2.makeRotationZ(beta)).multiply(_m2.makeTranslation(0, -KAT_R, 0));
+          _m.premultiply(kn.shapeToHand).premultiply(H.matrix);
+          _m.decompose(kn.drop.p, kn.drop.q, _s);
+          S.position.copy(kn.drop.p); S.quaternion.copy(kn.drop.q);
+        } else {
+          // let go: it falls away from where it left the blade
+          S.position.set(v.lpx, v.lpy, v.lpz).add(kn.drop.p);
+          S.quaternion.copy(kn.drop.q).multiply(_q.setFromEuler(_e.set(v.lrx, v.lry, v.lrz, 'YXZ')));
+        }
+        S.updateMatrix();
+        _a.set(0, 0, 0.014).applyMatrix4(kn.LH.matrix).applyMatrix4(S.matrix);
+        aimLimb(kn.larm, _a, _b.copy(_a).add(L_FOREARM));
+      }
+    }
+    _a.set(0, 0, 0.014).applyQuaternion(H.quaternion).add(H.position);
+    aimLimb(kn.arm, _a, kn.elbow);
+
+    // trail and glint follow the blade in view space
+    this.root.updateMatrixWorld(true);
+    kn.tA.getWorldPosition(_a); kn.tB.getWorldPosition(_b);
+    if (v.trail > 0.01 && this.root.visible) {
+      _p.lerpVectors(_a, _b, kn.skin.trailFrom || 0);
+      this.trail.add(_p, _b, Math.min(1, v.trail), this.clock);
+    }
+    this.trail.update(this.clock);
+    if (v.glint > 0.01 && this.root.visible) {
+      this.glint.position.lerpVectors(_a, _b, v.glintAt);
+      const s = 0.075 * v.glint * (kn.skin.big ? 1.3 : 1);
+      this.glint.scale.set(s, s, s);
+      this.glint.material.rotation = this.clock * 2.5;
+      this.glint.visible = true;
+    } else this.glint.visible = false;
   }
 }
