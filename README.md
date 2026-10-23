@@ -17,10 +17,13 @@ No build step, no server code, no assets to download — every texture, model an
   CTs vary their setup (2-1-2 or stacking a site) and can rotate back after falling for a fake
 - Every fighter is a "Tung Tung Tung Sahur" kentongan log: dome top, bulging eyes, toothy grin, bare feet,
   and a baseball bat (slung on the back, swung in melee). Team color is the hanging rope: orange = T, blue = CT.
-- Knife skins picked in the menu: Knife, Karambit, Flip, Butterfly (with flips), Sword, Katana. Skins are cosmetic.
-  Every knife has its own CS2-style draw and inspect (**F**) animation, held in a jointed hand that lets go
-  for spins and tosses. Attacks alternate forehand and backhand slashes with a glowing trail. The Katana does an
-  iai draw: it comes out of a scabbard held in your left hand, straight into a cut across the screen.
+- Knife skins picked in the menu: Knife, Karambit, Flip, Butterfly (with flips), Sword, Katana, Kuronami no Yaiba.
+  Skins are cosmetic. Every knife has its own CS2-style draw and inspect (**F**) animation, held in a jointed hand
+  that lets go for spins and tosses. Attacks alternate forehand and backhand slashes with a glowing trail. The Katana
+  does an iai draw: it comes out of a scabbard held in your left hand, straight into a cut across the screen.
+- Kuronami no Yaiba (after Valorant's Kuronami melee): two chained kunai, one in each hand, with glowing blue edges.
+  They float up and whirl over your open palms on the draw, attacks fling a kunai out on its chain in a wide blue
+  arc and yank it back, and the inspect spins one like a propeller (press **F** again to spin it faster).
 - 10 static crosshairs (no spread): Classic Green, s1mple, ZywOo, NiKo, donk, m0NESY, T-Shape, Dot Only,
   Cross + Dot, Circle + Dot. Pro presets use the most commonly reported 2026 settings; pros change them often.
   Add or edit presets in `src/crosshair.js`.

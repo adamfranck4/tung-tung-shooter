@@ -269,6 +269,59 @@ function buildSaya(parent) {
   b(parent, 0.012, 0.03, 0.024, 0x9b1d22, kx + 0.01, ky + 0.004, 0, 0, 0, -0.35);
 }
 
+// ----- Kuronami no Yaiba (Valorant): a pair of kunai joined by a chain, kusarigama style -----
+// Each kunai: an arrowhead blade with two barbs at its base, dark steel with a silver bevel and a glowing
+// blue edge, a little glowing glyph, a square collar, a maroon cord-wrapped handle, and a hooked pommel
+// with the ring the chain hangs from.
+const KUNAI_TIP = 0.178;
+const GLOW = {};
+function glow(c) { return GLOW[c] || (GLOW[c] = new THREE.MeshBasicMaterial({ color: c })); }
+function gunmetal(c) {
+  return STEEL['g' + c] || (STEEL['g' + c] = new THREE.MeshPhongMaterial({
+    color: c, shininess: 120, specular: 0xb4c4dc, envMap: studioEnv(), reflectivity: 0.22, combine: THREE.MixOperation,
+  }));
+}
+function knifeKunai(k, parts) {
+  const D = 0.0055;
+  k.add(bladeMesh(shapeFrom((s) => {
+    s.moveTo(0, 0.009); s.lineTo(-0.007, 0.022); s.lineTo(KUNAI_TIP, 0);
+    s.lineTo(-0.007, -0.022); s.lineTo(0, -0.009);
+  }), D, 0x343c4d, gunmetal));
+  k.add(bladeMesh(shapeFrom((s) => {                                   // the dark hollow down the middle
+    s.moveTo(0.008, 0.0115); s.lineTo(0.128, 0.0012); s.lineTo(0.128, -0.0012); s.lineTo(0.008, -0.0115);
+  }), D + 0.0008, 0x151a26, darkSteel));
+  for (const side of [1, -1]) {                                        // glowing edges, brightest at the tip
+    k.add(bladeMesh(shapeFrom((s) => {
+      s.moveTo(0.02, side * 0.0198); s.lineTo(KUNAI_TIP + 0.0015, 0); s.lineTo(0.02, side * 0.0142);
+    }), D + 0.0004, 0x9fe6ff, glow));
+  }
+  const rune = glow(0x6fd0ff);                                         // the little glyph on each face
+  for (const z of [D / 2 + 0.0024, -D / 2 - 0.0024]) {
+    b(k, 0.0014, 0.012, 0.0006, 0, 0.032, 0, z, 0, 0, 0.15, rune);
+    b(k, 0.0014, 0.007, 0.0006, 0, 0.0285, 0.0035, z, 0, 0, 0.9, rune);
+    b(k, 0.0014, 0.007, 0.0006, 0, 0.0355, -0.003, z, 0, 0, 0.75, rune);
+    b(k, 0.0014, 0.006, 0.0006, 0, 0.036, 0.004, z, 0, 0, -0.7, rune);
+  }
+  b(k, 0.016, 0.022, 0.013, 0, -0.008, 0, 0, 0, 0, 0, steel(0xaab2bf));          // collar
+  b(k, 0.01, 0.014, 0.0142, 0, -0.008, 0, 0, 0, 0, 0, shiny(0x1c212b));           // ...and its dark inset
+  b(k, 0.072, 0.016, 0.0135, 0x4b1d1f, -0.052, 0, 0);                             // handle
+  for (let i = 0; i < 5; i++) {                                                    // cord wrap
+    const x = -0.024 - i * 0.0132;
+    b(k, 0.02, 0.0042, 0.0145, 0x2a0f12, x, 0, 0, 0, 0, 0.62);
+    b(k, 0.02, 0.0042, 0.0145, 0x2a0f12, x, 0, 0, 0, 0, -0.62);
+  }
+  b(k, 0.004, 0.018, 0.0148, 0x1a1c22, -0.018, 0, 0);
+  b(k, 0.004, 0.018, 0.0148, 0x1a1c22, -0.086, 0, 0);
+  b(k, 0.012, 0.019, 0.015, 0, -0.094, 0, 0, 0, 0, 0, shiny(0x252a35));           // pommel block
+  k.add(bladeMesh(shapeFrom((s) => {                                               // hooked claw on the pommel
+    s.moveTo(-0.089, 0.006); s.quadraticCurveTo(-0.091, 0.03, -0.12, 0.039);
+    s.quadraticCurveTo(-0.101, 0.024, -0.1, 0.006);
+  }), 0.005, 0xc8ced8));
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.0062, 0.0019, 5, 12), steel(0xbfc6d1));
+  ring.scale.set(1.3, 1, 1); ring.rotation.x = PI / 2; ring.position.set(-0.106, -0.004, 0); k.add(ring);
+  parts.ring = new THREE.Object3D(); parts.ring.position.set(-0.112, -0.004, 0); k.add(parts.ring);
+}
+
 // ---------- CS2-style animations ----------
 // Keyframe tracks [time, value]; values blend with an ease-in-out between keys.
 //   px py pz : the wrist's offset from its rest position (meters)
@@ -280,7 +333,12 @@ function buildSaya(parent) {
 //   trail : brightness of the slash trail        glint / glintAt : sparkle on the blade and where (0 base .. 1 tip)
 //   katana draw: lvis (scabbard shown), attach (1 = scabbard on the blade), sheath (meters slid off the blade),
 //                lpx..lrz (how the scabbard falls once let go)
+//   kuronami: reach (meters the kunai has flown out of the fist on its chain; with spin it orbits the fist),
+//             lpx..lrz move the left hand, and lspin / lreach / lopen / ltrail are the left kunai's spin, reach,
+//             fingers and trail
+// A key [time, value, 1] is reached at a constant speed instead of easing (for steady spins).
 // events: [time, sound] pairs played as the clip passes them.
+// loop: [from, to] (kuronami inspect): pressing inspect again inside it spins faster and repeats that stretch.
 const PI = Math.PI, TAU = Math.PI * 2;
 const SLASH = {
   // forehand: cocked back to the right, ripped across to the left
@@ -304,6 +362,9 @@ const SLASH = {
     trail: [[0, 0], [0.08, 0.15], [0.12, 1], [0.21, 1], [0.27, 0]],
   } },
 };
+// a pose held from a to b, eased in from rest before it and back to rest by c (kept: held through a draw)
+const held = (v, a, b, c) => [[0, 0], [a, v], [b, v], [c, 0]];
+const kept = (v) => [[0, v], [0.45, v], [0.6, 0]];
 const CLIPS = {
   knife: {
     // flipped up from below, spun once in the open hand and caught
@@ -464,13 +525,89 @@ const CLIPS = {
       glint: [[0, 0], [1.95, 0], [2.15, 1], [3.05, 1], [3.25, 0]], glintAt: [[0, 0.05], [1.95, 0.05], [3.25, 1]],
     } },
   },
+  // Kuronami no Yaiba, timed from Riot's preview video. The hand angles below turn each spin into the plane it
+  // needs (flat rings over the palms, a propeller facing you, or a sweep across the screen).
+  kuronami: {
+    // floats in: both hands come up open while the kunai whirl in glowing rings over the palms, then snatch them
+    draw: { dur: 0.95, trailFrom: 0.6, events: [[0.02, 'chain'], [0.16, 'swish'], [0.33, 'swish'], [0.55, 'bladeClick']], tracks: {
+      px: [[0, 0.04], [0.15, 0.03], [0.45, 0.02], [0.56, -0.01], [0.95, 0]],
+      py: [[0, -0.26], [0.15, 0.01], [0.45, 0.0], [0.56, -0.08], [0.95, 0]],
+      pz: [[0, 0], [0.15, -0.04], [0.45, -0.04], [0.6, 0], [0.95, 0]],
+      rx: kept(-0.456), ry: kept(1.586), rz: kept(0.695),
+      lpx: [[0, -0.04], [0.15, -0.03], [0.45, -0.02], [0.56, 0.01], [0.95, 0]],
+      lpy: [[0, -0.26], [0.15, 0.03], [0.45, 0.02], [0.56, -0.08], [0.95, 0]],
+      lpz: [[0, 0], [0.15, -0.04], [0.45, -0.04], [0.6, 0], [0.95, 0]],
+      lrx: kept(0.714), lry: kept(2.065), lrz: kept(-2.017),
+      open: [[0, 1], [0.48, 1], [0.56, 0]], lopen: [[0, 1], [0.48, 1], [0.56, 0]],
+      reach: [[0, -0.02], [0.45, -0.02], [0.56, 0]], lreach: [[0, -0.02], [0.45, -0.02], [0.56, 0]],
+      spin: [[0, -4.5], [0.45, 5.0, 1], [0.56, TAU]], lspin: [[0, 4.5], [0.45, -5.0, 1], [0.56, -TAU]],
+      trail: [[0, 0], [0.06, 0.8], [0.45, 0.8], [0.52, 0]], ltrail: [[0, 0], [0.06, 0.8], [0.45, 0.8], [0.52, 0]],
+      glint: [[0, 0], [0.62, 0], [0.75, 1], [0.92, 0]], glintAt: [[0, 0.5], [0.62, 0.5], [0.92, 1]],
+    } },
+    // the right hand lifts its kunai on the chain and spins it like a propeller facing you (inspect again to spin
+    // faster), the left shows off its blade; then the kunai is caught and the left one tossed and caught
+    inspect: { dur: 3.6, trailFrom: 0.55, loop: [0.6, 2.6],
+      events: [[0.12, 'chain'], [0.62, 'swish'], [0.95, 'swish'], [1.28, 'swish'], [1.61, 'swish'], [1.94, 'swish'], [2.27, 'swish'],
+        [2.84, 'swish'], [2.98, 'bladeClick']], tracks: {
+      px: [[0, 0], [0.3, 0.01], [2.75, 0.01], [3.1, 0]],
+      py: [[0, 0], [0.3, 0.03], [2.75, 0.03], [3.0, -0.02], [3.4, 0]],
+      pz: [[0, 0], [0.3, -0.08], [2.75, -0.08], [3.2, 0]],
+      rx: held(-1.101, 0.3, 2.85, 3.3), ry: held(0.662, 0.3, 2.85, 3.3), rz: held(-1.62, 0.3, 2.85, 3.3),
+      twirl: held(-2.1, 0.3, 2.85, 3.3),
+      open: [[0, 0], [0.1, 0], [0.18, 0.7], [0.3, 0.3], [2.85, 0.3], [2.95, 0]],
+      reach: [[0, 0], [0.12, 0], [0.3, 0.1], [2.75, 0.1], [2.97, 0]],
+      spin: [[0, 0], [0.3, 0], [0.45, 0.6, 1], [0.6, 2.4, 1], [2.6, 2.4 + 12 * PI, 1], [2.8, 5 + 12 * PI, 1], [2.97, 14 * PI]],
+      trail: [[0, 0], [0.3, 0], [0.45, 0.5], [0.6, 1], [2.75, 1], [2.92, 0]],
+      lpx: [[0, 0], [0.35, 0.02], [2.75, 0.02], [3.2, 0]],
+      lpy: [[0, 0], [0.35, -0.03], [2.78, -0.03], [2.95, 0.05], [3.15, -0.02], [3.5, 0]],
+      lrx: held(-0.226, 0.35, 2.78, 3.2), lry: held(-0.701, 0.35, 2.78, 3.2), lrz: held(-0.346, 0.35, 2.78, 3.2),
+      lspin: [[0, 0], [2.8, 0], [3.12, -TAU]],
+      lopen: [[0, 0], [2.79, 0], [2.84, 1], [3.08, 1], [3.14, 0]],
+      ltrail: [[0, 0], [2.82, 0], [2.88, 0.6], [3.06, 0.6], [3.12, 0]],
+      glint: [[0, 0], [0.15, 0], [0.28, 1], [0.5, 0], [3.1, 0], [3.25, 1], [3.5, 0]],
+      glintAt: [[0, 0.3], [0.5, 0.95], [3.1, 0.4], [3.5, 1]],
+    } },
+    // chain whips (attacks alternate): wind up high and right, fling the kunai out so it sweeps across the screen
+    // from the upper right to the lower left, yank it back; and out to the right, over the top to the upper left
+    slash: [
+      { dur: 0.45, events: [[0.06, 'chain'], [0.11, 'swish']], tracks: {
+        px: [[0, 0], [0.07, 0.03], [0.21, -0.13], [0.3, -0.07], [0.45, 0]],
+        py: [[0, 0], [0.07, 0.09], [0.21, -0.05], [0.3, -0.03], [0.45, 0]],
+        pz: [[0, 0], [0.07, -0.02], [0.21, -0.05], [0.45, 0]],
+        rx: held(-0.378, 0.07, 0.24, 0.32), ry: held(1.792, 0.07, 0.24, 0.32), rz: held(-2.238, 0.07, 0.24, 0.32),
+        twirl: held(2.4, 0.07, 0.24, 0.32),
+        reach: [[0, 0], [0.07, 0.04], [0.13, 0.45], [0.21, 0.45], [0.3, 0]],
+        spin: [[0, 0], [0.1, 0], [0.21, 3.1], [0.3, TAU]],
+        open: [[0, 0], [0.06, 0.25], [0.3, 0.25], [0.36, 0]],
+        trail: [[0, 0], [0.09, 0.3], [0.12, 1], [0.2, 1], [0.23, 0]],
+        lpx: [[0, 0], [0.1, -0.06], [0.3, -0.06], [0.45, 0]], lpy: [[0, 0], [0.1, -0.2], [0.3, -0.2], [0.45, 0]],
+        lrx: [[0, 0], [0.1, 0.4], [0.3, 0.4], [0.45, 0]],
+      } },
+      { dur: 0.45, events: [[0.06, 'chain'], [0.11, 'swish']], tracks: {
+        px: [[0, 0], [0.07, -0.07], [0.21, 0.03], [0.3, 0.02], [0.45, 0]],
+        py: [[0, 0], [0.07, -0.02], [0.21, 0.1], [0.3, 0.04], [0.45, 0]],
+        pz: [[0, 0], [0.07, 0.0], [0.21, -0.05], [0.45, 0]],
+        rx: held(0.471, 0.07, 0.24, 0.32), ry: held(1.849, 0.07, 0.24, 0.32), rz: held(-2.16, 0.07, 0.24, 0.32),
+        twirl: held(3.15, 0.07, 0.24, 0.32),
+        reach: [[0, 0], [0.07, 0.04], [0.13, 0.45], [0.21, 0.45], [0.3, 0]],
+        spin: [[0, 0], [0.1, 0], [0.21, 3.0], [0.3, TAU]],
+        open: [[0, 0], [0.06, 0.25], [0.3, 0.25], [0.36, 0]],
+        trail: [[0, 0], [0.09, 0.3], [0.12, 1], [0.2, 1], [0.23, 0]],
+        lpx: [[0, 0], [0.1, -0.06], [0.3, -0.06], [0.45, 0]], lpy: [[0, 0], [0.1, -0.2], [0.3, -0.2], [0.45, 0]],
+        lrx: [[0, 0], [0.1, 0.4], [0.3, 0.4], [0.45, 0]],
+      } },
+    ],
+  },
 };
 const ease = (t) => t * t * (3 - 2 * t);
 function sampleTrack(keys, t) {
   if (t <= keys[0][0]) return keys[0][1];
   for (let i = 1; i < keys.length; i++) {
-    const [t1, v1] = keys[i];
-    if (t <= t1) { const [t0, v0] = keys[i - 1]; return v0 + (v1 - v0) * ease((t - t0) / (t1 - t0)); }
+    const [t1, v1, linear] = keys[i];
+    if (t <= t1) {
+      const [t0, v0] = keys[i - 1], u = (t - t0) / (t1 - t0);
+      return v0 + (v1 - v0) * (linear ? u : ease(u));
+    }
   }
   return keys[keys.length - 1][1];
 }
@@ -491,6 +628,10 @@ export const KNIFE_SKINS = [
     trail: [[0.04, 0.005], [0.69, 0.083]], trailFrom: 0.5, big: true },
   { id: 'katana', name: 'Katana', build: knifeKatana, grip: [-0.06, 0], pivot: [-0.07, 0],
     trail: [arcPt(0.03, -0.004), arcPt(KAT_L + 0.012, 0.004)], trailFrom: 0.5, big: true, katana: true },
+  // one kunai in each hand (the right one in a reverse grip), joined by a chain; blue trails
+  { id: 'kuronami', name: 'Kuronami no Yaiba', build: knifeKunai, reverse: true, grip: [-0.052, 0], pivot: [-0.052, 0],
+    trail: [[-0.1, 0], [KUNAI_TIP, 0]], chained: true,
+    trailColor: 0x7cc8ff, trailInner: 0x1238e0, trailAlpha: [0.9, 1], trailSolid: true, trailLife: 0.18 },
 ];
 export function knifeName(id) { return (KNIFE_SKINS.find((s) => s.id === id) || KNIFE_SKINS[0]).name; }
 
@@ -500,7 +641,10 @@ const POSE = {
   base: { p: [-0.01, 0.03, 0.09], r: [1.11, -0.66, 0.75], elbow: [0.3, -0.3, 0.22] },
   karambit: { p: [-0.03, 0.07, 0.08], r: [-0.34, 2.43, 2.11], elbow: [0.3, -0.3, 0.22] },
   big: { p: [0.02, -0.02, 0.06], r: [0.7, -0.51, 0.9], elbow: [0.3, -0.3, 0.22] },
+  kuronami: { p: [0.0, 0.1, 0.06], r: [0.15, 1.05, -1.45], elbow: [0.3, -0.3, 0.22] },   // reverse grip, blade down-left
 };
+// the Kuronami's left hand (drawn mirrored), with its kunai pointing in toward the crosshair
+const LPOSE = { p: [-0.34, 0.06, 0.06], r: [0.7, 0.3, -1.6], elbow: [-0.62, -0.32, 0.24] };
 const TILT = 0.8;          // saber grip: the handle runs diagonally across the palm so the blade leans forward
 const L_FOREARM = new THREE.Vector3(-0.45, -0.75, 0.5).normalize().multiplyScalar(0.32); // left wrist -> elbow
 // basis that maps blade space (x along the blade, y spine, z flat side) into a fist
@@ -522,28 +666,103 @@ function aimLimb(m, from, to, thick = 0.036) {
   m.quaternion.setFromUnitVectors(_zAxis, _v.normalize());
 }
 
-function buildKnife(skin, band) {
-  const g = new THREE.Group();
-  const hand = buildHand(band);
-  const H = hand.group; g.add(H);
+// A chain of steel links laid along a path: from a thrown kunai's ring back to the fist holding the chain,
+// then hanging in a loop below the screen over to the other kunai.
+const LINK = 0.0125;
+const _d = new THREE.Vector3(), _n1 = new THREE.Vector3(), _n2 = new THREE.Vector3(), _y = new THREE.Vector3();
+class Chain {
+  constructor(max = 180) {
+    const geo = new THREE.TorusGeometry(0.0046, 0.0016, 5, 10);
+    geo.scale(1.45, 1, 1);                       // oval links, long way along the chain
+    this.mesh = new THREE.InstancedMesh(geo, steel(0xbfc6d1), max);
+    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.mesh.frustumCulled = false;
+    this.max = max;
+    this.r = new THREE.Vector3(); this.f = new THREE.Vector3(); this.l = new THREE.Vector3(); this.a = new THREE.Vector3();
+    this.pool = Array.from({ length: 26 }, () => new THREE.Vector3());
+    this.path = [];
+    this.m = new THREE.Matrix4();
+  }
+  // ring: the free kunai's ring, fist: where the right hand holds the chain, lring: the left kunai's ring
+  // (all in world space); thrown: 0 = the loop hangs from the ring, 1 = from the fist (kunai flung out)
+  update(model, ring, fist, lring, thrown) {
+    const { r, f, l, a, pool, path } = this;
+    model.worldToLocal(r.copy(ring)); model.worldToLocal(f.copy(fist)); model.worldToLocal(l.copy(lring));
+    a.lerpVectors(r, f, thrown);
+    path.length = 0; path.push(r);
+    // a U hanging below the screen: straight down from each end, the bottom out of view
+    const p1x = a.x + 0.03, p1y = a.y - 0.32, p1z = a.z + 0.05, p2x = l.x - 0.02, p2y = l.y - 0.32, p2z = l.z + 0.05;
+    for (let i = 0; i <= 24; i++) {
+      const u = i / 24, w = 1 - u;
+      const c0 = w * w * w, c1 = 3 * w * w * u, c2 = 3 * w * u * u, c3 = u * u * u;
+      path.push(pool[i].set(c0 * a.x + c1 * p1x + c2 * p2x + c3 * l.x, c0 * a.y + c1 * p1y + c2 * p2y + c3 * l.y,
+        c0 * a.z + c1 * p1z + c2 * p2z + c3 * l.z));
+    }
+    this.lay(path);
+  }
+  lay(path) {
+    let n = 0, s = 0;
+    for (let i = 0; i + 1 < path.length && n < this.max; i++) {
+      const p = path[i];
+      _d.subVectors(path[i + 1], p);
+      const len = _d.length();
+      if (len < 1e-6) continue;
+      _d.divideScalar(len);
+      _n1.set(0, 1, 0); if (Math.abs(_d.y) > 0.9) _n1.set(1, 0, 0);
+      _n1.cross(_d).normalize(); _n2.crossVectors(_d, _n1);
+      for (; s <= len && n < this.max; s += LINK, n++) {
+        const nrm = n % 2 ? _n1 : _n2;                    // each link turned a quarter turn from the last
+        _y.crossVectors(nrm, _d);
+        this.m.makeBasis(_d, _y, nrm).setPosition(p.x + _d.x * s, p.y + _d.y * s, p.z + _d.z * s);
+        this.mesh.setMatrixAt(n, this.m);
+      }
+      s -= len;
+    }
+    this.mesh.count = n;
+    this.mesh.instanceMatrix.needsUpdate = true;
+  }
+}
+
+// Puts a knife in a hand. Nested frames: k (twirl: turns it around the handle), spin (turns it in the blade's
+// plane around the pivot), reach (slides it out along its own length, for blades on a chain), inner (the model).
+function gripKnife(H, skin, reverse) {
   const holder = new THREE.Group();       // puts the knife's grip in the fist
-  holder.quaternion.setFromRotationMatrix(skin.reverse ? REV : FWD)
-    .premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), skin.reverse ? 0 : -TILT));
+  holder.quaternion.setFromRotationMatrix(reverse ? REV : FWD)
+    .premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), reverse ? 0 : -TILT));
   holder.position.copy(GRIP);
   H.add(holder);
-  const k = new THREE.Group(); holder.add(k);                 // twirl: rotation.x turns it around the handle
+  const k = new THREE.Group(); holder.add(k);
   const align = new THREE.Group(); align.rotation.z = -(skin.gripAngle || 0); k.add(align);
-  const spin = new THREE.Group();                             // spins in the blade's plane around the pivot
+  const spin = new THREE.Group();
   spin.position.set(skin.pivot[0] - skin.grip[0], skin.pivot[1] - skin.grip[1], 0); align.add(spin);
-  const inner = new THREE.Group(); inner.position.set(-skin.pivot[0], -skin.pivot[1], 0); spin.add(inner);
+  const reach = new THREE.Group(); spin.add(reach);
+  const inner = new THREE.Group(); inner.position.set(-skin.pivot[0], -skin.pivot[1], 0); reach.add(inner);
   const parts = {};
   skin.build(inner, parts);
   const tp = parts.trailParent || inner;
   const tA = new THREE.Object3D(); tA.position.set(skin.trail[0][0], skin.trail[0][1], 0); tp.add(tA);
   const tB = new THREE.Object3D(); tB.position.set(skin.trail[1][0], skin.trail[1][1], 0); tp.add(tB);
+  return { holder, k, align, spin, reach, inner, parts, tA, tB };
+}
+
+function buildKnife(skin, band) {
+  const g = new THREE.Group();
+  const hand = buildHand(band);
+  const H = hand.group; g.add(H);
+  const rk = gripKnife(H, skin, skin.reverse);
+  const { holder, k, align, spin, reach, inner, parts, tA, tB } = rk;
   const pose = POSE[skin.id] || (skin.big ? POSE.big : POSE.base);
   const elbow = new THREE.Vector3(...pose.elbow);   // stays put; the forearm swings from it as the hand moves
-  const kn = { skin, hand, H, k, spin, parts, tA, tB, pose, elbow, clips: CLIPS[skin.id], arm: forearm(g) };
+  const kn = { skin, hand, H, k, spin, reach, parts, tA, tB, pose, elbow, clips: CLIPS[skin.id], arm: forearm(g) };
+  if (skin.chained) {
+    // the second kunai in the left hand (a mirrored right hand, forward grip), and the chain between them
+    const lh = buildHand(band);
+    const mirror = new THREE.Group(); mirror.scale.x = -1; mirror.add(lh.group);
+    const LH = new THREE.Group(); LH.add(mirror); g.add(LH);
+    const chain = new Chain(); g.add(chain.mesh);
+    Object.assign(kn, { LH, lhand: lh, lk: gripKnife(lh.group, skin, false), lpose: LPOSE,
+      lelbow: new THREE.Vector3(...LPOSE.elbow), larm: forearm(g), chain });
+  }
   if (skin.katana) {
     // left hand holding the scabbard, used by the draw
     const S = new THREE.Group(); S.visible = false; g.add(S);
@@ -558,9 +777,9 @@ function buildKnife(skin, band) {
     toHand.invert().decompose(LH.position, LH.quaternion, LH.scale);
     setGrip(lh, 0, false);
     // blade space -> right hand space, to put the scabbard on the blade
-    holder.updateMatrix(); k.updateMatrix(); align.updateMatrix(); spin.updateMatrix(); inner.updateMatrix();
+    holder.updateMatrix(); k.updateMatrix(); align.updateMatrix(); spin.updateMatrix(); reach.updateMatrix(); inner.updateMatrix();
     const shapeToHand = new THREE.Matrix4().copy(holder.matrix).multiply(k.matrix).multiply(align.matrix)
-      .multiply(spin.matrix).multiply(inner.matrix);
+      .multiply(spin.matrix).multiply(reach.matrix).multiply(inner.matrix);
     Object.assign(kn, { S, LH, lhand: lh, larm: forearm(g), shapeToHand,
       drop: { p: new THREE.Vector3(), q: new THREE.Quaternion() } });
   }
@@ -727,7 +946,18 @@ class Trail {
     this.mesh.frustumCulled = false; this.mesh.visible = false; this.mesh.renderOrder = 2;
     this.samples = [];
     this.life = 0.13;
-    this.color = new THREE.Color(0xd8ecff);
+    this.color = new THREE.Color(0xd8ecff);   // at the blade's edge of the ribbon
+    this.inner = new THREE.Color(0xd8ecff);   // ...and at its inner side
+    this.alpha = [0.12, 0.75];
+  }
+  // a knife's own trail look (the Kuronami's is a solid blue ribbon with a bright edge, not a white glow)
+  style(skin) {
+    this.color.setHex(skin.trailColor || 0xd8ecff);
+    this.inner.setHex(skin.trailInner || skin.trailColor || 0xd8ecff);
+    this.life = skin.trailLife || 0.13;
+    this.alpha = skin.trailAlpha || [0.12, 0.75];
+    const m = this.mesh.material, bl = skin.trailSolid ? THREE.NormalBlending : THREE.AdditiveBlending;
+    if (m.blending !== bl) { m.blending = bl; m.needsUpdate = true; }
   }
   clear() { this.samples.length = 0; this.mesh.visible = false; }
   add(a, b, s, t) {
@@ -744,14 +974,14 @@ class Trail {
     const put = (p0, p1, p2, p3, u) => {
       const t = p1.t + (p2.t - p1.t) * u, s = p1.s + (p2.s - p1.s) * u;
       const fade = Math.max(0, 1 - (now - t) / this.life), al = s * fade * fade;
-      for (const [key, off, alpha] of [['a', 0, al * 0.12], ['b', 1, al * 0.75]]) {
+      for (const [key, off, alpha, col] of [['a', 0, al * this.alpha[0], this.inner], ['b', 1, al * this.alpha[1], this.color]]) {
         const i = (n * 2 + off);
         for (let c = 0; c < 3; c++) {
           const ax = 'xyz'[c];
           const v0 = p0[key][ax], v1 = p1[key][ax], v2 = p2[key][ax], v3 = p3[key][ax];
           this.pos[i * 3 + c] = 0.5 * ((2 * v1) + (-v0 + v2) * u + (2 * v0 - 5 * v1 + 4 * v2 - v3) * u * u + (-v0 + 3 * v1 - 3 * v2 + v3) * u * u * u);
         }
-        this.col[i * 4] = this.color.r; this.col[i * 4 + 1] = this.color.g; this.col[i * 4 + 2] = this.color.b;
+        this.col[i * 4] = col.r; this.col[i * 4 + 1] = col.g; this.col[i * 4 + 2] = col.b;
         this.col[i * 4 + 3] = alpha;
       }
       n++;
@@ -788,9 +1018,10 @@ function sparkleTexture() {
 }
 
 const TRACKS = ['px', 'py', 'pz', 'rx', 'ry', 'rz', 'roll', 'twirl', 'spin', 'open', 'blade', 'bfA', 'bfB', 'trail', 'glint', 'glintAt',
-  'sheath', 'attach', 'lpx', 'lpy', 'lpz', 'lrx', 'lry', 'lrz', 'lvis'];
+  'sheath', 'attach', 'lpx', 'lpy', 'lpz', 'lrx', 'lry', 'lrz', 'lvis', 'reach', 'lspin', 'lreach', 'lopen', 'ltrail'];
 const _e = new THREE.Euler(), _q = new THREE.Quaternion(), _m = new THREE.Matrix4(), _m2 = new THREE.Matrix4();
 const _p = new THREE.Vector3(), _s = new THREE.Vector3(), _a = new THREE.Vector3(), _b = new THREE.Vector3();
+const _r1 = new THREE.Vector3(), _f1 = new THREE.Vector3(), _l1 = new THREE.Vector3();
 
 // Aiming down sights: the height of each gun's sight line (the top of its front sight, in model
 // space) and how far in front of the eye it's held. The gun moves to the middle of the screen with
@@ -816,6 +1047,8 @@ export class ViewModel {
     this.scene.add(this.flash);
     this.trail = new Trail();
     this.scene.add(this.trail.mesh);
+    this.trail2 = new Trail();                 // the Kuronami's second kunai
+    this.scene.add(this.trail2.mesh);
     this.glint = new THREE.Sprite(new THREE.SpriteMaterial({ map: sparkleTexture(), blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, transparent: true }));
     this.glint.visible = false; this.glint.renderOrder = 3;
     this.scene.add(this.glint);
@@ -824,6 +1057,7 @@ export class ViewModel {
     this.bob = 0; this.swayX = 0; this.swayY = 0; this.kick = 0; this.flashT = 0;
     this.inspectT = 0;           // generic gun inspect
     this.clip = null; this.clipT = 0; // knife draw / inspect / slash keyframe animation
+    this.boost = 0; this.loops = 0;   // Kuronami inspect: how much faster it spins, and repeats left
     this.slashN = 0; this.clock = 0;
     this.v = Object.fromEntries(TRACKS.map((n) => [n, 0]));
   }
@@ -846,18 +1080,22 @@ export class ViewModel {
     this.current = this.models[vmKey];
     if (this.current) this.current.visible = true;
     this.inspectT = 0; this.clip = null;
-    this.trail.clear();
+    this.trail.clear(); this.trail2.clear();
     const knife = this.current?.userData.knife;
-    if (knife) this.play(knife.clips.draw);   // every knife has its own draw animation
+    if (knife) {
+      this.trail.style(knife.skin); this.trail2.style(knife.skin);
+      this.play(knife.clips.draw);   // every knife has its own draw animation
+    }
   }
 
-  play(clip) { this.clip = clip; this.clipT = 0; }
+  play(clip) { this.clip = clip; this.clipT = 0; this.boost = 0; this.loops = 0; }
 
   fire(melee) {
     this.inspectT = 0;
     if (melee) {                               // attacking cancels draw / inspect: alternate forehand and backhand slashes
       this.slashN ^= 1;
-      this.play(this.slashN ? SLASH.a : SLASH.b);
+      const s = this.current?.userData.knife?.clips.slash || [SLASH.a, SLASH.b];   // a knife can have its own
+      this.play(this.slashN ? s[0] : s[1]);
       return;
     }
     this.clip = null;
@@ -868,7 +1106,13 @@ export class ViewModel {
 
   inspect() {
     const knife = this.current?.userData.knife;
-    if (knife) { if (!this.clip) this.play(knife.clips.inspect); return; }
+    if (knife) {
+      const c = this.clip;
+      if (!c) this.play(knife.clips.inspect);
+      // Kuronami: inspecting again during the spin spins it faster (up to three times) and keeps it going
+      else if (c.loop && this.clipT < c.loop[1]) { this.boost = Math.min(3, this.boost + 1); this.loops = 1; }
+      return;
+    }
     if (this.inspectT <= 0) this.inspectT = 2.6;
   }
 
@@ -930,7 +1174,7 @@ export class ViewModel {
 
     const knife = this.current?.userData.knife;
     if (knife) this.animateKnife(knife, dt, game);
-    else { this.trail.clear(); this.glint.visible = false; }
+    else { this.trail.clear(); this.trail2.clear(); this.glint.visible = false; }
 
     this.flashT -= dt;
     const mz = this.current?.userData.muzzle;
@@ -946,8 +1190,11 @@ export class ViewModel {
     const v = this.v;
     for (const n of TRACKS) v[n] = 0;
     if (this.clip) {
-      const c = this.clip, t0 = this.clipT;
-      this.clipT += dt;
+      const c = this.clip, L = c.loop;
+      let t0 = this.clipT;
+      const inLoop = L && this.boost && t0 >= L[0] && t0 < L[1];
+      this.clipT += dt * (inLoop ? 1 + 0.25 * this.boost : 1);
+      if (inLoop && this.loops > 0 && this.clipT >= L[1]) { this.clipT -= L[1] - L[0]; t0 = L[0]; this.loops--; }
       for (const name in c.tracks) v[name] = sampleTrack(c.tracks[name], this.clipT);
       if (c.events && game?.sound) {
         for (const [et, snd] of c.events) if ((et > t0 || (et === 0 && t0 === 0)) && et <= this.clipT) game.sound[snd]?.();
@@ -962,7 +1209,20 @@ export class ViewModel {
     H.position.set(pose.p[0] + v.px, pose.p[1] + v.py, pose.p[2] + v.pz);
     kn.k.rotation.x = v.twirl;
     kn.spin.rotation.z = v.spin;
+    kn.reach.position.x = v.reach;
     setGrip(kn.hand, Math.min(1, Math.max(0, v.open)), kn.skin.ring);
+    if (kn.lk) {
+      // Kuronami's left hand: its rest pose (mirrored) turned by lrx..lrz and moved by lpx..lpz
+      const lp = kn.lpose, LH = kn.LH;
+      LH.quaternion.setFromEuler(_e.set(v.lrx, v.lry, v.lrz, 'YXZ'))
+        .multiply(_q.setFromEuler(_e.set(lp.r[0], lp.r[1], lp.r[2], 'YXZ')));
+      LH.position.set(lp.p[0] + v.lpx, lp.p[1] + v.lpy, lp.p[2] + v.lpz);
+      kn.lk.spin.rotation.z = v.lspin;
+      kn.lk.reach.position.x = v.lreach;
+      setGrip(kn.lhand, Math.min(1, Math.max(0, v.lopen)), false);
+      _a.set(0, 0, 0.014).applyQuaternion(LH.quaternion).add(LH.position);
+      aimLimb(kn.larm, _a, kn.lelbow);
+    }
     const P = kn.parts;
     if (P.blade) P.blade.rotation.z = v.blade;
     if (P.bfSwing) { P.bfSwing.rotation.z = -v.bfB; P.bfA.rotation.z = v.bfA; }
@@ -996,11 +1256,24 @@ export class ViewModel {
     // trail and glint follow the blade in view space
     this.root.updateMatrixWorld(true);
     kn.tA.getWorldPosition(_a); kn.tB.getWorldPosition(_b);
+    const trailFrom = this.clip?.trailFrom ?? kn.skin.trailFrom ?? 0;   // a clip can draw a narrower ribbon
     if (v.trail > 0.01 && this.root.visible) {
-      _p.lerpVectors(_a, _b, kn.skin.trailFrom || 0);
+      _p.lerpVectors(_a, _b, trailFrom);
       this.trail.add(_p, _b, Math.min(1, v.trail), this.clock);
     }
     this.trail.update(this.clock);
+    if (kn.lk) {
+      // the chain from the right kunai (or the fist, once it has flown out) down to the left kunai
+      kn.parts.ring.getWorldPosition(_r1); kn.spin.getWorldPosition(_f1); kn.lk.parts.ring.getWorldPosition(_l1);
+      const thrown = Math.min(1, Math.max(0, (v.reach - 0.06) / 0.04));
+      kn.chain.update(this.current, _r1, _f1, _l1, thrown);
+      kn.lk.tA.getWorldPosition(_l1); kn.lk.tB.getWorldPosition(_r1);
+      if (v.ltrail > 0.01 && this.root.visible) {
+        _p.lerpVectors(_l1, _r1, trailFrom);
+        this.trail2.add(_p, _r1, Math.min(1, v.ltrail), this.clock);
+      }
+    }
+    this.trail2.update(this.clock);
     if (v.glint > 0.01 && this.root.visible) {
       this.glint.position.lerpVectors(_a, _b, v.glintAt);
       const s = 0.075 * v.glint * (kn.skin.big ? 1.3 : 1);

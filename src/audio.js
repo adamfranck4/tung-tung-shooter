@@ -135,6 +135,15 @@ export class Sound {
     this.tone(o.node, { freq: 3900, end: 2700, decay: 0.03, type: 'square', vol: 0.25 });
     this.noiseBurst(o.node, { freq: 5200, type: 'highpass', decay: 0.035 });
   }
+  // a chain rattling out (the Kuronami's kunai): a quick run of small metal clinks
+  chain() {
+    const o = this.out(null, 0.2); if (!o) return;
+    for (let i = 0; i < 5; i++) {
+      const d = i * 0.032 + Math.random() * 0.012;
+      this.noiseBurst(o.node, { freq: 4200 + Math.random() * 1800, type: 'bandpass', q: 6, decay: 0.03, delay: d });
+      this.tone(o.node, { freq: 2500 + Math.random() * 900, end: 2400, decay: 0.045, type: 'triangle', vol: 0.12, delay: d });
+    }
+  }
   // a knife cutting the air during tricks
   swish() { const o = this.out(null, 0.16); if (o) this.noiseBurst(o.node, { freq: 1500, type: 'bandpass', q: 1.4, decay: 0.15, attack: 0.05 }); }
   zoom() { const o = this.out(null, 0.2); if (o) this.tone(o.node, { freq: 2400, end: 1800, decay: 0.04, type: 'square', vol: 0.2 }); }
