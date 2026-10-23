@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { ZombiesGame, Zombie } from './zombies.js';
 import { WEAPONS } from './weapons.js';
+import { START_AREA } from './zmap.js';
 import { F, r1, r2, r3, packSlots, applyInventory, showShot } from './avatar.js';
 
 const _v = new THREE.Vector3();
@@ -15,7 +16,7 @@ export class ZombiesClient extends ZombiesGame {
     this.net = net; this.netDelay = 0.1;
     this.running = true; this.phase = 'live'; this.time = 0; this.synced = false;
     this.map.resetDoors();
-    this.activeAreas = new Set(['A']);
+    this.activeAreas = new Set([START_AREA]);
     this.round = 0;
     this.effects = { instakill: 0, double: 0 };
     this.interaction = null; this.spectating = null; this.mapOpen = false;
@@ -23,6 +24,7 @@ export class ZombiesClient extends ZombiesGame {
     this.player.spawnEpoch = 0; this.player.invVer = 0;
     this.resetBox();
     this.betweenRounds = true; this.nextRoundAt = 2.5;
+    this.syncUnlocks(0);
     this.hud.zReset(this);
     this.introBanner();
   }
@@ -75,21 +77,29 @@ export class ZombiesClient extends ZombiesGame {
   }
 
   // Pressing E asks the host; holding E (boards, reviving) is sent with every state update.
+  // (The Gun Shop menu opens right here; doors aren't bought, they open with the rounds.)
   updateInteract() {
     const p = this.player;
     this.interaction = this.findInteraction(p);
     const it = this.interaction;
-    if (!it || !this.input.pressed('KeyE') || it.type === 'window' || it.type === 'revive') return;
+    if (!it || !this.input.pressed('KeyE') || it.type === 'window' || it.type === 'revive' || it.type === 'door') return;
+    if (it.type === 'shop') { this.use(it, p); return; }
     const req = { e: 'use', k: it.type };
-    if (it.type === 'door') req.id = it.d.id;
-    else if (it.type === 'wallbuy') req.id = this.map.wallBuys.indexOf(it.wb);
-    else if (it.type === 'perk') req.id = it.pm.id;
+    if (it.type === 'perk') req.id = it.pm.id;
     else if (it.type === 'pap') req.id = this.map.papStations.indexOf(it.st);
     this.net.emit(req);
   }
 
-  // the shop (B): the host checks the round and your points, then sends the gun
-  buy(p, index) { if (p === this.player && this.canBuy(p)) this.net.emit({ e: 'shop', i: index }); }
+  // Gun Shop guns and B-menu ammo: the host checks the round and your points, then sends it
+  buy(p, index) { if (p === this.player && this.canBuy(p)) this.net.emit({ e: 'shop', i: index, g: p.gunShop ? 1 : 0 }); }
+
+  // doors open with the rounds (the host also says so): no need to tell anyone
+  openDoor(d) {
+    if (d.open) return;
+    this.map.openDoor(d);
+    for (const a of d.areas) this.activeAreas.add(a);
+    this.sound.boardBreak(d.center);
+  }
 
   hitZombie(z, dmg, head, melee, quiet, attacker, knock) {
     if (attacker !== this.player) return;
@@ -132,6 +142,7 @@ export class ZombiesClient extends ZombiesGame {
     else this.time += (s.T - this.time) * 0.1;
     if (this.phase === 'over') return;
     this.round = s.r; this.betweenRounds = !!s.br; this.nextRoundAt = s.nr;
+    this.syncUnlocks(this.cleared());   // (in case a round-end message went missing)
     this.effects.instakill = s.ef[0]; this.effects.double = s.ef[1];
     // players
     for (const e of s.p) {
@@ -197,13 +208,14 @@ export class ZombiesClient extends ZombiesGame {
         this.hud.zRound(ev.r, true); this.sound.zRoundStart();
         break;
       case 'rend':
-        this.betweenRounds = true;
+        this.round = ev.r; this.betweenRounds = true;
         this.sound.zRoundEnd(); this.hud.zRound(ev.r, true);
-        this.hud.center(`Round ${ev.r} survived`, 3);
+        this.syncUnlocks(ev.r);
+        this.roundBanner(ev.r);
         break;
       case 'door': {
         const d = this.map.doors.find((x) => x.id === ev.id);
-        if (d && !d.open) { this.map.openDoor(d); for (const a of d.areas) this.activeAreas.add(a); this.sound.boardBreak(d.center); }
+        if (d) this.openDoor(d);
         break;
       }
       case 'pu': this.powerupFx(ev.ty); break;

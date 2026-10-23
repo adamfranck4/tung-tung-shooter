@@ -8,7 +8,7 @@ import { Player } from './player.js';
 import { buildTungModel, makeCoconut, tickRainbow } from './bots.js';
 import { WEAPONS, papDef, MAX_PAP, ZOMBIE_SHOP, ZOMBIE_PRICES, ammoCost } from './weapons.js';
 import { raycast, raySphere, rayBox, moveBody, wrapAngle } from './physics.js';
-import { PLAYER_START, AREAS } from './zmap.js';
+import { PLAYER_START, AREAS, START_AREA } from './zmap.js';
 import { knifeName } from './viewmodel.js';
 import { Avatar, Interp, F, r1, r2, r3, packSlots, showShot } from './avatar.js';
 import { NET_SOUNDS } from './game.js';
@@ -26,6 +26,7 @@ export const BASE_HEALTH = 150;
 const JUGG_HEALTH = 250;
 export const BLEED_TIME = 100;    // co-op: seconds a downed player lasts without a revive
 export const REVIVE_TIME = 3;     // holding E next to them (half with Quick Revive)
+const BREAK_TIME = 20;            // seconds between waves (N starts the next one early)
 export const ZOMBIE_HP = 100;                            // regular zombies: same health as a player
 export const bigZombieHealth = (r) => 400 + 80 * r;      // big zombies: a real bullet sponge
 const BIG_SCALE = 1.7;
@@ -76,7 +77,7 @@ const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V'];
 // "Pack-a-Punch II (Kitchen)"
 const papName = (st, where = false) => `Pack-a-Punch${st.level > 1 ? ' ' + ROMAN[st.level] : ''}${where ? ` (${AREAS[st.area].name})` : ''}`;
 const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
-// where each player starts in the spawn room
+// where each player starts in the Gun Shop
 const START_OFFSETS = [[0, 0], [1.6, 0.8], [-1.6, 0.8], [0, -1.6]];
 export const spawnPoint = (i) => new THREE.Vector3(PLAYER_START.x + START_OFFSETS[i % 4][0], 0, PLAYER_START.z + START_OFFSETS[i % 4][1]);
 
@@ -520,7 +521,7 @@ export class ZombiesGame {
     this.net = net; this.netDelay = 0.075;
     this.running = true; this.phase = 'live'; this.time = 0;
     this.map.resetDoors();
-    this.activeAreas = new Set(['A']);
+    this.activeAreas = new Set([START_AREA]);
     this.round = 0;
     this.effects = { instakill: 0, double: 0 };
     this.powerupsThisRound = 0; this.killsSinceDrop = 0; this.puId = 0;
@@ -530,14 +531,15 @@ export class ZombiesGame {
     for (const a of this.remotes) a.spawnEpoch = 0;   // matches the joining player's first state
     this.resetBox();
     this.betweenRounds = true; this.nextRoundAt = 2.5; this.toSpawn = 0;
+    this.syncUnlocks(0);
     this.hud.zReset(this);
     this.introBanner();
   }
 
   introBanner() {
     this.hud.banner('TUNG TUNG ZOMBIES', this.coop
-      ? 'Survive the night together. Revive downed teammates with E.'
-      : 'Survive the night. Board the windows. Spend points to open doors.', 'T', 4);
+      ? 'Survive together: every round opens more of the village. Revive downed teammates with E.'
+      : 'Every round you survive opens more of the village and a new gun at the Gun Shop.', 'T', 4);
   }
 
   setupPlayers(roster, myId, knife) {
@@ -562,6 +564,7 @@ export class ZombiesGame {
       }
       p.nid = r.nid; p.pid = r.pid || null;
       p.spawn(spawnPoint(i), 0);
+      p.buyOpen = false; p.gunShop = false;
       p.slots[2].reserve = 84;
       this.resetPlayer(p);
       this.players.push(p);
@@ -594,35 +597,45 @@ export class ZombiesGame {
   }
 
   // ----- interface used by Player / Combatant / HUD -----
-  // ----- shop (B): guns unlock every couple of rounds, plus ammo for the gun in your hands -----
-  canBuy(p) { return !!p && p.alive && !p.downed && this.phase !== 'over'; }
-  buyCount() { return ZOMBIE_SHOP.length + 1; }   // keys 1-9 guns, 0 ammo
-  // the gun a shop ammo refill is for: the one in your hands, or your first gun while holding the knife
-  ammoTarget(p) {
-    const w = p.weapon;
-    return w && !w.def.melee ? w : p.slots[1] || p.slots[2] || null;
+  // ----- buying: guns at the Gun Shop counter (E there), ammo anywhere (B) -----
+  // p.gunShop: the open menu is the Gun Shop's (keys 1-9 buy guns), not the B ammo menu (keys 1-2)
+  canBuy(p) {
+    if (!p || !p.alive || p.downed || this.phase === 'over') return false;
+    return !p.gunShop || this.nearGunShop(p);
   }
-  buy(p, index) {
-    if (!this.canBuy(p)) return;
-    if (index === ZOMBIE_SHOP.length) {
-      const w = this.ammoTarget(p);
-      if (!w) return;
-      if (w.reserve >= w.def.reserve) { this.tell(p, { e: 'msg', s: 'Ammo is already full', d: 1 }); return; }
-      if (!this.spend(p, ammoCost(w))) return;
-      w.reserve = w.def.reserve;
-      this.syncInv(p, 'ammo');
-      this.tell(p, { e: 'snd', n: 'purchase' });
+  // (a little extra reach once it's open, and for other players online: their position here lags)
+  nearGunShop(p) { return this.map.atGunShop(p.body.pos, p.isAvatar ? 1.2 : 0.3); }
+  buyCount(p) { return p?.gunShop ? ZOMBIE_SHOP.length : 2; }
+  // rounds survived so far: what the doors and the Gun Shop go by
+  cleared() { return this.betweenRounds ? this.round : Math.max(0, this.round - 1); }
+
+  // gunShop: from the Gun Shop menu (other players online: what their message says)
+  buy(p, index, gunShop = !!p?.gunShop) {
+    if (!p || !p.alive || p.downed || this.phase === 'over') return;
+    if (!gunShop) {   // B: ammo for the gun in slot 1 or 2
+      const w = p.slots[index + 1];
+      if (w && !w.def.melee) this.refillAmmo(p, w);
       return;
     }
     const it = ZOMBIE_SHOP[index];
-    if (!it) return;
-    if (Math.max(1, this.round) < it.round) {
-      this.tell(p, { e: 'snd', n: 'denied' }); this.tell(p, { e: 'msg', s: `Unlocks at round ${it.round}`, d: 1.2 });
+    if (!it || !this.nearGunShop(p)) return;
+    if (this.cleared() < it.after) {
+      this.tell(p, { e: 'snd', n: 'denied' }); this.tell(p, { e: 'msg', s: `Unlocks after round ${it.after}`, d: 1.2 });
       return;
     }
-    if (this.ownedSlot(p, it.key)) { this.tell(p, { e: 'msg', s: 'You already have it (0 buys ammo)', d: 1.2 }); return; }
+    const s = this.ownedSlot(p, it.key);
+    if (s) { this.refillAmmo(p, p.slots[s]); return; }   // already have it: buying it again is its ammo
     if (!this.spend(p, ZOMBIE_PRICES[it.key])) return;
     this.givePlayerWeapon(p, it.key);
+    this.tell(p, { e: 'snd', n: 'purchase' });
+  }
+
+  // fill a gun's spare ammo back up (Gun Shop or B menu)
+  refillAmmo(p, w) {
+    if (w.reserve >= w.def.reserve) { this.tell(p, { e: 'msg', s: 'Ammo is already full', d: 1 }); return; }
+    if (!this.spend(p, ammoCost(w))) return;
+    w.reserve = w.def.reserve;
+    this.syncInv(p, 'ammo');
     this.tell(p, { e: 'snd', n: 'purchase' });
   }
   emitNoise() {}
@@ -653,18 +666,36 @@ export class ZombiesGame {
     this.hud.zRound(r, true);
     this.sound.zRoundStart();
     this.net?.emit({ e: 'round', r });
-    // new guns in the shop
-    const fresh = ZOMBIE_SHOP.filter((it) => it.round === r).map((it) => WEAPONS[it.key].name);
-    if (fresh.length) this.announce(null, r === 1 ? 'Press B to open the shop: guns and ammo' : `New in the shop (B): ${fresh.join(', ')}`);
+    if (r === 1) this.announce(null, 'Buy guns at the Gun Shop counter (E) · B buys ammo anywhere');
   }
 
   endRound() {
     this.betweenRounds = true;
-    this.nextRoundAt = this.time + 10;
+    this.nextRoundAt = this.time + BREAK_TIME;
     this.sound.zRoundEnd();
     this.hud.zRound(this.round, true);
-    this.hud.center(`Round ${this.round} survived`, 3);
+    this.syncUnlocks(this.round);
+    this.roundBanner(this.round);
     this.net?.emit({ e: 'rend', r: this.round });
+  }
+
+  // Open every area due after `cleared` rounds survived (and the doors between open areas), and
+  // put the guns due on the Gun Shop wall. (Joining players run this too, to stay in step.)
+  syncUnlocks(cleared) {
+    for (const [id, a] of Object.entries(AREAS)) if (a.after <= cleared) this.activeAreas.add(id);
+    for (const d of this.map.doors) if (!d.open && d.after <= cleared) this.openDoor(d);
+    this.map.setShopRound(cleared);
+  }
+
+  // "ROUND 3 SURVIVED · Drum Tower is open · New at the Gun Shop: Scout"
+  roundBanner(r) {
+    const areas = Object.values(AREAS).filter((a) => a.after === r).map((a) => a.name);
+    const guns = ZOMBIE_SHOP.filter((it) => it.after === r).map((it) => WEAPONS[it.key].name);
+    const parts = [];
+    if (areas.length) parts.push(`${areas.join(' and ')} ${areas.length > 1 ? 'are' : 'is'} open`);
+    if (guns.length) parts.push(`New at the Gun Shop: ${guns.join(', ')}`);
+    if (parts.length) this.hud.banner(`ROUND ${r} SURVIVED`, parts.join(' · '), 'T', 5);
+    else this.hud.center(`Round ${r} survived`, 3);
   }
 
   // co-op: players who bled out come back at the start of the next round, next to a teammate
@@ -1013,7 +1044,8 @@ export class ZombiesGame {
     this.net?.emit({ e: 'door', id: d.id });
   }
 
-  // ----- interactions: doors, windows, wall buys, perks, box, Pack-a-Punch, reviving -----
+  // ----- interactions: the Gun Shop, windows, perks, box, Pack-a-Punch, reviving -----
+  // (a closed door just tells you when it opens)
   findInteraction(p) {
     if (!p.alive || p.downed) return null;
     const pos = p.body.pos, map = this.map;
@@ -1026,14 +1058,14 @@ export class ZombiesGame {
     }
     if (best) return best;
     const consider = (d, max, obj) => { if (d < max && d < bd) { bd = d; best = obj; } };
-    // (doors and wall guns upstairs can't be bought from the ground under them, or the other way round)
+    // (doors upstairs don't show from the ground under them, or the other way round)
     const level = (y) => Math.abs(y - pos.y) < 2;
     for (const d of map.doors) if (!d.open && level(d.center.y)) consider(flat(pos, d.center), 2.8, { type: 'door', d });
     for (const w of map.windows) if (w.boards < w.max && this.activeAreas.has(w.area)) consider(flat(pos, w.inside), 2.2, { type: 'window', w });
-    for (const wb of map.wallBuys) if (level(wb.at.y)) consider(flat(pos, wb.at), 1.7, { type: 'wallbuy', wb });
     for (const pm of map.perkMachines) if (!p.perks.has(pm.id)) consider(flat(pos, pm.at), 1.7, { type: 'perk', pm });
     for (const st of map.papStations) if (Math.abs(st.at.y - pos.y) < 1.5) consider(flat(pos, st.at), 1.9, { type: 'pap', st });
     consider(flat(pos, map.box.at), 2.0, { type: 'box' });
+    if (map.atGunShop(pos)) consider(0, 1, { type: 'shop' });
     return best;
   }
 
@@ -1048,13 +1080,12 @@ export class ZombiesGame {
     }
     switch (it.type) {
       case 'revive': return `Hold E to revive ${it.who.name}`;
-      case 'door': return `Press E to open the door [${it.d.cost}]`;
-      case 'window': return 'Hold E to rebuild the barrier';
-      case 'wallbuy': {
-        const s = this.ownedSlot(p, it.wb.weapon);
-        if (s) return `Press E to buy ammo [${ammoCost(p.slots[s])}]`;
-        return `Press E to buy ${it.wb.def.name} [${it.wb.cost}]`;
+      case 'door': {   // the locked side is the area that opens last
+        const a = it.d.areas.map((id) => AREAS[id]).find((x) => x.after === it.d.after);
+        return `${a.name} opens after round ${it.d.after}`;
       }
+      case 'shop': return p.buyOpen && p.gunShop ? '' : 'Press E to browse the Gun Shop';
+      case 'window': return 'Hold E to rebuild the barrier';
       case 'perk': return `Press E to drink ${it.pm.name} [${it.pm.cost}]`;
       case 'pap': {
         // each station upgrades one level, in order: point the way to the right one
@@ -1077,26 +1108,11 @@ export class ZombiesGame {
   use(it, p) {
     const map = this.map;
     switch (it.type) {
-      case 'door':
-        if (it.d.open || !this.spend(p, it.d.cost)) return;
-        this.openDoor(it.d);
-        this.tell(p, { e: 'snd', n: 'purchase' });
+      case 'shop':   // opens (or closes) the Gun Shop menu: only on your own screen
+        if (p !== this.player) return;
+        if (p.buyOpen && p.gunShop) p.buyOpen = false;
+        else { p.gunShop = true; p.buyOpen = true; }
         break;
-      case 'wallbuy': {
-        const wb = it.wb, s = this.ownedSlot(p, wb.weapon);
-        if (s) {
-          const w = p.slots[s];
-          if (w.reserve >= w.def.reserve) { this.tell(p, { e: 'msg', s: 'Ammo is already full', d: 1 }); return; }
-          if (!this.spend(p, ammoCost(w))) return;
-          w.reserve = w.def.reserve;
-          this.syncInv(p, 'ammo');
-        } else {
-          if (!this.spend(p, wb.cost)) return;
-          this.givePlayerWeapon(p, wb.weapon);
-        }
-        this.tell(p, { e: 'snd', n: 'purchase' });
-        break;
-      }
       case 'perk':
         if (p.perks.has(it.pm.id) || !this.spend(p, it.pm.cost)) return;
         this.applyPerk(p, it.pm.id);
@@ -1656,8 +1672,8 @@ export class ZombiesGame {
       case 'next':
         if (this.betweenRounds && this.time < this.nextRoundAt) this.nextRoundAt = this.time;
         break;
-      case 'shop':   // bought something from the shop (B)
-        this.buy(p, ev.i | 0);
+      case 'shop':   // bought from the Gun Shop (g: 1) or ammo from the B menu
+        this.buy(p, ev.i | 0, !!ev.g);
         break;
     }
   }
@@ -1666,8 +1682,6 @@ export class ZombiesGame {
   resolveUse(p, ev) {
     const pos = p.body.pos, map = this.map, near = (at, r) => flat(pos, at) < r + 1.2 && Math.abs(at.y - pos.y) < 2.5;
     switch (ev.k) {
-      case 'door': { const d = map.doors.find((x) => x.id === ev.id); return d && !d.open && near(d.center, 2.8) ? { type: 'door', d } : null; }
-      case 'wallbuy': { const wb = map.wallBuys[ev.id]; return wb && near(wb.at, 1.7) ? { type: 'wallbuy', wb } : null; }
       case 'perk': { const pm = map.perkMachines.find((x) => x.id === ev.id); return pm && near(pm.at, 1.7) ? { type: 'perk', pm } : null; }
       case 'pap': { const st = map.papStations[ev.id]; return st && near(st.at, 1.9) && Math.abs(st.at.y - pos.y) < 2 ? { type: 'pap', st } : null; }
       case 'box': return near(map.box.at, 2.0) ? { type: 'box' } : null;

@@ -65,7 +65,9 @@ function limb(parent, from, to, thick, color) {
 
 // Your arms: thin Tung Tung arms in the friendly (green) team color, with a wristband.
 const WOOD = 0x5d9236, KNOB = 0x8cc45a;
+let bareGuns = false;   // displayGuns(): the guns on their own, no arms
 function arms(g, band, twoHands, leftZ = -0.26) {
+  if (bareGuns) return;
   b(g, 0.055, 0.07, 0.075, KNOB, 0.0, -0.075, 0.06);                      // right hand
   b(g, 0.05, 0.05, 0.03, band, 0.02, -0.1, 0.12);                          // wristband
   limb(g, [0.01, -0.09, 0.09], [0.13, -0.3, 0.42], 0.045, WOOD);           // right arm
@@ -788,7 +790,19 @@ function buildKnife(skin, band) {
   return g;
 }
 
-function buildModels(team) {
+// The gun models without arms or knives, with their own materials (for props out in the world,
+// like the guns on the Zombies Gun Shop wall). key -> Group, barrel toward -z, about 1 unit = 1 m.
+export function displayGuns() {
+  bareGuns = true;
+  let models;
+  try { models = buildModels(null, true); } finally { bareGuns = false; }
+  for (const g of Object.values(models)) {
+    g.traverse((m) => { if (m.isMesh) m.material = m.material.clone(); });
+  }
+  return models;
+}
+
+function buildModels(team, gunsOnly = false) {
   const band = team === 'T' ? 0xe0852b : team === 'CT' ? 0x2f6be0 : 0xa01818;
   const models = {};
   let g, mz;
@@ -923,6 +937,7 @@ function buildModels(team) {
   arms(g, band, true, 0.0); mz = new THREE.Object3D(); mz.position.set(0, 0.03, -0.32); g.add(mz); g.userData.muzzle = mz;
   models.raygun = g;
 
+  if (gunsOnly) return models;
   for (const skin of KNIFE_SKINS) models['knife_' + skin.id] = buildKnife(skin, band);
   return models;
 }

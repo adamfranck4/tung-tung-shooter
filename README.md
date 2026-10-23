@@ -65,6 +65,33 @@ code (and a **Copy invite link** button); everyone else types the code and click
 Pick **Zombies** in the menu for survival in **Sahur Village**, a night-time map built for this mode — alone or
 online with up to 3 friends.
 
+- **The Gun Shop** is where you spawn: the walk-in shop in the middle of the Courtyard (the middle of the village),
+  with glowing signs on its roof and over both doors. Press **E** at the counter to buy guns. The guns hang on the
+  wall behind the counter: the ones on sale in color with their price, the rest as faded outlines with the round
+  they unlock after. Buying a gun you already carry refills its ammo.
+- **Everything unlocks as you survive.** Nobody buys doors: at the end of each round one more area opens (its doors
+  swing open by themselves) and one more gun goes on sale at the Gun Shop. A banner says what's new.
+
+  | Survive round | Area that opens | New at the Gun Shop |
+  | --- | --- | --- |
+  | (start) | Courtyard | Desert Eagle 700, SMG 1000 |
+  | 1 | Village Hall (Quick Revive) | Pump Shotgun 1500 |
+  | 2 | Kitchen | M16 Burst 1600 |
+  | 3 | Drum Tower | Scout 1700 |
+  | 4 | Garden | AK Rifle 1800 |
+  | 5 | Rice Barn | M4 Rifle 1800 |
+  | 6 | Sahur Hill | Bolt Sniper 2000 |
+  | 7 | Lantern Loft (upstairs) | Drum LMG 3000 |
+  | 8 | Dead Orchard | |
+  | 9 | Night Market | |
+  | 10 | Sleeping Loft (upstairs) | |
+  | 11 | Lookout (upstairs) | |
+
+  A door opens when both of the areas it joins are open. A locked door shows the round it opens after (on the
+  door and on the map), and standing next to it tells you which area is behind it.
+- **Ammo (press B, anywhere):** refills the guns you carry, 1 or 2 for the gun in that slot (half the gun's price;
+  4500 / 6500 / 8500 / 10500 once it's upgraded to level I-IV). The B menu doesn't sell guns.
+
 - Endless rounds of Tung Tung zombies with bats. They tear boards off the windows and climb in, or rise from
   the ground. Regular zombies have 100 HP (same as a player); each round brings more of them, and they get
   faster (walkers → runners → sprinters).
@@ -83,27 +110,27 @@ online with up to 3 friends.
     as it walks, and ignores Insta-Kill and Kaboom. Worth 500 points and always drops a power-up.
     One at a time (two from round 12); it only rises out of open ground.
   - Kill points: the usual 60 / 100 headshot / 130 knife, +30 speedster, +20 crawler, +40 thrower or flyer.
-- Between rounds, press **N** to start the next wave right away.
-- **Sahur Hill** (doors from the Courtyard 1250 / Kitchen 1000): two hills, a walk-in hut, and a watchtower
+- You get 20 seconds between waves (time to get back to the Gun Shop); press **N** to start the next wave right away.
+- **Sahur Hill** (doors from the Courtyard and the Kitchen alley): two hills, a walk-in hut, and a watchtower
   with a hanging kentongan, reached by stairs or a ladder (W climbs the way you look; S or look down to go down).
-  Zombies take the stairs. The Courtyard also has a walk-in hut you can run through.
+  Zombies take the stairs. The Gun Shop in the Courtyard is walk-through too (doors east and west).
 - **The fountain** in the Courtyard sits on a round mound with a ramp all the way round, so zombies walk right
   up to anyone standing on it (no camping).
-- **Night Market** (doors from the alley 1250, or up a zig-zag path from Sahur Hill 1000): striped market stalls
-  and a walk-through shop. Scout on the wall.
-- **Rice Barn** (doors from the Courtyard 1000, through a bending corridor, or Sahur Hill 1250): a big barn
-  whose stall walls make a winding path through it. M16 on the wall.
-- **Dead Orchard** (doors from the Spawn Room 1250, or down a winding path from the Garden 1000): dying trees,
-  fallen logs, a tool shed, and graves that zombies rise from. Desert Eagle on the wall.
+- **Night Market** (doors from the alley, or up a zig-zag path from Sahur Hill): striped market stalls
+  and a walk-through shop.
+- **Rice Barn** (doors from the Courtyard, through a bending corridor, or from Sahur Hill): a big barn
+  whose stall walls make a winding path through it.
+- **Dead Orchard** (doors from the Village Hall, or down a winding path from the Garden): dying trees,
+  fallen logs, a tool shed, and graves that zombies rise from.
 - **Upstairs (2F):** a wooden second floor on the house between the Courtyard and Sahur Hill, with three rooms
-  in a row. Outdoor stone stairs climb to it from both sides: up the Courtyard's east wall to the **Lantern Loft**
-  (door 1000), and up Sahur Hill's west wall to the **Lookout** (door 1000). The **Sleeping Loft** in the middle
-  opens from either one (750 each side) and has an AK on the wall; the Lookout has a Scout. Balconies look out over
-  the Courtyard and Sahur Hill (and down on the stairs), and windows over the paths either side, so you can shoot
+  in a row. Outdoor stone stairs climb to it from both sides: up the Courtyard's east wall to the **Lantern Loft**,
+  and up Sahur Hill's west wall to the **Lookout**. The **Sleeping Loft** in the middle opens onto both.
+  Balconies look out over the Courtyard and Sahur Hill (and down on the stairs), and windows over the paths either side, so you can shoot
   down at the zombies coming for you. Zombies take the stairs; only flyers come straight in. You can jump down
   from a balcony or the landings to get out fast.
-- **Map (press M):** shows the whole village with the rooms you've opened lit up (locked ones hatched), every closed
-  door with its price, the stairs (the arrow points up), perks, Pack-a-Punch stations, the Mystery Box and wall guns,
+- **Map (press M):** shows the whole village with the rooms you've opened lit up (locked ones hatched, with the round
+  they open after), every closed door with its round (R3 = opens after round 3), the Gun Shop, the stairs (the arrow
+  points up), perks, Pack-a-Punch stations and the Mystery Box,
   and an arrow for you and each teammate (a red cross when someone is down). Underneath, it lists which room
   everyone is in. It stays open while you play; M again closes it.
 - **Aim down sights (hold right click):** any gun without a scope comes up to your eye with its front sight on the
@@ -112,18 +139,9 @@ online with up to 3 friends.
 - Every roof and hut doorway is tall enough for the rainbow giant. The village also has bunting with paper
   lanterns, painted shutters (some windows lit from inside), boarded-up doors, and dead trees and logs here and there.
 - Points: +10 per hit, +60 per kill, +100 headshot kill, +130 knife kill, +10 per board you rebuild (hold E).
-- **Shop (press B, anywhere):** buy guns and ammo with points. More guns unlock every two rounds:
-  - Round 1: Desert Eagle 700, SMG 1000 · Round 3: Shotgun 1500, M16 1600 · Round 5: AK 1800, Scout 1700 ·
-    Round 7: M4 1800, Sniper 2000 · Round 9: Drum LMG 3000
-  - 1-9 buys a gun (it replaces the gun in your hands when you already carry two), 0 refills the ammo of the
-    gun in your hands (half its price; 4500 / 6500 / 8500 / 10500 once it's upgraded to level I-IV).
-  - The Tung Ray stays a Mystery Box exclusive.
+- At the Gun Shop, 1-9 buys a gun (it replaces the gun in your hands when you already carry two). It's the only
+  place that sells guns (there are no wall guns). The Tung Ray stays a Mystery Box exclusive.
 - Spend points on (press E):
-  - Doors: Courtyard 750, Kitchen 1000, Garden 1000, Drum Tower 1250, Sahur Hill 1250 / 1000,
-    Night Market 1250 / 1000, Rice Barn 1000 / 1250, Dead Orchard 1250 / 1000,
-    upstairs: Lantern Loft 1000, Lookout 1000, Sleeping Loft 750 (from either side)
-  - Wall guns: SMG 1000, Shotgun 1500, AK 1800, M4 1800, Sniper 2000, LMG 3000 (ammo = half price). They are
-    available from round 1, before the shop unlocks them, if you open their area. Upstairs: AK 1800, Scout 1700.
   - Perks: Quick Revive 500 (gets you back up once), Double Tap 2000, Juggernog 2500 (more health), Speed Cola 3000 (faster reloads)
   - Mystery Box 950: random gun, including the Drum LMG and the Tung Ray wonder weapon
   - **Pack-a-Punch, four levels.** Each station upgrades the gun in your hands one level, in order, so a gun
@@ -144,7 +162,7 @@ online with up to 3 friends.
 ### Co-op
 
 - Zombies go for whoever is closest. Each round has more of them with more players (+50% per extra player).
-- Doors, windows, the Mystery Box, Pack-a-Punch and power-ups are shared; points, perks and guns are your own.
+- Areas, windows, the Mystery Box, Pack-a-Punch and power-ups are shared; points, perks and guns are your own.
   Only the player who paid for the Mystery Box can take its gun. Max Ammo refills everyone; Carpenter and
   Kaboom give every player their points.
 - Going down doesn't end the game: you lose your perks and have 100 seconds. A teammate holds **E** next to you
@@ -167,7 +185,8 @@ online with up to 3 friends.
 | Shift | Walk (quiet, more accurate) |
 | 1 / 2 / 3, Q, wheel | Switch weapons |
 | R | Reload |
-| B | Buy menu (in spawn during buy time), then 1-8 to buy. Zombies: the shop, anywhere (1-9 guns, 0 ammo) |
+| B | Buy menu (in spawn during buy time), then 1-8 to buy. Zombies: ammo, anywhere (1-2 for that slot's gun) |
+| E | Zombies: buy (Gun Shop counter, perks, box, Pack-a-Punch) |
 | E (hold) | Plant / defuse, rebuild boards, revive a teammate |
 | Tab | Scoreboard |
 | M | Map (Zombies) |

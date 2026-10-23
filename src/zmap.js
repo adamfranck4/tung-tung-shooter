@@ -1,13 +1,15 @@
 // "Sahur Village": the Zombies map. A night-time village built on a grid of 2m cells.
-// Areas are unlocked with doors, some through winding corridors; zombies climb in through
-// boarded windows (spawning in small pockets outside) or rise out of the ground. Three of the
-// areas are upstairs, on a second floor over the solid block between the Courtyard and Sahur
-// Hill (see UPSTAIRS). The props and decoration are built in zdecor.js.
+// You start at the Gun Shop in the middle of the Courtyard. The other areas sit behind doors
+// (some down winding corridors) that open by themselves as you survive rounds; zombies climb in
+// through boarded windows (spawning in small pockets outside) or rise out of the ground. Three
+// of the areas are upstairs, on a second floor over the solid block between the Courtyard and
+// Sahur Hill (see UPSTAIRS). The props and decoration are built in zdecor.js.
 import * as THREE from 'three';
 import { BoxBuilder } from './map.js';
 import { surfaceMaterial } from './textures.js';
 import { solidDistance, mergeBands, blockHash, addEdgeTrims, buildContactShadows } from './mapkit.js';
-import { WEAPONS } from './weapons.js';
+import { WEAPONS, ZOMBIE_SHOP, ZOMBIE_PRICES } from './weapons.js';
+import { displayGuns } from './viewmodel.js';
 import { buildMound, buildTrees, buildLogs, buildStalls, buildBunting, buildWallDecor } from './zdecor.js';
 
 const C = 2;                 // cell size in meters
@@ -16,22 +18,24 @@ export const ZW = GW * C, ZH = GH * C;   // 120 m x 80 m
 export const ZWORLD = ZW;
 
 // [x0, z0, x1, z1] in cells, end exclusive. floor: tint of the indoor tiles; paving / earth: an
-// outdoor ground patch (stone paving or dark soil).
+// outdoor ground patch (stone paving or dark soil). after: how many rounds you have to survive
+// before it opens (one more area per round, working outward from the Courtyard).
 export const AREAS = {
-  A: { name: 'Spawn Room', rect: [15, 27, 25, 35], indoor: true },
-  B: { name: 'Courtyard', rect: [10, 11, 30, 24] },
-  C: { name: 'Kitchen', rect: [27, 25, 37, 37], indoor: true },
-  D: { name: 'Drum Tower', rect: [14, 2, 26, 8], indoor: true },
-  E: { name: 'Garden', rect: [4, 13, 9, 27] },
-  F: { name: 'Sahur Hill', rect: [40, 4, 56, 22] },
-  G: { name: 'Night Market', rect: [46, 28, 58, 38], paving: [0.62, 0.58, 0.66] },
-  H: { name: 'Rice Barn', rect: [32, 3, 39, 10], indoor: true, floor: [0.78, 0.6, 0.42] },
-  I: { name: 'Dead Orchard', rect: [1, 33, 14, 39], earth: [0.5, 0.44, 0.38] },
+  A: { name: 'Village Hall', rect: [15, 27, 25, 35], indoor: true, after: 1 },
+  B: { name: 'Courtyard', rect: [10, 11, 30, 24], after: 0 },
+  C: { name: 'Kitchen', rect: [27, 25, 37, 37], indoor: true, after: 2 },
+  D: { name: 'Drum Tower', rect: [14, 2, 26, 8], indoor: true, after: 3 },
+  E: { name: 'Garden', rect: [4, 13, 9, 27], after: 4 },
+  F: { name: 'Sahur Hill', rect: [40, 4, 56, 22], after: 6 },
+  G: { name: 'Night Market', rect: [46, 28, 58, 38], paving: [0.62, 0.58, 0.66], after: 9 },
+  H: { name: 'Rice Barn', rect: [32, 3, 39, 10], indoor: true, floor: [0.78, 0.6, 0.42], after: 5 },
+  I: { name: 'Dead Orchard', rect: [1, 33, 14, 39], earth: [0.5, 0.44, 0.38], after: 8 },
   // upstairs (upper: not carved out of the ground grid, the rooms sit on top of it)
-  J: { name: 'Lantern Loft', rect: [30, 13, 33, 18], upper: true },
-  K: { name: 'Sleeping Loft', rect: [33, 13, 37, 18], upper: true },
-  L: { name: 'Lookout', rect: [37, 13, 40, 18], upper: true },
+  J: { name: 'Lantern Loft', rect: [30, 13, 33, 18], upper: true, after: 7 },
+  K: { name: 'Sleeping Loft', rect: [33, 13, 37, 18], upper: true, after: 10 },
+  L: { name: 'Lookout', rect: [37, 13, 40, 18], upper: true, after: 11 },
 };
+export const START_AREA = 'B';
 // The second floor. Its rooms stand on the solid block of cells under them (nothing walks
 // underneath), so the zombies' one-layer path grid still works: upstairs cells are just cells
 // whose floor is FL high. Outdoor stairs climb to it from the Courtyard and from Sahur Hill.
@@ -62,29 +66,32 @@ const CORRIDORS = [[19, 24, 21, 27], [25, 30, 27, 32], [27, 24, 29, 25], [19, 8,
   [30, 11, 38, 13], [36, 10, 38, 11],                     // Courtyard -> Rice Barn (bends north)
   [39, 5, 40, 7],                                         // Rice Barn -> Sahur Hill
   [1, 24, 4, 26], [1, 26, 3, 33],                         // Garden -> Dead Orchard (winding path)
-  [14, 33, 15, 35],                                       // Spawn Room -> Dead Orchard
+  [14, 33, 15, 35],                                       // Village Hall -> Dead Orchard
 ];
+// Doors between two areas. Nobody buys them: each one opens by itself at the end of the round
+// that opens the second of its two areas (its `after`, worked out below).
 const DOORS = [
-  { id: 'd1', cells: [19, 25, 21, 26], cost: 750, areas: ['A', 'B'] },
-  { id: 'd2', cells: [26, 30, 27, 32], cost: 1000, areas: ['A', 'C'] },
-  { id: 'd3', cells: [27, 24, 29, 25], cost: 1000, areas: ['B', 'C'] },
-  { id: 'd4', cells: [19, 9, 21, 10], cost: 1250, areas: ['B', 'D'] },
-  { id: 'd5', cells: [9, 17, 10, 19], cost: 1000, areas: ['B', 'E'] },
-  { id: 'd6', cells: [39, 18, 40, 20], cost: 1250, areas: ['B', 'F'] },
-  { id: 'd7', cells: [37, 33, 38, 35], cost: 1000, areas: ['C', 'F'] },
-  { id: 'd8', cells: [45, 29, 46, 31], cost: 1250, areas: ['F', 'G'] },
-  { id: 'd9', cells: [54, 22, 56, 23], cost: 1000, areas: ['F', 'G'] },
-  { id: 'd10', cells: [30, 11, 31, 13], cost: 1000, areas: ['B', 'H'] },
-  { id: 'd11', cells: [39, 5, 40, 7], cost: 1250, areas: ['F', 'H'] },
-  { id: 'd12', cells: [3, 24, 4, 26], cost: 1000, areas: ['E', 'I'] },
-  { id: 'd13', cells: [14, 33, 15, 35], cost: 1250, areas: ['A', 'I'] },
+  { id: 'd1', cells: [19, 25, 21, 26], areas: ['A', 'B'] },
+  { id: 'd2', cells: [26, 30, 27, 32], areas: ['A', 'C'] },
+  { id: 'd3', cells: [27, 24, 29, 25], areas: ['B', 'C'] },
+  { id: 'd4', cells: [19, 9, 21, 10], areas: ['B', 'D'] },
+  { id: 'd5', cells: [9, 17, 10, 19], areas: ['B', 'E'] },
+  { id: 'd6', cells: [39, 18, 40, 20], areas: ['B', 'F'] },
+  { id: 'd7', cells: [37, 33, 38, 35], areas: ['C', 'F'] },
+  { id: 'd8', cells: [45, 29, 46, 31], areas: ['F', 'G'] },
+  { id: 'd9', cells: [54, 22, 56, 23], areas: ['F', 'G'] },
+  { id: 'd10', cells: [30, 11, 31, 13], areas: ['B', 'H'] },
+  { id: 'd11', cells: [39, 5, 40, 7], areas: ['F', 'H'] },
+  { id: 'd12', cells: [3, 24, 4, 26], areas: ['E', 'I'] },
+  { id: 'd13', cells: [14, 33, 15, 35], areas: ['A', 'I'] },
   // upstairs: at the top of each staircase and between the rooms. edgeX: [x, z] = the doorway
   // between cell (x, z) and (x + 1, z), at floor height FL
-  { id: 'u1', edgeX: [29, 13], cost: 1000, areas: ['B', 'J'] },
-  { id: 'u2', edgeX: [32, 15], cost: 750, areas: ['J', 'K'] },
-  { id: 'u3', edgeX: [36, 15], cost: 750, areas: ['K', 'L'] },
-  { id: 'u4', edgeX: [39, 17], cost: 1000, areas: ['F', 'L'] },
+  { id: 'u1', edgeX: [29, 13], areas: ['B', 'J'] },
+  { id: 'u2', edgeX: [32, 15], areas: ['J', 'K'] },
+  { id: 'u3', edgeX: [36, 15], areas: ['K', 'L'] },
+  { id: 'u4', edgeX: [39, 17], areas: ['F', 'L'] },
 ];
+for (const d of DOORS) d.after = Math.max(...d.areas.map((a) => AREAS[a].after));
 // Smooth hills (cosine bumps): [x, z, radius, height] in meters
 const HILLS = [[104, 15, 7.5, 2.6], [88, 39, 6, 1.8]];
 // Flat-topped mounds with a ramp all the way round: [x, z, top radius, foot radius, height].
@@ -97,7 +104,8 @@ const ROOF_Y = 4.9;
 // h - 0.7 tall, so even the rainbow giant fits); light: a lantern that lights the inside.
 const HUTS = [
   { rect: [80, 8, 88, 16], skip: ['n', 'w'], doors: [['e', 6]], windows: [['s', 41]], h: 5, lantern: [84, 4.2, 12], light: true, roof: 0 },
-  { rect: [48, 36, 56, 44], skip: [], doors: [['w', 19], ['e', 20]], windows: [['n', 25], ['s', 26]], h: 5, lantern: [52, 4.2, 40], light: true, roof: 1 },
+  // the Gun Shop (see GUN_SHOP), walk-through; its north wall holds the gun rack
+  { rect: [48, 36, 56, 44], skip: [], doors: [['w', 19], ['e', 20]], windows: [['s', 26]], h: 5, lantern: [52, 4.2, 38.8], light: true, roof: 1 },
   // Night Market shop ("warung"), walk-through
   { rect: [100, 62, 108, 70], skip: [], doors: [['w', 32], ['e', 33]], windows: [['n', 51], ['s', 52]], h: 5, lantern: [104, 4.2, 66], roof: 2, tiles: false },
   // Dead Orchard tool shed, walk-through
@@ -174,19 +182,6 @@ const LOGS = [
   [5.6, 56, 2.6, 0.28, 'z'],                                                               // orchard path
   [96, 20.6, 3, 0.32, 'x'], [104.6, 40.4, 2.8, 0.3, 'z'],                                  // Sahur Hill
 ];
-export const WALLBUYS = [
-  { weapon: 'smg', cost: 1000, pos: [34, 1.5, 70], n: [0, 0, -1], area: 'A' },
-  { weapon: 'shotgun', cost: 1500, pos: [20, 1.5, 28], n: [1, 0, 0], area: 'B' },
-  { weapon: 'ak', cost: 1800, pos: [74, 1.5, 68], n: [-1, 0, 0], area: 'C' },
-  { weapon: 'm4', cost: 1800, pos: [32, 1.5, 16], n: [0, 0, -1], area: 'D' },
-  { weapon: 'sniper', cost: 2000, pos: [18, 1.5, 46], n: [-1, 0, 0], area: 'E' },
-  { weapon: 'lmg', cost: 3000, pos: [112, 1.5, 38], n: [-1, 0, 0], area: 'F' },
-  { weapon: 'scout', cost: 1700, pos: [116, 1.5, 73], n: [-1, 0, 0], area: 'G' },
-  { weapon: 'm16', cost: 1600, pos: [64, 1.5, 11], n: [1, 0, 0], area: 'H' },
-  { weapon: 'deagle', cost: 700, pos: [21, 1.5, 78], n: [0, 0, -1], area: 'I' },
-  { weapon: 'ak', cost: 1800, pos: [70, FL + 1.5, 35.85], n: [0, 0, -1], area: 'K' },     // upstairs
-  { weapon: 'scout', cost: 1700, pos: [76, FL + 1.5, 35.85], n: [0, 0, -1], area: 'L' },
-];
 export const PERKS = [
   { id: 'quick', name: 'Quick Revive', short: 'QR', cost: 500, color: 0x3aa8ff, pos: [49.5, 0, 57], face: [-1, 0, 0], area: 'A' },
   { id: 'speed', name: 'Speed Cola', short: 'SC', cost: 3000, color: 0x3ad16b, pos: [58, 0, 73.5], face: [0, 0, -1], area: 'C' },
@@ -202,6 +197,18 @@ export const PAP_STATIONS = [
   { level: 4, pos: [99, 4, 30.75], face: [0, 0, 1], cost: 25000, area: 'F', color: 0xff3b3b, ink: '#ffa0a0' },
 ];
 export const BOX = { pos: [24, 0, 45.5], cost: 950, area: 'B' };
+// The Gun Shop: the walk-in hut in the middle of the Courtyard (the middle of the village), where
+// everyone spawns and buys guns (E at the counter). The counter runs along the north wall, flush
+// with it so there's nothing to hide behind; the guns hang on the wall above it and show up as
+// they unlock. rack: rows of [y, keys] in the order they unlock.
+export const GUN_SHOP = {
+  rect: [48, 36, 56, 44],
+  counter: [48.6, 36.15, 55.4, 37.0], counterH: 1.05,
+  front: [49.2, 54.8, 37.5],          // the line in front of the counter you buy from (x0, x1, z)
+  reach: 1.9,
+  rack: [[1.9, ['deagle', 'smg', 'shotgun', 'm16', 'scout']], [3.1, ['ak', 'm4', 'sniper', 'lmg']]],
+  area: 'B',
+};
 const GROUND_SPAWNS = [
   { pos: [26, 0, 29], area: 'B' }, { pos: [44, 0, 26], area: 'B' }, { pos: [30, 0, 41], area: 'B' },
   { pos: [34, 0, 8], area: 'D' }, { pos: [48, 0, 8], area: 'D' },
@@ -213,12 +220,12 @@ const GROUND_SPAWNS = [
   // upstairs: only flyers come in here (down from the rafters), the rest take the stairs
   { pos: [63, 0, 30], area: 'J', fly: true }, { pos: [70, 0, 31], area: 'K', fly: true }, { pos: [77, 0, 30], area: 'L', fly: true },
 ];
-export const PLAYER_START = new THREE.Vector3(40, 0, 62);
+export const PLAYER_START = new THREE.Vector3(52, 0, 40.6);   // in the Gun Shop, facing the counter
 // bunting strings with little flags (and paper lanterns): [x0, y0, z0, x1, y1, z1, lanterns]
 const BUNTING = [
   [20.3, 4.6, 27, 59.8, 7.3, 27, false], [20.3, 4.4, 46.5, 59.7, 4.4, 46.5, false], [20.3, 4.8, 23, 44.6, 4.8, 47.7, false],   // Courtyard
   [60.6, FL + 3.7, 27.4, 65.4, FL + 3.5, 34.6, true], [60.6, FL + 3.6, 34.6, 65.4, FL + 3.7, 27.4, true],                    // Lantern Loft
-  [30.3, 4.5, 58, 49.7, 4.5, 58, false], [30.3, 4.5, 66, 49.7, 4.5, 66, false],                                              // Spawn Room
+  [30.3, 4.5, 58, 49.7, 4.5, 58, false], [30.3, 4.5, 66, 49.7, 4.5, 66, false],                                              // Village Hall
   [92.3, 4.7, 61.2, 115.7, 4.7, 61.2, true], [92.3, 4.7, 70.6, 115.7, 4.7, 70.6, true], [96, 4.9, 56.3, 96, 4.9, 75.7, true], // Night Market
   [112, 4.9, 56.3, 112, 4.9, 75.7, true],
 ];
@@ -245,7 +252,7 @@ const UP_PROPS = [
   [72.5, 26.2, 73.8, 27.1, 0.75, 'chest'],        // Sleeping Loft: a chest under the window
   [74.3, 26.3, 75.9, 27.9, 1.45, 'drum'],         // Lookout: a big bedug drum on its stand
 ];
-const UP_MATS = [[66.4, 33.4, 68.4, 35.6], [71.6, 33.4, 73.6, 35.6]];   // sleeping mats either side of the AK (Sleeping Loft)
+const UP_MATS = [[66.4, 33.4, 68.4, 35.6], [71.6, 33.4, 73.6, 35.6]];   // sleeping mats along the south wall (Sleeping Loft)
 
 // ---------- small canvas helpers for signs ----------
 function canvasTex(w, h, draw) {
@@ -253,20 +260,6 @@ function canvasTex(w, h, draw) {
   draw(c.getContext('2d'), w, h);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
   return t;
-}
-function chalkGun(name, cost) {
-  return canvasTex(256, 128, (ctx, w, h) => {
-    ctx.clearRect(0, 0, w, h);
-    ctx.strokeStyle = 'rgba(245,245,235,0.92)'; ctx.lineWidth = 4; ctx.lineJoin = 'round';
-    ctx.shadowColor = 'rgba(255,255,255,0.5)'; ctx.shadowBlur = 4;
-    ctx.beginPath();
-    ctx.moveTo(30, 40); ctx.lineTo(160, 40); ctx.lineTo(160, 34); ctx.lineTo(228, 34); ctx.lineTo(228, 46);
-    ctx.lineTo(160, 46); ctx.lineTo(150, 56); ctx.lineTo(118, 56); ctx.lineTo(110, 86); ctx.lineTo(96, 86);
-    ctx.lineTo(100, 56); ctx.lineTo(70, 56); ctx.lineTo(58, 74); ctx.lineTo(24, 74); ctx.lineTo(30, 40);
-    ctx.stroke();
-    ctx.font = '700 22px Rajdhani, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(245,245,235,0.95)';
-    ctx.fillText(`${name} — ${cost}`, w / 2, 116);
-  });
 }
 function signTex(lines, bg, fg = '#fff', w = 256, h = 96) {
   return canvasTex(w, h, (ctx) => {
@@ -277,6 +270,29 @@ function signTex(lines, bg, fg = '#fff', w = 256, h = 96) {
       ctx.font = `700 ${i === 0 ? 34 : 24}px Rajdhani, sans-serif`;
       ctx.fillText(l, w / 2, h / (lines.length + 1) * (i + 1) + (i === 0 ? 2 : 0));
     });
+  });
+}
+
+// Gun Shop price tag: the gun's name, and its price (or when it unlocks) underneath
+function tagTex(name, line2, color) {
+  return canvasTex(256, 82, (ctx, w, h) => {
+    ctx.fillStyle = 'rgba(20,14,9,0.92)'; ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = 'rgba(255,214,140,0.5)'; ctx.lineWidth = 3; ctx.strokeRect(2, 2, w - 4, h - 4);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = '700 30px Rajdhani, sans-serif'; ctx.fillStyle = '#f4e2b0'; ctx.fillText(name, w / 2, 27);
+    ctx.font = '700 25px Rajdhani, sans-serif'; ctx.fillStyle = color; ctx.fillText(line2, w / 2, 60);
+  });
+}
+// a glowing shop sign (no lighting needed: it's for MeshBasicMaterial)
+function neonTex(title, sub, w = 512, h = 150) {
+  return canvasTex(w, h, (ctx) => {
+    ctx.fillStyle = '#160e07'; ctx.fillRect(0, 0, w, h);
+    ctx.shadowColor = '#ffae3a'; ctx.shadowBlur = 16;
+    ctx.strokeStyle = '#ffb648'; ctx.lineWidth = 6; ctx.strokeRect(12, 12, w - 24, h - 24);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#ffe6a8';
+    ctx.font = `700 ${sub ? 66 : 84}px Rajdhani, sans-serif`;
+    ctx.fillText(title, w / 2, sub ? h * 0.4 : h / 2 + 4);
+    if (sub) { ctx.shadowBlur = 6; ctx.font = '600 27px Rajdhani, sans-serif'; ctx.fillStyle = '#ffc870'; ctx.fillText(sub, w / 2, h * 0.75); }
   });
 }
 
@@ -345,6 +361,7 @@ export class ZMap {
     for (const p of PERKS) this.obstacles.push(this.machineBox(p.pos, p.face, 1.1, 0.9, 2.1));
     for (const st of PAP_STATIONS) this.obstacles.push(this.machineBox(st.pos, st.face, 1.6, 1.2, 1.9));
     this.obstacles.push({ x0: BOX.pos[0] - 0.9, y0: 0, z0: BOX.pos[2] - 0.4, x1: BOX.pos[0] + 0.9, y1: 0.9, z1: BOX.pos[2] + 0.4 });
+    { const [x0, z0, x1, z1] = GUN_SHOP.counter; this.obstacles.push({ x0, y0: 0, z0, x1, y1: GUN_SHOP.counterH, z1 }); }
     for (const l of LIGHTS) if (l.post) this.obstacles.push({ x0: l.pos[0] - 0.15, y0: 0, z0: l.pos[2] - 0.15, x1: l.pos[0] + 0.15, y1: 3.3, z1: l.pos[2] + 0.15 });
 
     // walls: layered heights (street walls share a height per block, taller buildings behind)
@@ -724,7 +741,7 @@ export class ZMap {
         if (spanX) mesh(box, brace, 0, y, 0.1, span, 0.18, 0.06, g).rotation.z = 0.12;
         else mesh(box, brace, 0.1, y, 0, 0.06, 0.18, span, g).rotation.x = 0.12;
       }
-      const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.55), new THREE.MeshLambertMaterial({ map: signTex(['OPEN', String(def.cost)], '#2a1b10', '#f4e2b0') }));
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.55), new THREE.MeshLambertMaterial({ map: signTex(['LOCKED', `AFTER ROUND ${def.after}`], '#2a1b10', '#f4e2b0') }));
       const sign2 = sign.clone();
       if (spanX) { sign.position.set(0, 1.6, 0.14); sign2.position.set(0, 1.6, -0.14); sign2.rotation.y = Math.PI; }
       else { sign.position.set(0.14, 1.6, 0); sign.rotation.y = Math.PI / 2; sign2.position.set(-0.14, 1.6, 0); sign2.rotation.y = -Math.PI / 2; }
@@ -857,7 +874,7 @@ export class ZMap {
   // Skips faces next to anything you interact with, doors and windows.
   decorFaces() {
     const busy = [
-      ...WALLBUYS.map((w) => [w.pos[0], w.pos[2]]), ...PERKS.map((p) => [p.pos[0], p.pos[2]]),
+      ...PERKS.map((p) => [p.pos[0], p.pos[2]]),
       ...PAP_STATIONS.map((p) => [p.pos[0], p.pos[2]]), [BOX.pos[0], BOX.pos[2]],
       ...this.windows.map((w) => [w.center.x, w.center.z]), ...this.doors.map((d) => [d.center.x, d.center.z]),
       ...STALLS.map((s) => [(s.counter[0] + s.counter[2]) / 2, s.back]),
@@ -1021,17 +1038,6 @@ export class ZMap {
       mesh(box, l.glowOnly ? new THREE.MeshBasicMaterial({ color: l.color }) : lantern, l.pos[0], l.pos[1] + 0.05, l.pos[2], 0.28, 0.36, 0.28, this.scene).castShadow = false;
       if (l.post) mesh(box, pole, l.pos[0], 1.6, l.pos[2], 0.14, 3.2, 0.14, this.scene);
     }
-    // wall buys: chalk outlines on the wall
-    this.wallBuys = WALLBUYS.map((wb) => {
-      const def = WEAPONS[wb.weapon];
-      const plane = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 0.85),
-        new THREE.MeshBasicMaterial({ map: chalkGun(def.name, wb.cost), transparent: true, depthWrite: false }));
-      const [nx, , nz] = wb.n;
-      plane.position.set(wb.pos[0] + nx * 0.03, wb.pos[1], wb.pos[2] + nz * 0.03);
-      plane.lookAt(plane.position.x + nx, plane.position.y, plane.position.z + nz);
-      this.scene.add(plane);
-      return { ...wb, def, at: new THREE.Vector3(wb.pos[0] + nx * 0.9, wb.pos[1] - 1.5, wb.pos[2] + nz * 0.9) };
-    });
     // perk machines
     this.perkMachines = PERKS.map((p) => {
       const g = new THREE.Group();
@@ -1095,6 +1101,99 @@ export class ZMap {
       this.scene.add(label);
       this.box = { ...BOX, group: g, lid, beam, label, labelCanvas: c, labelTex, at: new THREE.Vector3(BOX.pos[0], 0, BOX.pos[2] + 1.3) };
     }
+    this.buildGunShop();
+  }
+
+  // ---------- the Gun Shop: counter, a wall of guns (each one shows up when it unlocks), signs ----------
+  buildGunShop() {
+    const S = GUN_SHOP, [cx0, cz0, cx1, cz1] = S.counter, h = S.counterH, cx = (cx0 + cx1) / 2, w = cx1 - cx0;
+    const sc = this.scene;
+    // the counter: plank front, a dark kick strip, a top that overhangs a little; ammo crates and a cash box on it
+    mesh(box, lambert(0x6a4428), cx, (h - 0.06) / 2, (cz0 + cz1) / 2, w, h - 0.06, cz1 - cz0, sc);
+    mesh(box, lambert(0x9a6a3e), cx, h - 0.03, (cz0 + cz1) / 2 + 0.03, w + 0.08, 0.06, cz1 - cz0 + 0.06, sc);
+    mesh(box, lambert(0x2a1c12), cx, 0.07, cz1 + 0.01, w, 0.14, 0.02, sc);
+    for (const x of [cx0 + 0.45, cx1 - 0.45]) {
+      mesh(box, lambert(0x3e5a2a), x, h + 0.16, cz0 + 0.4, 0.55, 0.32, 0.38, sc);
+      mesh(box, lambert(0xc8b060), x, h + 0.16, cz0 + 0.4 + 0.195, 0.2, 0.08, 0.01, sc).castShadow = false;   // stencilled label
+    }
+    mesh(box, lambert(0x34363a), cx, h + 0.12, cz0 + 0.42, 0.46, 0.24, 0.34, sc);
+    mesh(box, new THREE.MeshBasicMaterial({ color: 0x7dff8a }), cx, h + 0.2, cz0 + 0.595, 0.3, 0.06, 0.01, sc).castShadow = false;
+    // the rack: a dark board on the wall above the counter, the guns hung on it, a price tag under each
+    const wallZ = cz0, boardZ = wallZ + 0.04;
+    // (light wood, so the dark guns and the black outlines of the locked ones stand out)
+    mesh(box, lambert(0xc49a68), cx, 2.55, wallZ + 0.02, w, 2.6, 0.04, sc).castShadow = false;
+    for (const y of [1.28, 3.82]) mesh(box, lambert(0x5a3c24), cx, y, wallZ + 0.05, w + 0.08, 0.08, 0.06, sc).castShadow = false;
+    const guns = displayGuns(), dark = new THREE.MeshBasicMaterial({ color: 0x15100c, transparent: true, opacity: 0.4, depthWrite: false });
+    const after = Object.fromEntries(ZOMBIE_SHOP.map((it) => [it.key, it.after]));
+    const x0 = cx0 + 0.15, x1 = cx1 - 0.15, TAG = 0.85;
+    this.shopSlots = [];
+    for (const [y, keys] of S.rack) {
+      const items = keys.map((key) => {
+        const g = guns[key];
+        g.rotation.y = -Math.PI / 2;   // barrel to the right, its right side facing out
+        g.updateMatrixWorld(true);
+        const bb = new THREE.Box3().setFromObject(g);
+        return { key, g, bb, len: bb.max.x - bb.min.x };
+      });
+      // as big as fits, leaving every gun room for its tag
+      const room = (s) => items.reduce((a, it) => a + Math.max(TAG, it.len * s), 0) + 0.2 * (items.length - 1);
+      let s = 1.15;
+      while (s > 0.6 && room(s) > x1 - x0) s -= 0.05;
+      const gap = (x1 - x0 - room(s) + 0.2 * (items.length - 1)) / items.length;
+      let x = x0 + gap / 2;
+      for (const it of items) {
+        const slot = Math.max(TAG, it.len * s), mid = x + slot / 2, c = it.bb.getCenter(new THREE.Vector3());
+        it.g.scale.setScalar(s);
+        it.g.position.set(mid - c.x * s, y - c.y * s, boardZ + 0.03 + (it.bb.max.z - it.bb.min.z) * s / 2 - c.z * s);
+        it.g.traverse((m) => { if (m.isMesh) { m.userData.lit = m.material; m.castShadow = false; } });
+        sc.add(it.g);
+        const def = WEAPONS[it.key], due = after[it.key] ?? 0;
+        const on = new THREE.MeshBasicMaterial({ map: tagTex(def.name, String(ZOMBIE_PRICES[it.key]), '#9be07a'), transparent: true });
+        const off = new THREE.MeshBasicMaterial({ map: tagTex(def.name, `AFTER ROUND ${due}`, '#ff9a6a'), transparent: true });
+        const tag = new THREE.Mesh(new THREE.PlaneGeometry(TAG - 0.06, (TAG - 0.06) * 0.32), off);
+        tag.position.set(mid, y - 0.48, boardZ + 0.012);
+        sc.add(tag);
+        this.shopSlots.push({ key: it.key, after: due, gun: it.g, tag, on, off, dark, shown: null });
+        x += slot + gap;
+      }
+    }
+    // glowing signs: over the rack inside, and on all four outside walls (over the doors on the
+    // west and east, where you walk in)
+    const [rx0, rz0, rx1, rz1] = S.rect, T = 0.17;
+    const inner = new THREE.MeshBasicMaterial({ map: neonTex('GUN SHOP', 'A new gun every round you survive') });
+    const outer = new THREE.MeshBasicMaterial({ map: neonTex('GUN SHOP', '') });
+    const plane = (mat, sw, sh, x, y, z, ry) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(sw, sh), mat); m.position.set(x, y, z); m.rotation.y = ry; sc.add(m); };
+    plane(inner, 2.9, 0.9, cx, 4.35, wallZ + 0.02, 0);
+    plane(outer, 2.2, 0.6, rx0 - T, 4.63, 39, -Math.PI / 2);
+    plane(outer, 2.2, 0.6, rx1 + T, 4.63, 41, Math.PI / 2);
+    plane(outer, 3.2, 0.87, (rx0 + rx1) / 2, 3.7, rz0 - T, Math.PI);
+    plane(outer, 3.2, 0.87, (rx0 + rx1) / 2, 3.7, rz1 + T, 0);
+    // ...and a big one up on the roof (two-sided, facing west and east), seen from across the Courtyard
+    const mx = (rx0 + rx1) / 2, mz = (rz0 + rz1) / 2, roofTop = 5.86, sy = roofTop + 0.95;
+    for (const dz of [-1.5, 1.5]) mesh(box, lambert(0x2a1c12), mx, roofTop + 0.3, mz + dz, 0.12, 0.7, 0.12, sc);
+    mesh(box, lambert(0x2a1c12), mx, sy, mz, 0.08, 1.32, 4.5, sc);
+    plane(outer, 4.3, 1.2, mx - 0.05, sy, mz, -Math.PI / 2);
+    plane(outer, 4.3, 1.2, mx + 0.05, sy, mz, Math.PI / 2);
+    this.setShopRound(0);
+  }
+
+  // Show the guns that are on sale after `cleared` rounds (the rest are dark outlines with the
+  // round they unlock after).
+  setShopRound(cleared) {
+    for (const s of this.shopSlots || []) {
+      const on = s.after <= cleared;
+      if (s.shown === on) continue;
+      s.shown = on;
+      s.tag.material = on ? s.on : s.off;
+      s.gun.traverse((m) => { if (m.isMesh) m.material = on ? m.userData.lit : s.dark; });
+    }
+  }
+
+  // close enough to the Gun Shop counter to buy (slack: a little extra reach)
+  atGunShop(pos, slack = 0) {
+    const [fx0, fx1, fz] = GUN_SHOP.front;
+    const d = Math.hypot(pos.x - Math.max(fx0, Math.min(fx1, pos.x)), pos.z - fz);
+    return d < GUN_SHOP.reach + slack && pos.y < 1.5 + slack;
   }
 
   setBoxLabel(text, color = '#ffe9a8') {
@@ -1148,7 +1247,7 @@ export class ZMap {
   // a floor players can stand on (ground or upstairs), not a closed door, window or spawn pocket
   floorCell(i) { return (this.grid[i] === 0 || this.upper[i] === 1) && !this.navBlock[i]; }
 
-  // For the map: every cell the players can get to from the Spawn Room through the doors bought so
+  // For the map: every cell the players can get to from the Gun Shop through the doors opened so
   // far (walls, closed doors and drops of more than a step block the way, like the zombies' paths).
   reachable(out = new Uint8Array(GW * GH)) {
     out.fill(0);
@@ -1169,6 +1268,8 @@ export class ZMap {
 
   // name of the area a point is in ('' on the paths between them)
   areaAt(pos) {
+    const [sx0, sz0, sx1, sz1] = GUN_SHOP.rect;
+    if (pos.x > sx0 && pos.x < sx1 && pos.z > sz0 && pos.z < sz1 && pos.y < 2) return 'Gun Shop';
     const cx = Math.floor(pos.x / C), cz = Math.floor(pos.z / C);
     for (const a of Object.values(AREAS)) {
       const [x0, z0, x1, z1] = a.rect;

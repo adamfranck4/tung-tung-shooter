@@ -110,17 +110,18 @@ export function papDef(def, level = 1) {
   };
 }
 
-// ----- Zombies shop (B): guns unlock every couple of rounds; prices in points -----
+// ----- Zombies Gun Shop (the counter you spawn at): one more gun for every round you survive -----
+// after: how many rounds you need to have survived before it's on sale. Prices in points.
 export const ZOMBIE_PRICES = { pistol: 500, deagle: 700, smg: 1000, shotgun: 1500, m16: 1600, scout: 1700,
   ak: 1800, m4: 1800, sniper: 2000, lmg: 3000, raygun: 8000 };
 export const ZOMBIE_SHOP = [
-  { key: 'deagle', cat: 'Pistol', round: 1 }, { key: 'smg', cat: 'SMG', round: 1 },
-  { key: 'shotgun', cat: 'Shotgun', round: 3 }, { key: 'm16', cat: 'Rifle', round: 3 },
-  { key: 'ak', cat: 'Rifle', round: 5 }, { key: 'scout', cat: 'Sniper', round: 5 },
-  { key: 'm4', cat: 'Rifle', round: 7 }, { key: 'sniper', cat: 'Sniper', round: 7 },
-  { key: 'lmg', cat: 'LMG', round: 9 },
+  { key: 'deagle', cat: 'Pistol', after: 0 }, { key: 'smg', cat: 'SMG', after: 0 },
+  { key: 'shotgun', cat: 'Shotgun', after: 1 }, { key: 'm16', cat: 'Rifle', after: 2 },
+  { key: 'scout', cat: 'Sniper', after: 3 }, { key: 'ak', cat: 'Rifle', after: 4 },
+  { key: 'm4', cat: 'Rifle', after: 5 }, { key: 'sniper', cat: 'Sniper', after: 6 },
+  { key: 'lmg', cat: 'LMG', after: 7 },
 ];
-// refilling a gun's ammo (shop or wall): half its price, more once it's upgraded
+// refilling a gun's ammo (Gun Shop, B menu or wall): half its price, more once it's upgraded
 export function ammoCost(w) {
   if (w.def.pap) return 2500 + 2000 * w.def.pap;
   return Math.round((ZOMBIE_PRICES[w.key] || 500) / 2);

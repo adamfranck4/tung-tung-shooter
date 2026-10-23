@@ -52,16 +52,19 @@ export class Player extends Combatant {
     const g = this.game, inp = g.input;
     if (!this.alive) return;
 
-    // ----- buy menu -----
+    // ----- buy menu (Zombies: B is the ammo menu; the Gun Shop counter opens its own with E) -----
     if (inp.pressed('KeyB')) {
       if (this.buyOpen) this.buyOpen = false;
-      else if (g.canBuy(this)) this.buyOpen = true;
-      else if (g.mode !== 'zombies') g.hud.center('You can only buy in your spawn during buy time', 1.5);
+      else {
+        this.gunShop = false;
+        if (g.canBuy(this)) this.buyOpen = true;
+        else if (g.mode !== 'zombies') g.hud.center('You can only buy in your spawn during buy time', 1.5);
+      }
     }
     if (this.buyOpen && !g.canBuy(this)) this.buyOpen = false;
     if (this.buyOpen) {
-      // keys 1-9, then 0 for a tenth item (the Zombies shop's ammo)
-      const n = g.buyCount?.() ?? BUY_ITEMS.length;
+      // keys 1-9, then 0 for a tenth item
+      const n = g.buyCount?.(this) ?? BUY_ITEMS.length;
       for (let i = 1; i <= n; i++) if (inp.pressed('Digit' + (i % 10))) g.buy(this, i - 1);
       if (inp.pressed('Escape')) this.buyOpen = false;
     } else {

@@ -2,7 +2,7 @@
 import { WORLD } from './map.js';
 import { BUY_ITEMS, WEAPONS, ZOMBIE_SHOP, ZOMBIE_PRICES, ammoCost } from './weapons.js';
 import { drawCrosshair, crosshairScale } from './crosshair.js';
-import { PERKS, AREAS, ZW, FL } from './zmap.js';
+import { PERKS, AREAS, ZW, FL, GUN_SHOP } from './zmap.js';
 
 // Zombies map (M): marker colors for you and up to three teammates
 const MAP_COLORS = ['#ffd36a', '#7fd4ff', '#a6ff8a', '#ff9ad8'];
@@ -246,8 +246,8 @@ export class Hud {
   }
 
   // The static part of the map: every floor cell (lit up where you can get to, hatched where you
-  // can't yet), walls inside the open areas, stairs, closed doors with their price, room names,
-  // and the machines and wall guns.
+  // can't yet), walls inside the open areas, stairs, closed doors with the round they open after,
+  // room names, the Gun Shop and the machines.
   drawMapBase(g, W, H, dpr) {
     const map = g.map, GW = map.gw, GH = map.gh, k = W / ZW, s = map.cell * k;
     const c = document.createElement('canvas'); c.width = Math.round(W * dpr); c.height = Math.round(H * dpr);
@@ -325,12 +325,12 @@ export class Hud {
         upBox = upBox ? [Math.min(upBox[0], x0), z0, Math.max(upBox[2], x1)] : [x0, z0, x1];
         const size = Math.max(9, Math.min(12, s * 0.6)), lines = wrap(a.name, size, w - 4), top = z0 * s + size * 0.5 + 3;
         label(lines, cx, top, size, color);
-        if (!on) label(['LOCKED'], cx, top + lines.length * size * 0.95 + 1, 9, 'rgba(255,150,120,0.8)');
+        if (!on) label([`AFTER R${a.after}`], cx, top + lines.length * size * 0.95 + 1, 9, 'rgba(255,150,120,0.8)');
       } else {
         const size = Math.max(11, Math.min(17, s * 0.85)), lines = wrap(a.name, size, w - 6);
         const top = (z0 + z1) / 2 * s - (lines.length - 1) * size * 0.475;
         label(lines, cx, top, size, color);
-        if (!on) label(['LOCKED'], cx, top + lines.length * size * 0.95 + 4, 11, 'rgba(255,150,120,0.75)');
+        if (!on) label([`AFTER ROUND ${a.after}`], cx, top + lines.length * size * 0.95 + 4, 11, 'rgba(255,150,120,0.75)');
       }
     }
     if (upBox) {   // a blue tag over the upstairs rooms
@@ -341,7 +341,7 @@ export class Hud {
       ctx.strokeStyle = 'rgba(170,215,255,0.8)'; ctx.lineWidth = 1; ctx.strokeRect(cx - w / 2, cz - 7, w, 14);
       ctx.fillStyle = '#bfe2ff'; ctx.fillText(t, cx, cz + 0.5);
     }
-    // machines: Mystery Box, Pack-a-Punch (by level), perks; wall guns as chalk labels
+    // machines: Mystery Box, Pack-a-Punch (by level), perks
     const dot = (x, z, r, fill, text, ink = '#111') => {
       ctx.beginPath(); ctx.arc(x * k, z * k, r, 0, 7); ctx.fillStyle = fill; ctx.fill();
       ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(0,0,0,0.8)'; ctx.stroke();
@@ -349,14 +349,6 @@ export class Hud {
       ctx.fillStyle = ink; ctx.fillText(text, x * k, z * k + 0.5);
     };
     const hex = (c) => '#' + c.toString(16).padStart(6, '0');
-    for (const wb of map.wallBuys) {
-      ctx.font = '600 10px Rajdhani, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      const t = wb.def.name.replace(' Rifle', '').replace('Pump ', '').replace('Bolt ', '');
-      // (a step out from the wall, clear of any door next to it)
-      const x = (wb.pos[0] + wb.n[0] * 2) * k, z = (wb.pos[2] + wb.n[2] * 2) * k, w = ctx.measureText(t).width + 6;
-      ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(x - w / 2, z - 6, w, 12);
-      ctx.fillStyle = 'rgba(245,245,235,0.9)'; ctx.fillText(t, x, z + 0.5);
-    }
     for (const pm of map.perkMachines) dot(pm.pos[0], pm.pos[2], 7.5, hex(pm.color), pm.short);
     for (const st of map.papStations) {
       const x = st.pos[0] * k, z = st.pos[2] * k;
@@ -374,7 +366,16 @@ export class Hud {
       ctx.font = '700 12px Rajdhani, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#0b1a2a';
       ctx.fillText('?', bx, bz + 0.5);
     }
-    // closed doors: a plank bar across the way, and the price
+    {   // the Gun Shop (where you spawn): a gold block over the hut
+      const [x0, z0, x1, z1] = GUN_SHOP.rect.map((v) => v * k);
+      ctx.fillStyle = 'rgba(255,198,92,0.85)'; ctx.fillRect(x0 + 1, z0 + 1, x1 - x0 - 2, z1 - z0 - 2);
+      ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(0,0,0,0.85)'; ctx.strokeRect(x0 + 1, z0 + 1, x1 - x0 - 2, z1 - z0 - 2);
+      const size = Math.max(9, Math.min(12, (x1 - x0) * 0.22));
+      ctx.font = `700 ${size}px Rajdhani, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#1a1209';
+      ctx.fillText('GUN', (x0 + x1) / 2, (z0 + z1) / 2 - size * 0.48);
+      ctx.fillText('SHOP', (x0 + x1) / 2, (z0 + z1) / 2 + size * 0.52);
+    }
+    // closed doors: a plank bar across the way, and the round they open after
     for (const d of map.doors) {
       if (d.open) continue;
       let x0, z0, x1, z1;
@@ -386,7 +387,7 @@ export class Hud {
       ctx.fillStyle = '#c8783a'; ctx.fillRect(x0, z0, x1 - x0, z1 - z0);
       ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(0,0,0,0.85)'; ctx.strokeRect(x0, z0, x1 - x0, z1 - z0);
       ctx.font = '700 11px Rajdhani, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      const t = String(d.cost), w = ctx.measureText(t).width + 8, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+      const t = `R${d.after}`, w = ctx.measureText(t).width + 8, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
       ctx.fillStyle = 'rgba(24,14,6,0.92)'; ctx.fillRect(cx - w / 2, cz - 7, w, 14);
       ctx.strokeStyle = '#c8783a'; ctx.strokeRect(cx - w / 2, cz - 7, w, 14);
       ctx.fillStyle = '#ffd9a0'; ctx.fillText(t, cx, cz + 0.5);
@@ -394,24 +395,40 @@ export class Hud {
     return c;
   }
 
-  // Zombies shop: guns (keys 1-9) unlock as the rounds go by; 0 refills the gun in your hands
+  // Zombies: the Gun Shop menu (guns, keys 1-9, one more unlocked every round you survive) or the
+  // B menu (ammo for the guns you carry, keys 1-2 like their slots)
   renderZShop(g) {
-    const p = g.player, r = Math.max(1, g.round);
+    const p = g.player;
     const row = (k, name, cat, right, cls) => `<div class="buy-row ${cls}"><span class="k">${k}</span><span class="n">${name}</span>`
       + `<span class="c">${cat}</span><span class="p">${right}</span></div>`;
-    let rows = ZOMBIE_SHOP.map((it, i) => {
-      const price = ZOMBIE_PRICES[it.key], locked = r < it.round, owned = !locked && !!g.ownedSlot(p, it.key);
-      const cls = locked ? 'lock' : owned ? 'own' : p.points < price ? 'no' : '';
-      return row(i + 1, WEAPONS[it.key].name, it.cat, locked ? `ROUND ${it.round}` : owned ? 'OWNED' : price, cls);
-    }).join('');
-    const w = g.ammoTarget(p);
-    if (w) {
-      const full = w.reserve >= w.def.reserve, cost = ammoCost(w);
-      rows += row(0, `Ammo: ${esc(w.def.name)}`, 'Ammo', full ? 'FULL' : cost, full ? 'own' : p.points < cost ? 'no' : '');
+    let html;
+    if (p.gunShop) {
+      const cleared = g.cleared();
+      const rows = ZOMBIE_SHOP.map((it, i) => {
+        const locked = cleared < it.after, s = locked ? 0 : g.ownedSlot(p, it.key);
+        if (locked) return row(i + 1, WEAPONS[it.key].name, it.cat, `AFTER ROUND ${it.after}`, 'lock');
+        if (s) {   // already carried: buying it again refills its ammo
+          const w = p.slots[s], full = w.reserve >= w.def.reserve, cost = ammoCost(w);
+          return row(i + 1, esc(w.def.name), 'Owned', full ? 'FULL' : `AMMO ${cost}`, full || p.points >= cost ? 'own' : 'no');
+        }
+        const price = ZOMBIE_PRICES[it.key];
+        return row(i + 1, WEAPONS[it.key].name, it.cat, price, p.points < price ? 'no' : '');
+      }).join('');
+      const next = ZOMBIE_SHOP.find((it) => it.after > cleared);
+      html = `<h3>GUN SHOP <span class="z">${p.points}</span></h3>${rows}<div class="buy-foot">1-9 buy &middot; E or B to close`
+        + `${next ? ` &middot; next gun after round ${next.after}` : ''}<br>B anywhere buys ammo</div>`;
+    } else {
+      let rows = '';
+      for (const s of [1, 2]) {
+        const w = p.slots[s];
+        if (!w || w.def.melee) continue;
+        const full = w.reserve >= w.def.reserve, cost = ammoCost(w);
+        rows += row(s, esc(w.def.name), w === p.weapon ? 'In hand' : '', full ? 'FULL' : cost, full ? 'own' : p.points < cost ? 'no' : '');
+      }
+      if (!rows) rows = '<div class="buy-row lock"><span class="n">No guns to refill</span></div>';
+      html = `<h3>AMMO <span class="z">${p.points}</span></h3>${rows}<div class="buy-foot">1-2 refill that gun &middot; B to close`
+        + '<br>Buy guns at the Gun Shop in the Courtyard</div>';
     }
-    const next = ZOMBIE_SHOP.find((it) => it.round > r);
-    const html = `<h3>SHOP <span class="z">${p.points}</span></h3>${rows}<div class="buy-foot">1-9 buy a gun &middot; 0 ammo &middot; B to close`
-      + `${next ? ` &middot; more guns at round ${next.round}` : ''}</div>`;
     if (this.cache.buy !== html) { this.cache.buy = html; $('buymenu').innerHTML = html; }
   }
 
