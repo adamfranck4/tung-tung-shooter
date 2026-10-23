@@ -78,7 +78,12 @@ export class Combatant {
   selectSlot(slot, instant = false) {
     if (!this.slots[slot]) return false;
     if (slot === this.slot && !instant) return false;
-    if (slot !== this.slot) this.lastSlot = this.slot;
+    if (slot !== this.slot) {
+      // quick-switch, like CS: putting a bolt-action away skips the rest of its bolt cycle
+      // (you still wait for the next weapon to be drawn)
+      if (this.weapon?.def.scope) this.nextFire = 0;
+      this.lastSlot = this.slot;
+    }
     this.slot = slot;
     this.reloading = false; this.autoReloadAt = 0; this.scoped = false; this.recoil = 0; this.burstLeft = 0;
     this.deployUntil = this.game.time + (instant ? 0 : (this.weapon.def.deploy || 0.5));
@@ -211,7 +216,9 @@ export class Combatant {
       this.reloading = false;
     }
     if (this.autoReloadAt && g.time >= this.autoReloadAt) { this.autoReloadAt = 0; this.startReload(); }
-    if (g.time - this.lastShot > (w.def.rate || 0.1) + 0.06) this.recoil = Math.max(0, this.recoil - dt * 14);
+    // bolt-action kick settles right away, so it's gone by the time the bolt is ready
+    const settleAfter = w.def.scope ? 0.2 : (w.def.rate || 0.1) + 0.06;
+    if (g.time - this.lastShot > settleAfter) this.recoil = Math.max(0, this.recoil - dt * 14);
     const target = this.recoilPitch() * 0.45;
     this.punch += (target - this.punch) * Math.min(1, dt * 14);
   }

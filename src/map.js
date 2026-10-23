@@ -85,21 +85,26 @@ export const T_ROUTES = {
   },
   B: {
     tunnels: { via: [v(28, 104, 0), v(19, 92, 0)], stage: v(21, 63, 0), look: v(19, 46), entry: v(19, 44, 0) },
-    mid:     { via: [v(61, 82, 0), v(60, 60, 0), v(60, 42, 0)], stage: v(50, 36, 0), look: v(36, 36), entry: v(37, 36, 0) },
+    // waits in upper mid beside the doors (out of sight of the connector), then goes through
+    mid:     { via: [v(61, 82, 0), v(60, 62, 0)], stage: v(57, 48, 0), look: v(60, 42), entry: v(37, 36, 0) },
   },
 };
-// Map-control spots the Terrorists spread out to on a slow "default" round.
+// Map-control spots the Terrorists spread out to on a "default" round, by which half of the map
+// they cover. None of them look straight up the mid lane, so defaults don't turn into mid duels.
 export const T_CONTROL = [
-  { pos: v(106, 85, 0), look: v(110, 70) },   // long, behind the doors
-  { pos: v(62, 83, 0), look: v(60, 50) },     // lower mid, behind the wall
-  { pos: v(74, 59, 0), look: v(86, 58) },     // catwalk, next to short
-  { pos: v(21, 63, 0), look: v(19, 46) },     // tunnels, between the zigzags
-  { pos: v(19, 82, 0), look: v(21, 64) },     // lower tunnels
+  { pos: v(106, 85, 0), look: v(110, 70), side: 'A' },   // long, behind the doors
+  { pos: v(110, 90, 0), look: v(110, 76), side: 'A' },   // long, further back
+  { pos: v(74, 59, 0), look: v(86, 58), side: 'A' },     // catwalk, next to short
+  { pos: v(21, 63, 0), look: v(19, 46), side: 'B' },     // tunnels, between the zigzags
+  { pos: v(19, 82, 0), look: v(21, 64), side: 'B' },     // lower tunnels
+  { pos: v(58, 93, 0), look: v(60, 78), side: 'mid' },   // bottom of mid, behind the zigzag
 ];
 export const CT_HOLDS = {
   A: [{ pos: v(100, 24, 0), look: v(109, 44) }, { pos: v(90, 14, 0), look: v(85, 44) }, { pos: v(108, 15, 0), look: v(109, 44) }],
   B: [{ pos: v(22, 30, 0), look: v(19, 46) }, { pos: v(12, 15, 0), look: v(38, 36) }, { pos: v(28, 10, 0), look: v(19, 46) }],
-  MID: [{ pos: v(60, 26, 0), look: v(60, 90) }, { pos: v(66, 59, 0), look: v(60, 90) }],
+  // the mid player sits back in the B connector, watching the mid doors up close instead of the
+  // whole mid lane, and helps whichever site gets hit
+  MID: [{ pos: v(50, 37, 0), look: v(60, 42) }, { pos: v(46, 33, 0), look: v(58, 38) }],
 };
 
 const FACES = [
