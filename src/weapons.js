@@ -78,6 +78,15 @@ Object.assign(WEAPONS, {
   },
 });
 
+// Aiming down sights (Zombies, hold right click), by viewmodel: how much it zooms in and how long
+// it takes to raise the gun. Scoped snipers use their scope instead; knives can't aim.
+export const ADS = {
+  pistol: { zoom: 1.2, time: 0.13 }, deagle: { zoom: 1.25, time: 0.16 }, raygun: { zoom: 1.3, time: 0.16 },
+  smg: { zoom: 1.3, time: 0.16 }, shotgun: { zoom: 1.2, time: 0.2 },
+  ak: { zoom: 1.45, time: 0.2 }, m4: { zoom: 1.45, time: 0.2 }, m16: { zoom: 1.5, time: 0.21 }, lmg: { zoom: 1.35, time: 0.28 },
+};
+export const adsOf = (def) => (!def || def.melee || def.scope ? null : ADS[def.vm] || null);
+
 // Pack-a-Punch levels (Zombies). Each station upgrades a gun one level further, in order.
 // Multipliers apply to the base gun; rate < 1 fires faster.
 export const PAP_LEVELS = [

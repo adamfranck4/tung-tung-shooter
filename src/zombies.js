@@ -235,7 +235,7 @@ export class Zombie extends Combatant {
       const level = v.fly ? p.body.pos.y - map.surfaceAt(b.pos.x, b.pos.z) : dy;
       if (dist < 14 && Math.abs(level) < 1.2 && map.clearLine(b.pos, p.body.pos, 0.3 * this.scale)) { wx = dx / dist; wz = dz / dist; }
       else {
-        const t = map.flowTarget(b.pos, _t);
+        const t = map.flowTarget(b.pos, _t, Math.max(0.35, b.halfW));
         if (t) { const tx = t.x - b.pos.x, tz = t.z - b.pos.z, l = Math.hypot(tx, tz) || 1; wx = tx / l; wz = tz / l; }
         else { wx = dx / dist; wz = dz / dist; }
       }
@@ -525,7 +525,7 @@ export class ZombiesGame {
     this.effects = { instakill: 0, double: 0 };
     this.powerupsThisRound = 0; this.killsSinceDrop = 0; this.puId = 0;
     this.seenKinds = new Set(); this.spawnedThisRound = 0;
-    this.interaction = null; this.flowT = 0;
+    this.interaction = null; this.flowT = 0; this.mapOpen = false;
     this.setupPlayers(roster || [{ nid: 0, name: 'You', kind: 'local' }], net ? net.myId : null, knife);
     for (const a of this.remotes) a.spawnEpoch = 0;   // matches the joining player's first state
     this.resetBox();
@@ -683,13 +683,16 @@ export class ZombiesGame {
     }
   }
 
-  // groundOnly: only spots out in the open (rising out of the ground, or flying in), no windows
-  pickSpawn(groundOnly = false) {
+  // groundOnly: only spots out in the open (rising out of the ground, or flying in), no windows.
+  // flyer: the spawn is for a flyer (the only ones that come in upstairs, from the rafters)
+  pickSpawn(groundOnly = false, flyer = false) {
     // distance to the closest living player
     const near = (pos) => { let d = Infinity; for (const p of this.players) if (p.alive) d = Math.min(d, flat(pos, p.body.pos)); return d; };
     const all = [];
     if (!groundOnly) for (const w of this.map.windows) if (this.activeAreas.has(w.area)) all.push({ win: w, pos: w.spawn, weight: 2 });
-    if (this.round >= 2 || groundOnly) for (const s of this.map.groundSpawns) if (this.activeAreas.has(s.area)) all.push({ pos: s.pos, weight: 1 });
+    if (this.round >= 2 || groundOnly) {
+      for (const s of this.map.groundSpawns) if (this.activeAreas.has(s.area) && (flyer || !s.fly)) all.push({ pos: s.pos, weight: 1 });
+    }
     if (!all.length) return null;
     let pool = all.filter((s) => { const d = near(s.pos); return d > 7 && d < 42; });
     if (!pool.length) pool = all.filter((s) => near(s.pos) > 5);
@@ -728,7 +731,7 @@ export class ZombiesGame {
     let kind = this.pickKind();
     const v = VARIANTS[kind];
     // flyers would rather swoop in from the sky; the biggest ones can only rise out of the ground
-    let sp = this.pickSpawn(v.ground || v.fly) || (v.ground ? null : this.pickSpawn(false));
+    let sp = this.pickSpawn(v.ground || v.fly, !!v.fly) || (v.ground ? null : this.pickSpawn(false, !!v.fly));
     if (!sp) { kind = 'normal'; sp = this.pickSpawn(false); }   // no open ground yet: a regular one through a window
     if (!sp) return false;
     this.getZombie(kind).spawn(sp, this.round, kind);
@@ -1023,9 +1026,11 @@ export class ZombiesGame {
     }
     if (best) return best;
     const consider = (d, max, obj) => { if (d < max && d < bd) { bd = d; best = obj; } };
-    for (const d of map.doors) if (!d.open) consider(flat(pos, d.center), 2.8, { type: 'door', d });
+    // (doors and wall guns upstairs can't be bought from the ground under them, or the other way round)
+    const level = (y) => Math.abs(y - pos.y) < 2;
+    for (const d of map.doors) if (!d.open && level(d.center.y)) consider(flat(pos, d.center), 2.8, { type: 'door', d });
     for (const w of map.windows) if (w.boards < w.max && this.activeAreas.has(w.area)) consider(flat(pos, w.inside), 2.2, { type: 'window', w });
-    for (const wb of map.wallBuys) consider(flat(pos, wb.at), 1.7, { type: 'wallbuy', wb });
+    for (const wb of map.wallBuys) if (level(wb.at.y)) consider(flat(pos, wb.at), 1.7, { type: 'wallbuy', wb });
     for (const pm of map.perkMachines) if (!p.perks.has(pm.id)) consider(flat(pos, pm.at), 1.7, { type: 'perk', pm });
     for (const st of map.papStations) if (Math.abs(st.at.y - pos.y) < 1.5) consider(flat(pos, st.at), 1.9, { type: 'pap', st });
     consider(flat(pos, map.box.at), 2.0, { type: 'box' });
@@ -1462,6 +1467,12 @@ export class ZombiesGame {
   // Per rendered frame: aim with the mouse (also while downed).
   frame() { if (this.player && this.phase !== 'over' && this.player.alive) this.player.look(); }
 
+  // M opens / closes the map (it stays open while you play; the HUD draws it)
+  toggleMap() {
+    if (this.input.pressed('KeyM')) this.mapOpen = !this.mapOpen;
+    if (this.phase === 'over') this.mapOpen = false;
+  }
+
   // Per rendered frame: place the camera and zombie models between the last two physics ticks.
   interpolate(alpha) {
     for (const z of this.zombies) if (z.active && z.alive) z.renderPos(z.model.root.position, alpha);
@@ -1480,8 +1491,9 @@ export class ZombiesGame {
     let roll = 0;
     if (this.phase === 'over') { cam.position.y = p.body.pos.y + 0.4; roll = 0.5; }
     cam.rotation.set(p.pitch + p.punch, p.yaw, roll);
-    const fov = p.scoped && p.alive ? this.scopeFov : this.baseFov;
-    if (cam.fov !== fov) { cam.fov = fov; cam.updateProjectionMatrix(); }
+    // scoped snipers zoom all the way; aiming down sights zooms in a little
+    const fov = !p.alive ? this.baseFov : p.scoped ? (p.weapon?.def.zoomFov || this.scopeFov) : this.baseFov * p.adsFov();
+    if (Math.abs(cam.fov - fov) > 1e-3) { cam.fov = fov; cam.updateProjectionMatrix(); }
   }
 
   // ----- main update -----
@@ -1493,6 +1505,7 @@ export class ZombiesGame {
     p.prevPos.copy(p.body.pos);
     for (const z of this.zombies) if (z.active) z.prevPos.copy(z.body.pos);
     for (const a of this.remotes) a.update(dt);   // other players: follow their position updates
+    this.toggleMap();
 
     if (this.phase === 'over') {
       this.overT -= dt;
@@ -1516,7 +1529,7 @@ export class ZombiesGame {
     }
 
     if (p.alive) {
-      if (p.downed) p.lastStand(); else p.update(dt);
+      if (p.downed) p.lastStand(dt); else p.update(dt);
       p.updateWeapon(dt);
     }
     this.updateDowned(dt);
@@ -1651,7 +1664,7 @@ export class ZombiesGame {
 
   // find what a player pressed E on (a little extra reach: their position here is slightly behind)
   resolveUse(p, ev) {
-    const pos = p.body.pos, map = this.map, near = (at, r) => flat(pos, at) < r + 1.2;
+    const pos = p.body.pos, map = this.map, near = (at, r) => flat(pos, at) < r + 1.2 && Math.abs(at.y - pos.y) < 2.5;
     switch (ev.k) {
       case 'door': { const d = map.doors.find((x) => x.id === ev.id); return d && !d.open && near(d.center, 2.8) ? { type: 'door', d } : null; }
       case 'wallbuy': { const wb = map.wallBuys[ev.id]; return wb && near(wb.at, 1.7) ? { type: 'wallbuy', wb } : null; }

@@ -1,6 +1,6 @@
 // Shared logic for the player and bots: health, weapons, recoil, movement and hitboxes.
 import * as THREE from 'three';
-import { WEAPONS } from './weapons.js';
+import { WEAPONS, adsOf } from './weapons.js';
 import { moveBody, overlapsAny, raySphere, rayBox, raycast } from './physics.js';
 
 // CS2 movement values, converted from Source units (1 unit = 1 inch = 0.0254 m).
@@ -15,6 +15,9 @@ export const JUMP_SPEED = 301.993 * U; // sv_jump_impulse: ~57 units (1.45 m) hi
 const _eye = new THREE.Vector3();
 const _dir = new THREE.Vector3();
 let nextId = 1;
+
+// aiming down sights eases in and out (smoothstep of 0..1)
+export const easeAds = (t) => t * t * (3 - 2 * t);
 
 export function dirFrom(yaw, pitch, out) {
   const cp = Math.cos(pitch);
@@ -60,6 +63,7 @@ export class Combatant {
     this.recoil = 0; this.lastShot = -10; this.nextFire = 0; this.deployUntil = 0;
     this.burstLeft = 0; this.burstAt = 0;   // shots still to come in a burst (M16)
     this.reloading = false; this.reloadEnd = 0; this.autoReloadAt = 0; this.scoped = false;
+    this.adsT = 0;                      // aiming down sights: 0 = from the hip, 1 = fully aimed (Zombies)
     this.punch = 0; this.useProgress = 0; this.wantsUse = false; this.spottedUntil = 0;
     this.lastAttacker = null;
     this.meleeName = 'Knife';
@@ -95,8 +99,15 @@ export class Combatant {
     for (const s of [1, 2]) { const w = this.slots[s]; if (w) { w.mag = w.def.mag; w.reserve = w.def.reserve; } }
     this.health = 100; this.alive = true; this.hasBomb = false;
     this.useProgress = 0; this.wantsUse = false; this.recoil = 0; this.punch = 0;
-    this.reloading = false; this.scoped = false; this.nextFire = 0; this.lastAttacker = null; this.burstLeft = 0;
+    this.reloading = false; this.scoped = false; this.adsT = 0; this.nextFire = 0; this.lastAttacker = null; this.burstLeft = 0;
     this.selectSlot(this.slots[1] ? 1 : 2, true);
+  }
+
+  // how far the gun is raised to the eye (eased), and the field-of-view multiplier that goes with it
+  adsK() { return this.adsT > 0 ? easeAds(this.adsT) : 0; }
+  adsFov() {
+    const a = this.adsT > 0 && adsOf(this.weapon?.def);
+    return a ? 1 / (1 + (a.zoom - 1) * this.adsK()) : 1;
   }
 
   eyePos(out) { return out.set(this.body.pos.x, this.body.pos.y + this.eyeH, this.body.pos.z); }
@@ -107,27 +118,29 @@ export class Combatant {
   chestPos(out) { return out.set(this.body.pos.x, this.body.pos.y + this.body.height * 0.68, this.body.pos.z); }
   horizSpeed() { return Math.hypot(this.body.vel.x, this.body.vel.z); }
 
+  // aiming down sights steadies the gun: a quarter less kick
   recoilPitch() {
     const w = this.weapon; if (!w || w.def.melee) return 0;
-    const n = this.recoil, k = w.def.kick;
+    const n = this.recoil, k = w.def.kick * (1 - 0.25 * this.adsK());
     return Math.min(n, 7) * k + Math.max(0, n - 7) * k * 0.2;
   }
   recoilYaw() {
     const w = this.weapon; if (!w || w.def.melee) return 0;
     const n = this.recoil;
-    return n > 3 ? Math.sin(n * 0.8) * w.def.kick * 1.6 : 0;
+    return n > 3 ? Math.sin(n * 0.8) * w.def.kick * 1.6 * (1 - 0.25 * this.adsK()) : 0;
   }
 
   spread() {
     const w = this.weapon; if (!w || w.def.melee) return 0;
-    const d = w.def, b = this.body;
-    let s = (d.scope && this.scoped) ? d.scopedSpread : d.spread;
+    const d = w.def, b = this.body, ads = this.adsK();
+    // aiming down sights halves the base spread (pellets too) and the spread from moving
+    let s = (d.scope && this.scoped) ? d.scopedSpread : d.spread * (1 - 0.5 * ads);
     // like CS2: accurate below ~34% of the weapon's max speed, fully inaccurate near full speed
     const frac = this.horizSpeed() / (RUN_SPEED * (d.speed || 1));
-    s += (d.moveSpread || 0) * Math.min(1, Math.max(0, (frac - 0.34) / 0.5));
+    s += (d.moveSpread || 0) * Math.min(1, Math.max(0, (frac - 0.34) / 0.5)) * (1 - 0.5 * ads);
     if (!b.onGround) s += d.airSpread ?? 0.1;
     if (this.crouching && b.onGround) s *= 0.75;
-    s += this.recoil * (d.recoilSpread || 0);
+    s += this.recoil * (d.recoilSpread || 0) * (1 - 0.3 * ads);
     return s;
   }
 
@@ -235,6 +248,7 @@ export class Combatant {
     const runSpeed = RUN_SPEED * (this.weapon?.def.speed || 1);
     let maxSpeed = runSpeed * speedMul;
     if (this.scoped) maxSpeed *= 0.55;
+    if (this.adsT > 0) maxSpeed *= 1 - 0.3 * this.adsK();   // walking pace while aiming down sights
     if (this.crouching) maxSpeed *= 0.34;
     const startY = b.pos.y, wasGround = b.onGround;
     if (b.onGround) {

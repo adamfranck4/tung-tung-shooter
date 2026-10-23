@@ -62,6 +62,19 @@
     <div id="spectate" class="hidden"></div>
     <div id="buymenu" class="hidden"></div>
     <div id="scoreboard" class="hidden cs-only"></div>
+
+    <div id="zmap" class="hidden">
+      <div class="zmap-head"><b>SAHUR VILLAGE</b><span>M to close</span></div>
+      <canvas id="zmap-canvas"></canvas>
+      <div class="zmap-foot">
+        <div class="zmap-legend">
+          <span><i class="sw on"></i>Unlocked</span><span><i class="sw up"></i>Upstairs (2F)</span><span><i class="sw off"></i>Locked</span>
+          <span><i class="sw door"></i>Door + price</span><span><i class="sw stairs"></i>Stairs (arrow points up)</span>
+          <span><i class="sw dot"></i>Perk</span><span><i class="sw pap"></i>Pack-a-Punch</span><span><i class="sw box"></i>Mystery Box</span>
+        </div>
+        <div id="zmap-list"></div>
+      </div>
+    </div>
   </div>
 
   <div id="menu">
@@ -151,9 +164,9 @@
         <div><b>Shift</b> walk (quiet)</div><div><b>R</b> reload</div>
         <div><b>1 2 3</b> weapons</div><div><b>Q</b> last weapon</div>
         <div><b>B</b> buy menu</div><div><b>E</b> plant / defuse / buy</div>
-        <div><b>Right click</b> scope</div><div><b>Tab</b> scoreboard</div>
+        <div><b>Right click</b> scope / aim (Zombies)</div><div><b>Tab</b> scoreboard</div>
         <div><b>F</b> inspect weapon</div><div><b>N</b> next wave (Zombies)</div>
-        <div><b>E (hold)</b> revive a teammate</div>
+        <div><b>E (hold)</b> revive a teammate</div><div><b>M</b> map (Zombies)</div>
       </div>
     </div>
   </div>

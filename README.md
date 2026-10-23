@@ -92,6 +92,20 @@ online with up to 3 friends.
   whose stall walls make a winding path through it. M16 on the wall.
 - **Dead Orchard** (doors from the Spawn Room 1250, or down a winding path from the Garden 1000): dying trees,
   fallen logs, a tool shed, and graves that zombies rise from. Desert Eagle on the wall.
+- **Upstairs (2F):** a wooden second floor on the house between the Courtyard and Sahur Hill, with three rooms
+  in a row. Outdoor stone stairs climb to it from both sides: up the Courtyard's east wall to the **Lantern Loft**
+  (door 1000), and up Sahur Hill's west wall to the **Lookout** (door 1000). The **Sleeping Loft** in the middle
+  opens from either one (750 each side) and has an AK on the wall; the Lookout has a Scout. Balconies look out over
+  the Courtyard and Sahur Hill (and down on the stairs), and windows over the paths either side, so you can shoot
+  down at the zombies coming for you. Zombies take the stairs; only flyers come straight in. You can jump down
+  from a balcony or the landings to get out fast.
+- **Map (press M):** shows the whole village with the rooms you've opened lit up (locked ones hatched), every closed
+  door with its price, the stairs (the arrow points up), perks, Pack-a-Punch stations, the Mystery Box and wall guns,
+  and an arrow for you and each teammate (a red cross when someone is down). Underneath, it lists which room
+  everyone is in. It stays open while you play; M again closes it.
+- **Aim down sights (hold right click):** any gun without a scope comes up to your eye with its front sight on the
+  middle of the screen. The view zooms in a little (more for rifles), spread is halved (moving too), recoil drops
+  by a quarter, and you walk at 70% speed. Reloading lowers the gun. The Scout and Bolt Sniper still scope in.
 - Every roof and hut doorway is tall enough for the rainbow giant. The village also has bunting with paper
   lanterns, painted shutters (some windows lit from inside), boarded-up doors, and dead trees and logs here and there.
 - Points: +10 per hit, +60 per kill, +100 headshot kill, +130 knife kill, +10 per board you rebuild (hold E).
@@ -103,9 +117,10 @@ online with up to 3 friends.
   - The Tung Ray stays a Mystery Box exclusive.
 - Spend points on (press E):
   - Doors: Courtyard 750, Kitchen 1000, Garden 1000, Drum Tower 1250, Sahur Hill 1250 / 1000,
-    Night Market 1250 / 1000, Rice Barn 1000 / 1250, Dead Orchard 1250 / 1000
+    Night Market 1250 / 1000, Rice Barn 1000 / 1250, Dead Orchard 1250 / 1000,
+    upstairs: Lantern Loft 1000, Lookout 1000, Sleeping Loft 750 (from either side)
   - Wall guns: SMG 1000, Shotgun 1500, AK 1800, M4 1800, Sniper 2000, LMG 3000 (ammo = half price). They are
-    available from round 1, before the shop unlocks them, if you open their area.
+    available from round 1, before the shop unlocks them, if you open their area. Upstairs: AK 1800, Scout 1700.
   - Perks: Quick Revive 500 (gets you back up once), Double Tap 2000, Juggernog 2500 (more health), Speed Cola 3000 (faster reloads)
   - Mystery Box 950: random gun, including the Drum LMG and the Tung Ray wonder weapon
   - **Pack-a-Punch, four levels.** Each station upgrades the gun in your hands one level, in order, so a gun
@@ -143,7 +158,7 @@ online with up to 3 friends.
 | Key | Action |
 | --- | --- |
 | WASD | Move |
-| Mouse | Aim / shoot (right click scopes the Scout and Bolt Sniper) |
+| Mouse | Aim / shoot (right click scopes the Scout and Bolt Sniper; in Zombies, hold it to aim down sights with other guns) |
 | Space | Jump |
 | C or Ctrl | Crouch |
 | Shift | Walk (quiet, more accurate) |
@@ -152,6 +167,7 @@ online with up to 3 friends.
 | B | Buy menu (in spawn during buy time), then 1-8 to buy. Zombies: the shop, anywhere (1-9 guns, 0 ammo) |
 | E (hold) | Plant / defuse, rebuild boards, revive a teammate |
 | Tab | Scoreboard |
+| M | Map (Zombies) |
 | F | Inspect weapon |
 
 ## Run locally

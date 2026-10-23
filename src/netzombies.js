@@ -18,7 +18,7 @@ export class ZombiesClient extends ZombiesGame {
     this.activeAreas = new Set(['A']);
     this.round = 0;
     this.effects = { instakill: 0, double: 0 };
-    this.interaction = null; this.spectating = null;
+    this.interaction = null; this.spectating = null; this.mapOpen = false;
     this.setupPlayers(roster, net.myId, knife);
     this.player.spawnEpoch = 0; this.player.invVer = 0;
     this.resetBox();
@@ -37,6 +37,7 @@ export class ZombiesClient extends ZombiesGame {
     for (const a of this.remotes) a.update(dt);
     for (const z of this.zombies) if (z.active) z.puppetUpdate(dt);
     this.updateProjectiles(dt, false);   // coconuts: the host decides who gets hit
+    this.toggleMap();
     if (this.phase === 'over') {
       this.overT -= dt;
       if (this.overT <= 0) { this.running = false; this.onGameOver?.(this.finalStats()); }
@@ -44,7 +45,7 @@ export class ZombiesClient extends ZombiesGame {
     }
     if (this.betweenRounds && this.input.pressed('KeyN') && this.time < this.nextRoundAt) this.net.emit({ e: 'next' });
     if (p.alive) {
-      if (p.downed) { p.eyeH += (0.55 - p.eyeH) * Math.min(1, dt * 6); p.applyMovement(dt, 0, 0, 1, false); p.lastStand(); }
+      if (p.downed) { p.eyeH += (0.55 - p.eyeH) * Math.min(1, dt * 6); p.applyMovement(dt, 0, 0, 1, false); p.lastStand(dt); }
       else p.update(dt);
       p.updateWeapon(dt);
     }

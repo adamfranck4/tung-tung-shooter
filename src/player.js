@@ -1,6 +1,6 @@
 // The human player: reads keyboard/mouse input and drives a Combatant.
 import { Combatant } from './combatant.js';
-import { BUY_ITEMS } from './weapons.js';
+import { BUY_ITEMS, adsOf } from './weapons.js';
 
 // CS2's m_yaw / m_pitch: 0.022 degrees per mouse count, times the sensitivity setting.
 export const CS_DEG_PER_COUNT = 0.022 * Math.PI / 180;
@@ -19,18 +19,29 @@ export class Player extends Combatant {
   look() {
     const g = this.game, inp = g.input;
     if (!this.alive) return;
-    const zoom = this.scoped ? (this.weapon?.def.zoomFov || g.scopeFov) / g.baseFov : 1;
+    // zoomed in (scope, or aiming down sights): the mouse turns you slower, by the same amount
+    const zoom = this.scoped ? (this.weapon?.def.zoomFov || g.scopeFov) / g.baseFov : this.adsFov();
     const k = CS_DEG_PER_COUNT * g.settings.sens * zoom;
     this.yaw -= inp.dx * k;
     this.pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, this.pitch - inp.dy * k));
   }
 
-  // Downed in Zombies (last stand): stuck on the ground, but you can still shoot and reload your
-  // pistol. Nothing else: no moving, switching weapons or buying. Once per physics tick.
-  lastStand() {
+  // Zombies: hold right click to aim down sights (any gun without a scope). The gun comes up over
+  // the gun's own time and drops while reloading or switching. Once per physics tick.
+  updateAim(dt, want) {
+    const g = this.game, w = this.weapon, a = g.mode === 'zombies' ? adsOf(w?.def) : null;
+    const up = !!a && want && !this.reloading && g.time >= this.deployUntil;
+    const rate = dt / (a ? a.time : 0.15);
+    this.adsT = up ? Math.min(1, this.adsT + rate) : Math.max(0, this.adsT - rate * 1.4);
+  }
+
+  // Downed in Zombies (last stand): stuck on the ground, but you can still aim, shoot and reload
+  // your pistol. Nothing else: no moving, switching weapons or buying. Once per physics tick.
+  lastStand(dt) {
     const g = this.game, inp = g.input, w = this.weapon;
     if (!this.alive) return;
     this.buyOpen = false; this.wantsUse = false;
+    this.updateAim(dt, w?.def.slot === 2 && inp.mouseDown(2));
     if (w?.def.slot !== 2) return;   // online, the pistol can take a moment to arrive from the host
     if (inp.pressed('KeyR')) this.startReload();
     if (inp.mouseDown(0)) this.tryFire(inp.mouseHit(0));
@@ -135,6 +146,7 @@ export class Player extends Combatant {
 
     // ----- shooting -----
     const w = this.weapon;
+    this.updateAim(dt, !this.buyOpen && !frozen && inp.mouseDown(2));
     if (!this.buyOpen && w) {
       if (w.def.scope && inp.mouseHit(2) && !this.reloading && g.time >= this.deployUntil) {
         this.scoped = !this.scoped; g.sound.zoom();

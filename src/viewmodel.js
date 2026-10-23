@@ -591,6 +591,7 @@ function buildModels(team) {
   b(g, 0.06, 0.06, 0.22, 0x1f2124, 0, -0.005, -0.33);
   b(g, 0.022, 0.022, 0.24, 0x161616, 0, 0.012, -0.54);
   b(g, 0.03, 0.03, 0.34, 0x1a1b1d, 0, 0.055, -0.15);
+  b(g, 0.01, 0.05, 0.01, 0x111111, 0, 0.06, -0.52);                        // front sight post
   b(g, 0.04, 0.07, 0.22, 0x222428, 0, -0.01, 0.24);
   b(g, 0.035, 0.15, 0.055, 0x26282b, 0, -0.1, -0.08, 0.1);
   b(g, 0.035, 0.09, 0.045, 0x1c1d20, 0, -0.07, 0.07, -0.3);
@@ -603,6 +604,8 @@ function buildModels(team) {
   b(g, 0.03, 0.17, 0.045, 0x1c1d20, 0, -0.12, -0.08);
   b(g, 0.035, 0.09, 0.045, 0x1c1d20, 0, -0.07, 0.06, -0.3);
   b(g, 0.03, 0.03, 0.18, 0x1a1a1a, 0, 0.0, 0.18);
+  b(g, 0.008, 0.03, 0.008, 0x111111, 0, 0.05, -0.19);                      // front sight post
+  for (const sx of [-0.011, 0.011]) b(g, 0.006, 0.02, 0.012, 0x111111, sx, 0.048, 0.08);   // rear sight
   arms(g, band, true, -0.2); mz = new THREE.Object3D(); mz.position.set(0, 0.012, -0.34); g.add(mz); g.userData.muzzle = mz;
   models.smg = g;
 
@@ -618,6 +621,8 @@ function buildModels(team) {
   g = new THREE.Group(); // pistol
   b(g, 0.035, 0.045, 0.2, 0x2a2b2e, 0, 0.02, -0.05);
   b(g, 0.032, 0.11, 0.05, 0x1d1e20, 0, -0.045, 0.03, -0.25);
+  b(g, 0.006, 0.014, 0.008, 0x111111, 0, 0.047, -0.14);                    // front sight
+  for (const sx of [-0.009, 0.009]) b(g, 0.006, 0.012, 0.008, 0x111111, sx, 0.046, 0.04);  // rear sight
   arms(g, band, true, 0.0); mz = new THREE.Object3D(); mz.position.set(0, 0.025, -0.16); g.add(mz); g.userData.muzzle = mz;
   models.pistol = g;
 
@@ -642,6 +647,7 @@ function buildModels(team) {
   cyl(g, 0.034, 0.25, 0x2f3134, 0, 0.0, -0.34);                            // handguard
   b(g, 0.02, 0.02, 0.26, 0x161616, 0, 0.008, -0.57);                       // barrel
   b(g, 0.012, 0.065, 0.014, 0x161616, 0, 0.045, -0.48);                    // front sight post
+  b(g, 0.007, 0.032, 0.008, 0x161616, 0, 0.092, -0.48);                    // ...and its tip, over the carry handle
   b(g, 0.034, 0.15, 0.052, 0x1c1d20, 0, -0.105, -0.1, 0.18);               // magazine
   b(g, 0.035, 0.09, 0.045, 0x1c1d20, 0, -0.07, 0.07, -0.3);                // grip
   b(g, 0.045, 0.08, 0.26, 0x222428, 0, -0.014, 0.27);                      // stock
@@ -668,6 +674,7 @@ function buildModels(team) {
   b(g, 0.055, 0.05, 0.16, 0x6b4426, 0, -0.025, -0.3);            // wooden pump
   b(g, 0.045, 0.09, 0.26, 0x6b4426, 0, -0.03, 0.26, -0.15);      // stock
   b(g, 0.035, 0.09, 0.045, 0x3a2a1a, 0, -0.07, 0.08, -0.3);
+  b(g, 0.01, 0.012, 0.01, 0xd8d8d8, 0, 0.043, -0.64);            // bead sight
   arms(g, band, true, -0.3); mz = new THREE.Object3D(); mz.position.set(0, 0.022, -0.67); g.add(mz); g.userData.muzzle = mz;
   models.shotgun = g;
 
@@ -678,6 +685,8 @@ function buildModels(team) {
   cyl(g, 0.075, 0.07, 0x1d1e1a, 0, -0.1, -0.05).rotation.set(0, 0, Math.PI / 2);  // drum mag
   b(g, 0.05, 0.1, 0.24, 0x2b2d24, 0, -0.02, 0.28, -0.1);
   b(g, 0.035, 0.09, 0.045, 0x1c1d20, 0, -0.08, 0.1, -0.3);
+  b(g, 0.01, 0.04, 0.01, 0x111111, 0, 0.05, -0.58);                                 // front sight post
+  for (const sx of [-0.014, 0.014]) b(g, 0.008, 0.024, 0.014, 0x111111, sx, 0.054, 0.1);   // rear sight
   arms(g, band, true, -0.3); mz = new THREE.Object3D(); mz.position.set(0, 0.02, -0.63); g.add(mz); g.userData.muzzle = mz;
   models.lmg = g;
 
@@ -690,6 +699,7 @@ function buildModels(team) {
     ring.position.set(0, 0.03, z); g.add(ring);
   }
   cyl(g, 0.016, 0.06, 0x5dff7a, 0, 0.03, -0.28).material = glow;
+  b(g, 0.006, 0.02, 0.008, 0, 0, 0.078, -0.25, 0, 0, 0, glow);    // glowing sight fin
   b(g, 0.034, 0.11, 0.05, 0x7a1d18, 0, -0.045, 0.03, -0.25);
   arms(g, band, true, 0.0); mz = new THREE.Object3D(); mz.position.set(0, 0.03, -0.32); g.add(mz); g.userData.muzzle = mz;
   models.raygun = g;
@@ -781,6 +791,15 @@ const TRACKS = ['px', 'py', 'pz', 'rx', 'ry', 'rz', 'roll', 'twirl', 'spin', 'op
   'sheath', 'attach', 'lpx', 'lpy', 'lpz', 'lrx', 'lry', 'lrz', 'lvis'];
 const _e = new THREE.Euler(), _q = new THREE.Quaternion(), _m = new THREE.Matrix4(), _m2 = new THREE.Matrix4();
 const _p = new THREE.Vector3(), _s = new THREE.Vector3(), _a = new THREE.Vector3(), _b = new THREE.Vector3();
+
+// Aiming down sights: the height of each gun's sight line (the top of its front sight, in model
+// space) and how far in front of the eye it's held. The gun moves to the middle of the screen with
+// that line on the screen's center, so the front sight sits right where the bullets go.
+const SIGHTS = {
+  ak: { y: 0.07, z: -0.4 }, m4: { y: 0.085, z: -0.4 }, m16: { y: 0.108, z: -0.4 }, smg: { y: 0.065, z: -0.38 },
+  lmg: { y: 0.07, z: -0.4 }, shotgun: { y: 0.049, z: -0.4 }, pistol: { y: 0.054, z: -0.42 }, deagle: { y: 0.077, z: -0.42 },
+  raygun: { y: 0.088, z: -0.4 },
+};
 
 export class ViewModel {
   constructor() {
@@ -894,6 +913,16 @@ export class ViewModel {
       const e = Math.sin(Math.min(1, k * 1.15) * Math.PI);
       x -= e * 0.07; y += e * 0.04; z += e * 0.05;
       ry += e * 0.75; rz -= e * 0.55 + Math.sin(k * Math.PI * 2) * 0.15 * e; rx += e * 0.2;
+    }
+    // aiming down sights (Zombies): the gun comes up to the middle of the screen, sights on the
+    // center, with no bob or sway; firing only nudges it back
+    const ads = p.adsK(), sight = SIGHTS[w.def.vm];
+    if (ads > 0 && sight && !w.def.melee) {
+      this.inspectT = 0;
+      x += (0 - x) * ads;
+      y += (-0.85 * sight.y - y) * ads;              // (0.85: the root's scale)
+      z += (sight.z + this.kick * 0.03 - z) * ads;
+      rx += (this.kick * 0.02 - rx) * ads; ry *= 1 - ads; rz *= 1 - ads;
     }
     this.root.position.set(x, y, z);
     this.root.rotation.set(rx, ry, rz);

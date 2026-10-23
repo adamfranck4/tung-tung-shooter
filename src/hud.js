@@ -2,7 +2,11 @@
 import { WORLD } from './map.js';
 import { BUY_ITEMS, WEAPONS, ZOMBIE_SHOP, ZOMBIE_PRICES, ammoCost } from './weapons.js';
 import { drawCrosshair, crosshairScale } from './crosshair.js';
-import { PERKS } from './zmap.js';
+import { PERKS, AREAS, ZW, FL } from './zmap.js';
+
+// Zombies map (M): marker colors for you and up to three teammates
+const MAP_COLORS = ['#ffd36a', '#7fd4ff', '#a6ff8a', '#ff9ad8'];
+const ROMAN = ['', 'I', 'II', 'III', 'IV'];
 
 const $ = (id) => document.getElementById(id);
 // player names come from other people online: never put them in HTML unescaped
@@ -101,7 +105,8 @@ export class Hud {
     const low = p.health <= 25;
     if (this.cache.low !== low) { this.cache.low = low; $('hp').parentElement.classList.toggle('low', low); }
 
-    this.toggle('crosshair', !!(p.alive && !p.scoped && w));
+    // (aiming down sights in Zombies: the gun's own sights take over)
+    this.toggle('crosshair', !!(p.alive && !p.scoped && w && p.adsK() < 0.5));
     this.toggle('scope', p.alive && p.scoped);
 
     if (zm) { this.set('hint', g.hintText()); this.updateZombies(dt, g); return; }
@@ -181,6 +186,212 @@ export class Hud {
     const shop = !!p.buyOpen && g.canBuy(p);
     this.toggle('buymenu', shop);
     if (shop) this.renderZShop(g);
+    this.zMap(g);
+  }
+
+  // ---------- Zombies map (M): rooms you've opened, doors and their prices, and where everyone is ----------
+  zMap(g) {
+    const open = !!g.mapOpen;
+    this.toggle('zmap', open);
+    if (!open) return;
+    const cv = $('zmap-canvas'), W = cv.clientWidth, H = cv.clientHeight;
+    if (!W || !H) return;
+    const dpr = Math.min(2, devicePixelRatio || 1), pw = Math.round(W * dpr), ph = Math.round(H * dpr);
+    if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
+    // the rooms and doors only change when a door opens: drawn once, then copied every frame
+    const key = `${g.map.doors.map((d) => (d.open ? 1 : 0)).join('')}|${pw}x${ph}`;
+    if (this.zmapKey !== key) { this.zmapKey = key; this.zmapBase = this.drawMapBase(g, W, H, dpr); }
+    const ctx = cv.getContext('2d');
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, pw, ph);
+    ctx.drawImage(this.zmapBase, 0, 0);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const k = W / ZW;
+    // everyone still in the game: an arrow the way they face, or a red cross when they're down
+    const list = [];
+    g.players.forEach((q, i) => {
+      const color = MAP_COLORS[i % MAP_COLORS.length], me = q === g.player;
+      const where = !q.alive ? 'out until next round' : (g.map.areaAt(q.body.pos) || 'on the path') + (q.body.pos.y > FL - 1 ? ' (upstairs)' : '');
+      list.push(`<span class="zm-p${me ? ' me' : ''}${q.downed ? ' down' : ''}"><i style="background:${color}"></i>${esc(me ? 'You' : q.name)}`
+        + `<small>${esc(where)}${q.downed ? ' · DOWN' : ''}</small></span>`);
+      if (!q.alive) return;
+      const x = q.body.pos.x * k, z = q.body.pos.z * k;
+      ctx.save(); ctx.translate(x, z);
+      if (me) {   // a pulsing ring so you find yourself straight away
+        const t = (performance.now() / 900) % 1;
+        ctx.strokeStyle = `rgba(255,211,106,${(1 - t) * 0.9})`; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(0, 0, 8 + t * 14, 0, 7); ctx.stroke();
+      }
+      if (q.downed) {
+        ctx.fillStyle = '#e8261a'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.rect(-7, -2.5, 14, 5); ctx.rect(-2.5, -7, 5, 14); ctx.fill();
+        ctx.strokeRect(-7.5, -7.5, 15, 15);
+      } else {
+        ctx.rotate(-q.yaw);
+        ctx.fillStyle = color; ctx.strokeStyle = 'rgba(0,0,0,0.85)'; ctx.lineWidth = 2; ctx.lineJoin = 'round';
+        const s = me ? 1.25 : 1;
+        ctx.beginPath(); ctx.moveTo(0, -9 * s); ctx.lineTo(6.5 * s, 7 * s); ctx.lineTo(0, 3.5 * s); ctx.lineTo(-6.5 * s, 7 * s); ctx.closePath();
+        ctx.stroke(); ctx.fill();
+      }
+      ctx.restore();
+      if (g.players.length > 1) {
+        ctx.font = '700 13px Rajdhani, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+        ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.85)'; ctx.fillStyle = color;
+        const name = me ? 'YOU' : q.name;
+        ctx.strokeText(name, x, z + 11); ctx.fillText(name, x, z + 11);
+      }
+    });
+    const html = list.join('');
+    if (this.cache.zmapList !== html) { this.cache.zmapList = html; $('zmap-list').innerHTML = html; }
+  }
+
+  // The static part of the map: every floor cell (lit up where you can get to, hatched where you
+  // can't yet), walls inside the open areas, stairs, closed doors with their price, room names,
+  // and the machines and wall guns.
+  drawMapBase(g, W, H, dpr) {
+    const map = g.map, GW = map.gw, GH = map.gh, k = W / ZW, s = map.cell * k;
+    const c = document.createElement('canvas'); c.width = Math.round(W * dpr); c.height = Math.round(H * dpr);
+    const ctx = c.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const reach = map.reachable();
+    const locked = new Path2D();
+    for (let z = 0; z < GH; z++) for (let x = 0; x < GW; x++) {
+      const i = z * GW + x;
+      if (!map.floorCell(i)) continue;
+      const up = map.upper[i] === 1;
+      ctx.fillStyle = reach[i] ? (up ? '#5c7f9c' : '#8a7550') : (up ? '#2c3540' : '#33302c');
+      ctx.fillRect(x * s, z * s, s + 0.6, s + 0.6);
+      if (!reach[i]) locked.rect(x * s, z * s, s, s);
+    }
+    // locked: diagonal hatching
+    ctx.save(); ctx.clip(locked);
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 2;
+    for (let d = -H; d < W; d += 7) { ctx.beginPath(); ctx.moveTo(d, H); ctx.lineTo(d + H, 0); ctx.stroke(); }
+    ctx.restore();
+    // thin walls between floor cells (huts, the watchtower, the upstairs rooms)
+    ctx.strokeStyle = 'rgba(20,16,12,0.95)'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (let z = 0; z < GH; z++) for (let x = 0; x < GW; x++) {
+      const i = z * GW + x;
+      if (!map.floorCell(i)) continue;
+      if (x + 1 < GW && map.edgeX[i] && map.floorCell(i + 1)) { ctx.moveTo((x + 1) * s, z * s); ctx.lineTo((x + 1) * s, (z + 1) * s); }
+      if (z + 1 < GH && map.edgeZ[i] && map.floorCell(i + GW)) { ctx.moveTo(x * s, (z + 1) * s); ctx.lineTo((x + 1) * s, (z + 1) * s); }
+    }
+    ctx.stroke();
+    // stairs: treads across the way up, and an arrow pointing up them
+    for (const st of map.stairs) {
+      const x0 = st.x0 * k, z0 = st.z0 * k, x1 = st.x1 * k, z1 = st.z1 * k, [ux, uz] = st.up;
+      ctx.fillStyle = 'rgba(230,220,200,0.35)'; ctx.fillRect(x0, z0, x1 - x0, z1 - z0);
+      ctx.strokeStyle = 'rgba(30,24,18,0.7)'; ctx.lineWidth = 1;
+      ctx.beginPath();
+      const n = 7;
+      for (let j = 1; j < n; j++) {
+        if (ux) { const x = x0 + (x1 - x0) * j / n; ctx.moveTo(x, z0); ctx.lineTo(x, z1); }
+        else { const z = z0 + (z1 - z0) * j / n; ctx.moveTo(x0, z); ctx.lineTo(x1, z); }
+      }
+      ctx.stroke();
+      const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, a = 0.32 * Math.max(x1 - x0, z1 - z0);
+      ctx.strokeStyle = '#fff3d6'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(cx - ux * a, cz - uz * a); ctx.lineTo(cx + ux * a, cz + uz * a);
+      ctx.lineTo(cx + ux * a * 0.55 - uz * 4, cz + uz * a * 0.55 + ux * 4);
+      ctx.moveTo(cx + ux * a, cz + uz * a); ctx.lineTo(cx + ux * a * 0.55 + uz * 4, cz + uz * a * 0.55 - ux * 4);
+      ctx.stroke();
+    }
+    // room outlines and names. The upstairs rooms are small on the map: smaller names near the top
+    // of each room (clear of the doors in the middle), and one "UPSTAIRS" tag over all three.
+    const wrap = (text, size, maxW) => {
+      ctx.font = `700 ${size}px Rajdhani, sans-serif`;
+      const lines = [];
+      for (const w of text.split(' ')) {
+        const last = lines[lines.length - 1];
+        if (last && ctx.measureText(last + ' ' + w).width <= maxW) lines[lines.length - 1] = last + ' ' + w; else lines.push(w);
+      }
+      return lines;
+    };
+    const label = (lines, x, y, size, color) => {   // y: middle of the first line
+      ctx.font = `700 ${size}px Rajdhani, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.fillStyle = color;
+      lines.forEach((l, j) => { const ly = y + j * size * 0.95; ctx.strokeText(l, x, ly); ctx.fillText(l, x, ly); });
+    };
+    let upBox = null;
+    for (const [id, a] of Object.entries(AREAS)) {
+      const [x0, z0, x1, z1] = a.rect, on = g.activeAreas?.has(id), w = (x1 - x0) * s;
+      ctx.strokeStyle = on ? (a.upper ? 'rgba(170,215,255,0.8)' : 'rgba(255,214,140,0.65)') : 'rgba(150,150,160,0.35)';
+      ctx.lineWidth = 1.5; ctx.setLineDash(a.upper ? [5, 3] : []);
+      ctx.strokeRect(x0 * s + 0.75, z0 * s + 0.75, w - 1.5, (z1 - z0) * s - 1.5);
+      ctx.setLineDash([]);
+      const cx = (x0 + x1) / 2 * s, color = on ? '#fff3d6' : 'rgba(210,205,195,0.6)';
+      if (a.upper) {
+        upBox = upBox ? [Math.min(upBox[0], x0), z0, Math.max(upBox[2], x1)] : [x0, z0, x1];
+        const size = Math.max(9, Math.min(12, s * 0.6)), lines = wrap(a.name, size, w - 4), top = z0 * s + size * 0.5 + 3;
+        label(lines, cx, top, size, color);
+        if (!on) label(['LOCKED'], cx, top + lines.length * size * 0.95 + 1, 9, 'rgba(255,150,120,0.8)');
+      } else {
+        const size = Math.max(11, Math.min(17, s * 0.85)), lines = wrap(a.name, size, w - 6);
+        const top = (z0 + z1) / 2 * s - (lines.length - 1) * size * 0.475;
+        label(lines, cx, top, size, color);
+        if (!on) label(['LOCKED'], cx, top + lines.length * size * 0.95 + 4, 11, 'rgba(255,150,120,0.75)');
+      }
+    }
+    if (upBox) {   // a blue tag over the upstairs rooms
+      const t = 'UPSTAIRS · 2F', cx = (upBox[0] + upBox[2]) / 2 * s, cz = upBox[1] * s - 9;
+      ctx.font = '700 11px Rajdhani, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const w = ctx.measureText(t).width + 10;
+      ctx.fillStyle = 'rgba(20,34,48,0.92)'; ctx.fillRect(cx - w / 2, cz - 7, w, 14);
+      ctx.strokeStyle = 'rgba(170,215,255,0.8)'; ctx.lineWidth = 1; ctx.strokeRect(cx - w / 2, cz - 7, w, 14);
+      ctx.fillStyle = '#bfe2ff'; ctx.fillText(t, cx, cz + 0.5);
+    }
+    // machines: Mystery Box, Pack-a-Punch (by level), perks; wall guns as chalk labels
+    const dot = (x, z, r, fill, text, ink = '#111') => {
+      ctx.beginPath(); ctx.arc(x * k, z * k, r, 0, 7); ctx.fillStyle = fill; ctx.fill();
+      ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(0,0,0,0.8)'; ctx.stroke();
+      ctx.font = `700 ${Math.round(r * 1.05)}px Rajdhani, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = ink; ctx.fillText(text, x * k, z * k + 0.5);
+    };
+    const hex = (c) => '#' + c.toString(16).padStart(6, '0');
+    for (const wb of map.wallBuys) {
+      ctx.font = '600 10px Rajdhani, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const t = wb.def.name.replace(' Rifle', '').replace('Pump ', '').replace('Bolt ', '');
+      // (a step out from the wall, clear of any door next to it)
+      const x = (wb.pos[0] + wb.n[0] * 2) * k, z = (wb.pos[2] + wb.n[2] * 2) * k, w = ctx.measureText(t).width + 6;
+      ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(x - w / 2, z - 6, w, 12);
+      ctx.fillStyle = 'rgba(245,245,235,0.9)'; ctx.fillText(t, x, z + 0.5);
+    }
+    for (const pm of map.perkMachines) dot(pm.pos[0], pm.pos[2], 7.5, hex(pm.color), pm.short);
+    for (const st of map.papStations) {
+      const x = st.pos[0] * k, z = st.pos[2] * k;
+      ctx.save(); ctx.translate(x, z); ctx.rotate(Math.PI / 4);
+      ctx.fillStyle = hex(st.color); ctx.fillRect(-6.5, -6.5, 13, 13);
+      ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(0,0,0,0.8)'; ctx.strokeRect(-6.5, -6.5, 13, 13);
+      ctx.restore();
+      ctx.font = '700 10px Rajdhani, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#111';
+      ctx.fillText(ROMAN[st.level], x, z + 0.5);
+    }
+    {
+      const bx = map.box.pos[0] * k, bz = map.box.pos[2] * k;
+      ctx.fillStyle = '#66b8ff'; ctx.fillRect(bx - 8, bz - 6, 16, 12);
+      ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(0,0,0,0.8)'; ctx.strokeRect(bx - 8, bz - 6, 16, 12);
+      ctx.font = '700 12px Rajdhani, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#0b1a2a';
+      ctx.fillText('?', bx, bz + 0.5);
+    }
+    // closed doors: a plank bar across the way, and the price
+    for (const d of map.doors) {
+      if (d.open) continue;
+      let x0, z0, x1, z1;
+      if (d.edgeX) { const x = (d.edgeX[0] + 1) * s, z = d.edgeX[1] * s; [x0, z0, x1, z1] = [x - 2.5, z + 1, x + 2.5, z + s - 1]; }
+      else {
+        const [cx0, cz0, cx1, cz1] = d.cells, spanX = (cx1 - cx0) >= (cz1 - cz0), m = spanX ? d.center.z * k : d.center.x * k;
+        [x0, z0, x1, z1] = spanX ? [cx0 * s + 1, m - 2.5, cx1 * s - 1, m + 2.5] : [m - 2.5, cz0 * s + 1, m + 2.5, cz1 * s - 1];
+      }
+      ctx.fillStyle = '#c8783a'; ctx.fillRect(x0, z0, x1 - x0, z1 - z0);
+      ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(0,0,0,0.85)'; ctx.strokeRect(x0, z0, x1 - x0, z1 - z0);
+      ctx.font = '700 11px Rajdhani, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const t = String(d.cost), w = ctx.measureText(t).width + 8, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+      ctx.fillStyle = 'rgba(24,14,6,0.92)'; ctx.fillRect(cx - w / 2, cz - 7, w, 14);
+      ctx.strokeStyle = '#c8783a'; ctx.strokeRect(cx - w / 2, cz - 7, w, 14);
+      ctx.fillStyle = '#ffd9a0'; ctx.fillText(t, cx, cz + 0.5);
+    }
+    return c;
   }
 
   // Zombies shop: guns (keys 1-9) unlock as the rounds go by; 0 refills the gun in your hands

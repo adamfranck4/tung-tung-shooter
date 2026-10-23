@@ -238,6 +238,31 @@ input[type=text]::placeholder { color: rgba(242,234,214,0.35); }
 #z-team .zt.down .n { color: #ff8a70; }
 #z-team .zt.out { opacity: 0.5; }
 #progress.warn #progress-fill { background: #ff5a4a; }
+
+/* ---------- Zombies map (M) ---------- */
+#zmap { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 2;
+  width: min(94vw, calc((100vh - 150px) * 1.5), 1100px); padding: 10px 14px 12px;
+  background: rgba(8,10,16,0.86); border: 1px solid rgba(255,214,140,0.22); border-radius: 10px; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+.zmap-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.zmap-head b { font-size: 22px; letter-spacing: 4px; color: #ffc65c; }
+.zmap-head span { font-size: 14px; opacity: 0.6; letter-spacing: 1px; }
+#zmap-canvas { display: block; width: 100%; aspect-ratio: 3 / 2; border-radius: 6px; background: #14120f; }
+.zmap-foot { display: flex; justify-content: space-between; gap: 10px 18px; flex-wrap: wrap; margin-top: 8px; }
+.zmap-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 14px; opacity: 0.8; }
+.zmap-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.zmap-legend .sw { display: inline-block; width: 14px; height: 10px; border-radius: 2px; }
+.zmap-legend .sw.on { background: #8a7550; } .zmap-legend .sw.up { background: #5c7f9c; }
+.zmap-legend .sw.off { background: repeating-linear-gradient(-45deg, #33302c 0 3px, #1e1c19 3px 5px); }
+.zmap-legend .sw.door { background: #c8783a; height: 5px; }
+.zmap-legend .sw.stairs { background: repeating-linear-gradient(90deg, #c9c0ad 0 2px, #6a6252 2px 4px); }
+.zmap-legend .sw.dot { width: 11px; height: 11px; border-radius: 50%; background: #f2c230; }
+.zmap-legend .sw.pap { width: 10px; height: 10px; background: #c070ff; transform: rotate(45deg); }
+.zmap-legend .sw.box { background: #66b8ff; }
+#zmap-list { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 16px; font-weight: 600; }
+.zm-p { display: inline-flex; align-items: center; gap: 6px; }
+.zm-p i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+.zm-p small { font-size: 14px; opacity: 0.7; font-weight: 500; }
+.zm-p.down small { color: #ff8a70; opacity: 1; }
 @media (max-width: 900px), (max-height: 640px) {
   #z-team { bottom: 130px; }
   #z-team .zt { font-size: 15px; }
