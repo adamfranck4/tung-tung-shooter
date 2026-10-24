@@ -9,6 +9,13 @@ const SHOTS = {
   deagle: { freq: 2100, decay: 0.26, vol: 0.85, thump: 78, thumpVol: 0.85 },
   m16:    { freq: 2800, decay: 0.15, vol: 0.62, thump: 95,  thumpVol: 0.6 },
   scout:  { freq: 2600, decay: 0.38, vol: 0.85, thump: 70,  thumpVol: 0.8 },
+  // Zombies case guns
+  revolver: { freq: 1900, decay: 0.3, vol: 0.85, thump: 72, thumpVol: 0.9 },
+  micro:  { freq: 4200, decay: 0.07, vol: 0.4,  thump: 140, thumpVol: 0.3 },
+  pdw:    { freq: 3800, decay: 0.08, vol: 0.42, thump: 125, thumpVol: 0.32 },
+  autoshotgun: { freq: 1700, decay: 0.26, vol: 0.9, thump: 70, thumpVol: 0.95 },
+  autosniper: { freq: 2200, decay: 0.32, vol: 0.85, thump: 66, thumpVol: 0.85 },
+  minigun: { freq: 3100, decay: 0.07, vol: 0.4, thump: 95, thumpVol: 0.4 },
 };
 
 export class Sound {
@@ -88,6 +95,10 @@ export class Sound {
 
   shot(kind, pos) {
     if (kind === 'raygun') return this.rayShot(pos);
+    if (kind === 'thumper') return this.thumpShot(pos);
+    if (kind === 'petir') return this.zapShot(pos);
+    if (kind === 'rail') return this.railShot(pos);
+    if (kind === 'torch') return this.flameShot(pos);
     const s = SHOTS[kind] || SHOTS.rifle;
     const o = this.out(pos, s.vol, 200);
     if (!o) return;
@@ -169,6 +180,53 @@ export class Sound {
     const o = this.out(pos, 0.5, 120); if (!o) return;
     this.tone(o.node, { freq: 1900, end: 280, decay: 0.25, type: 'square', vol: 0.35 });
     this.tone(o.node, { freq: 950, end: 140, decay: 0.3, type: 'sawtooth', vol: 0.3 });
+  }
+  // the Coconut Thumper: a hollow "thoonk"
+  thumpShot(pos) {
+    const o = this.out(pos, 0.6, 100); if (!o) return;
+    this.tone(o.node, { freq: 210, end: 70, decay: 0.22, type: 'triangle', vol: 1 });
+    this.noiseBurst(o.node, { freq: 600, decay: 0.16, vol: 0.6 });
+  }
+  // a boom when its round goes off
+  thumpBoom(pos) {
+    const o = this.out(pos, 0.55, 80); if (!o) return;
+    this.noiseBurst(o.node, { freq: 420, decay: 0.5, vol: 1 });
+    this.tone(o.node, { freq: 90, end: 38, decay: 0.45, vol: 0.9 });
+  }
+  // Petir Arc: a crackling electric zap
+  zapShot(pos) {
+    const o = this.out(pos, 0.45, 90); if (!o) return;
+    this.tone(o.node, { freq: 2600, end: 900, decay: 0.12, type: 'sawtooth', vol: 0.3 });
+    this.noiseBurst(o.node, { freq: 5200, type: 'highpass', decay: 0.1, vol: 0.5 });
+    this.noiseBurst(o.node, { freq: 3000, type: 'bandpass', q: 2, decay: 0.06, vol: 0.5, delay: 0.05 });
+  }
+  // Tung Lance: a charged whip-crack with a falling hum
+  railShot(pos) {
+    const o = this.out(pos, 0.6, 130); if (!o) return;
+    this.noiseBurst(o.node, { freq: 6000, type: 'highpass', decay: 0.18, vol: 0.7 });
+    this.tone(o.node, { freq: 1400, end: 120, decay: 0.5, type: 'sawtooth', vol: 0.35 });
+    this.tone(o.node, { freq: 60, end: 40, decay: 0.4, vol: 0.8 });
+  }
+  // Sambal Torch: a soft roar (it fires many times a second, so it's quiet and short)
+  flameShot(pos) {
+    const o = this.out(pos, 0.22, 50); if (!o) return;
+    this.noiseBurst(o.node, { freq: 700 + Math.random() * 300, decay: 0.12, vol: 0.8, attack: 0.02 });
+  }
+  // ----- case opening -----
+  // a click each time a gun goes past the line
+  caseTick(k = 0) { const o = this.out(null, 0.18); if (o) this.tone(o.node, { freq: 2200 + k * 600, end: 1600, decay: 0.03, type: 'square', vol: 0.4 }); }
+  // the case unlocking
+  caseOpen() {
+    const o = this.out(null, 0.4); if (!o) return;
+    this.noiseBurst(o.node, { freq: 2600, type: 'bandpass', q: 3, decay: 0.08 });
+    this.tone(o.node, { freq: 500, end: 900, decay: 0.25, type: 'triangle', vol: 0.5, delay: 0.06 });
+  }
+  // what you got: a fanfare that gets grander with the rarity (0..3)
+  caseReveal(tier = 0) {
+    const o = this.out(null, 0.45); if (!o) return;
+    const notes = [[523, 659], [523, 659, 784], [523, 659, 784, 1046], [523, 659, 784, 1046, 1318, 1568]][tier] || [523, 659];
+    notes.forEach((f, i) => this.tone(o.node, { freq: f, decay: 0.3 + tier * 0.08, type: 'triangle', vol: 0.55, delay: i * 0.08 }));
+    if (tier >= 2) notes.forEach((f, i) => this.tone(o.node, { freq: f * 2, decay: 0.25, type: 'sine', vol: 0.18, delay: i * 0.08 + 0.02 }));
   }
   // the "tung tung tung" wooden drum knock
   tung(pos, vol = 0.6) {

@@ -98,6 +98,25 @@ export class Effects {
     l.visible = true; l.life = 0.06; l.material.opacity = 0.75;
   }
 
+  // a jagged lightning bolt from one point to another (three short flickering segments)
+  bolt(from, to, color = 0x8fe4ff) {
+    const pts = [from.clone()];
+    for (const k of [0.33, 0.66]) {
+      const p = from.clone().lerp(to, k);
+      p.x += (Math.random() - 0.5) * 0.5; p.y += (Math.random() - 0.5) * 0.5; p.z += (Math.random() - 0.5) * 0.5;
+      pts.push(p);
+    }
+    pts.push(to.clone());
+    for (let i = 0; i < 3; i++) {
+      const l = this.tracers[this.tIdx]; this.tIdx = (this.tIdx + 1) % this.tracers.length;
+      l.material.color.setHex(color);
+      const a = l.geometry.attributes.position;
+      a.setXYZ(0, pts[i].x, pts[i].y, pts[i].z); a.setXYZ(1, pts[i + 1].x, pts[i + 1].y, pts[i + 1].z);
+      a.needsUpdate = true;
+      l.visible = true; l.life = 0.09; l.material.opacity = 0.75;
+    }
+  }
+
   flash(pos) {
     this.light.position.copy(pos);
     this.light.intensity = 25;

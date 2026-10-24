@@ -9,7 +9,7 @@ import * as THREE from 'three';
 import { BoxBuilder } from './map.js';
 import { surfaceMaterial } from './textures.js';
 import { solidDistance, mergeBands, blockHash, addEdgeTrims, buildContactShadows } from './mapkit.js';
-import { WEAPONS, ZOMBIE_SHOP, ZOMBIE_PRICES } from './weapons.js';
+import { WEAPONS, ZOMBIE_SHOP, ZOMBIE_PRICES, RARITIES, rarityOf } from './weapons.js';
 import { displayGuns } from './viewmodel.js';
 import { buildMound, buildTrees, buildLogs, buildStalls, buildBunting, buildWallDecor } from './zdecor.js';
 
@@ -227,6 +227,14 @@ export const PAP_STATIONS = [
   { level: 4, pos: [101, 4, 31.2], face: [-1, 0, 0], cost: 25000, area: 'F', color: 0xff3b3b, ink: '#ffa0a0' },
 ];
 export const BOX = { pos: [24, 0, 45.5], cost: 950, area: 'B' };
+// Case vending machines: one per rarity, side by side against the Courtyard's north wall (just east
+// of the door to the Drum Tower). E buys that rarity's case; it goes into your inventory (I).
+export const CASE_MACHINES = [
+  { rarity: 'common', pos: [43.7, 0, 22.45], face: [0, 0, 1] },
+  { rarity: 'rare', pos: [45.3, 0, 22.45], face: [0, 0, 1] },
+  { rarity: 'epic', pos: [46.9, 0, 22.45], face: [0, 0, 1] },
+  { rarity: 'legendary', pos: [48.5, 0, 22.45], face: [0, 0, 1] },
+];
 // The Gun Shop: the walk-in hut in the middle of the Courtyard (the middle of the village), where
 // everyone spawns and buys guns (E at the counter). The counter runs along the north wall, flush
 // with it so there's nothing to hide behind; the guns hang on the wall above it and show up as
@@ -236,7 +244,7 @@ export const GUN_SHOP = {
   counter: [48.6, 36.15, 55.4, 37.0], counterH: 1.05,
   front: [49.2, 54.8, 37.5],          // the line in front of the counter you buy from (x0, x1, z)
   reach: 1.9,
-  rack: [[1.9, ['deagle', 'smg', 'shotgun', 'm16', 'scout']], [3.1, ['ak', 'm4', 'sniper', 'lmg']]],
+  rack: [[1.9, ['revolver', 'deagle', 'smg', 'micro', 'shotgun']], [3.1, ['m16', 'pdw', 'scout', 'autoshotgun', 'm4']]],
   area: 'B',
 };
 const GROUND_SPAWNS = [
@@ -400,6 +408,7 @@ export class ZMap {
     for (const { counter: [x0, z0, x1, z1] } of STALLS) this.obstacles.push({ x0, y0: 0, z0, x1, y1: 0.95, z1 });
     for (const [x0, z0, x1, z1, h] of UP_PROPS) this.obstacles.push({ x0, y0: FL, z0, x1, y1: FL + h, z1 });
     for (const p of PERKS) this.obstacles.push(this.machineBox(p.pos, p.face, 1.1, 0.9, 2.1));
+    for (const c of CASE_MACHINES) this.obstacles.push(this.machineBox(c.pos, c.face, 1.1, 0.9, 2.1));
     for (const st of PAP_STATIONS) {
       const b = this.machineBox(st.pos, st.face, 1.6, 1.2, 1.9);
       if (st.pos[1] > 0) b.pad = 0;   // (the one on the pyramid top: block only its own corner cell for pathing)
@@ -966,7 +975,7 @@ export class ZMap {
   // Skips faces next to anything you interact with, doors and windows.
   decorFaces() {
     const busy = [
-      ...PERKS.map((p) => [p.pos[0], p.pos[2]]),
+      ...PERKS.map((p) => [p.pos[0], p.pos[2]]), ...CASE_MACHINES.map((c) => [c.pos[0], c.pos[2]]),
       ...PAP_STATIONS.map((p) => [p.pos[0], p.pos[2]]), [BOX.pos[0], BOX.pos[2]],
       ...this.windows.map((w) => [w.center.x, w.center.z]), ...this.doors.map((d) => [d.center.x, d.center.z]),
       ...STALLS.map((s) => [(s.counter[0] + s.counter[2]) / 2, s.back]),
@@ -1219,6 +1228,7 @@ export class ZMap {
       this.scene.add(g);
       return { ...p, at: new THREE.Vector3(p.pos[0] + p.face[0] * 1.0, 0, p.pos[2] + p.face[2] * 1.0) };
     });
+    this.buildCaseMachines();
     // Pack-a-Punch stations (one per upgrade level), each glowing its level's color
     const rollGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.9, 12);
     const haloTex = this.haloTex();
@@ -1267,6 +1277,46 @@ export class ZMap {
     this.buildGunShop();
   }
 
+  // ---------- case vending machines: a dark cabinet in the rarity's color, cases on lit shelves ----------
+  buildCaseMachines() {
+    const halo = this.haloTex();
+    this.caseMachines = CASE_MACHINES.map((c) => {
+      const R = RARITIES[c.rarity], col = new THREE.Color(R.glow);
+      const g = new THREE.Group(); g.position.set(...c.pos);
+      g.rotation.y = Math.atan2(c.face[0], c.face[2]);
+      // the cabinet, with a frame in the rarity's color round a window recessed into its front
+      mesh(box, lambert(0x2a2d36), 0, 1.05, -0.1, 1.1, 2.1, 0.7, g);
+      const frame = lambert(col.clone().multiplyScalar(0.6).getHex());
+      mesh(box, frame, 0, 0.3, 0.35, 1.1, 0.6, 0.2, g);                                                // below the window
+      mesh(box, frame, 0, 1.87, 0.35, 1.1, 0.46, 0.2, g);                                              // above it
+      for (const x of [-0.5, 0.5]) mesh(box, frame, x, 1.12, 0.35, 0.1, 1.04, 0.2, g);                // either side
+      // inside: a softly glowing back, three shelves of little cases; then a pane of glass
+      mesh(box, new THREE.MeshBasicMaterial({ color: col.clone().multiplyScalar(0.35).getHex() }), 0, 1.12, 0.26, 0.9, 1.04, 0.02, g).castShadow = false;
+      const caseMat = new THREE.MeshBasicMaterial({ color: col.getHex() }), dark = lambert(0x2a2c32);
+      for (const y of [0.78, 1.1, 1.42]) {
+        mesh(box, dark, 0, y - 0.085, 0.35, 0.9, 0.025, 0.18, g).castShadow = false;
+        for (const x of [-0.27, 0, 0.27]) {
+          mesh(box, caseMat, x, y, 0.35, 0.2, 0.13, 0.08, g).castShadow = false;
+          mesh(box, dark, x, y + 0.075, 0.35, 0.07, 0.02, 0.02, g).castShadow = false;   // handle
+        }
+      }
+      mesh(box, new THREE.MeshBasicMaterial({ color: 0xa8d8ff, transparent: true, opacity: 0.1, depthWrite: false }), 0, 1.12, 0.44, 0.9, 1.04, 0.01, g).castShadow = false;
+      mesh(box, lambert(0x0d0e11), 0, 0.33, 0.46, 0.6, 0.2, 0.03, g).castShadow = false;              // the tray it drops into
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.04, 0.38),
+        new THREE.MeshBasicMaterial({ map: signTex([`${R.name.toUpperCase()} CASE`, String(R.casePrice)], '#101116', R.color, 320, 118) }));
+      sign.position.set(0, 1.87, 0.455); g.add(sign);
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: halo, color: R.glow, transparent: true, opacity: 0.45,
+        blending: THREE.AdditiveBlending, depthWrite: false }));
+      glow.scale.set(2.0, 2.0, 1); glow.position.set(0, 2.3, 0.2); g.add(glow);
+      this.scene.add(g);
+      return { ...c, at: new THREE.Vector3(c.pos[0] + c.face[0] * 1.0, 0, c.pos[2] + c.face[2] * 1.0) };
+    });
+    // a sign over the row
+    const [x0, x1] = [CASE_MACHINES[0].pos[0], CASE_MACHINES[CASE_MACHINES.length - 1].pos[0]];
+    const top = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 0.8), new THREE.MeshBasicMaterial({ map: neonTex('CASES', 'Open them in your inventory (I)') }));
+    top.position.set((x0 + x1) / 2, 3.05, 22.02); this.scene.add(top);
+  }
+
   // ---------- the Gun Shop: counter, a wall of guns (each one shows up when it unlocks), signs ----------
   buildGunShop() {
     const S = GUN_SHOP, [cx0, cz0, cx1, cz1] = S.counter, h = S.counterH, cx = (cx0 + cx1) / 2, w = cx1 - cx0;
@@ -1311,7 +1361,7 @@ export class ZMap {
         it.g.traverse((m) => { if (m.isMesh) { m.userData.lit = m.material; m.castShadow = false; } });
         sc.add(it.g);
         const def = WEAPONS[it.key], due = after[it.key] ?? 0;
-        const on = new THREE.MeshBasicMaterial({ map: tagTex(def.name, String(ZOMBIE_PRICES[it.key]), '#9be07a'), transparent: true });
+        const on = new THREE.MeshBasicMaterial({ map: tagTex(def.name, String(ZOMBIE_PRICES[it.key]), RARITIES[rarityOf(it.key)]?.color || '#9be07a'), transparent: true });
         const off = new THREE.MeshBasicMaterial({ map: tagTex(def.name, `AFTER ROUND ${due}`, '#ff9a6a'), transparent: true });
         const tag = new THREE.Mesh(new THREE.PlaneGeometry(TAG - 0.06, (TAG - 0.06) * 0.32), off);
         tag.position.set(mid, y - 0.48, boardZ + 0.012);
@@ -1323,7 +1373,7 @@ export class ZMap {
     // glowing signs: over the rack inside, and on all four outside walls (over the doors on the
     // west and east, where you walk in)
     const [rx0, rz0, rx1, rz1] = S.rect, T = 0.17;
-    const inner = new THREE.MeshBasicMaterial({ map: neonTex('GUN SHOP', 'A new gun every round you survive') });
+    const inner = new THREE.MeshBasicMaterial({ map: neonTex('GUN SHOP', 'Common & rare guns · ammo') });
     const outer = new THREE.MeshBasicMaterial({ map: neonTex('GUN SHOP', '') });
     const plane = (mat, sw, sh, x, y, z, ry) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(sw, sh), mat); m.position.set(x, y, z); m.rotation.y = ry; sc.add(m); };
     plane(inner, 2.9, 0.9, cx, 4.35, wallZ + 0.02, 0);

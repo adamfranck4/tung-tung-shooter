@@ -97,7 +97,10 @@ export function showShot(g, c, ev) {
       if (t > 0 && t < len && _o.clone().addScaledVector(_dir, t).distanceTo(_ey) < 1.2) g.sound.whiz(_ey);
     }
   });
-  if (ev.sp != null && ends[0]) g.fx.burst(_e.set(ends[0][0], ends[0][1], ends[0][2]), ev.sp, 22, 6);
+  if (ev.sp != null && ends[0]) {
+    g.fx.burst(_e.set(ends[0][0], ends[0][1], ends[0][2]), ev.sp, 22, 6);
+    if (ev.s === 'thumper') g.sound.thumpBoom?.(_e);   // the Coconut Thumper's round going off
+  }
 }
 
 // ---------------------------------------------------------------- sprites

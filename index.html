@@ -71,10 +71,17 @@
           <span><i class="sw on"></i>Unlocked</span><span><i class="sw up"></i>Upstairs (2F)</span><span><i class="sw off"></i>Locked</span>
           <span><i class="sw shop"></i>Gun Shop (spawn)</span><span><i class="sw door"></i>Door (opens after round R)</span><span><i class="sw stairs"></i>Stairs (arrow points up)</span>
           <span><i class="sw dot"></i>Perk</span><span><i class="sw pap"></i>Pack-a-Punch</span><span><i class="sw box"></i>Mystery Box</span>
+          <span><i class="sw case"></i>Case machines</span>
         </div>
         <div id="zmap-list"></div>
       </div>
     </div>
+  </div>
+
+  <!-- Zombies: the Gun Shop, inventory and case opening (see src/zui.js) -->
+  <div id="zmenu" class="hidden">
+    <div id="zm-panel"></div>
+    <div id="zcase" class="hidden"></div>
   </div>
 
   <div id="menu">
@@ -87,7 +94,7 @@
         <button data-v="classic" class="on">5v5 Classic</button>
         <button data-v="zombies">Zombies</button>
       </div>
-      <p id="z-desc" class="mode-desc hidden">Survival in <b>Sahur Village</b>. Hold off endless rounds of Tung Tung zombies and rebuild the window boards. Every round you survive opens more of the village and a new gun at the Gun Shop, where you spawn. Spend points on guns, ammo (<b>B</b>), perks, the Mystery Box and four levels of Pack-a-Punch.</p>
+      <p id="z-desc" class="mode-desc hidden">Survival in <b>Sahur Village</b>. Hold off endless rounds of Tung Tung zombies and rebuild the window boards. Every round you survive opens more of the village and a new gun at the Gun Shop, where you spawn. Guns come in four rarities: buy common and rare ones (and ammo) at the Gun Shop, and cases from the vending machines for a random gun of that rarity, opened in your inventory (<b>I</b>). Spend the rest on perks, the Mystery Box and four levels of Pack-a-Punch.</p>
 
       <label>Players</label>
       <div class="seg" id="net-seg">
@@ -163,10 +170,11 @@
         <div><b>Space</b> jump</div><div><b>C / Ctrl</b> crouch</div>
         <div><b>Shift</b> walk (quiet)</div><div><b>R</b> reload</div>
         <div><b>1 2 3</b> weapons</div><div><b>Q</b> last weapon</div>
-        <div><b>B</b> buy menu</div><div><b>E</b> plant / defuse / buy</div>
+        <div><b>B</b> buy menu (5v5)</div><div><b>E</b> plant / defuse / buy</div>
         <div><b>Right click</b> scope / aim (Zombies)</div><div><b>Tab</b> scoreboard</div>
         <div><b>F</b> inspect weapon</div><div><b>N</b> next wave (Zombies)</div>
         <div><b>E (hold)</b> revive a teammate</div><div><b>M</b> map (Zombies)</div>
+        <div><b>I</b> inventory &amp; cases (Zombies)</div>
       </div>
     </div>
   </div>

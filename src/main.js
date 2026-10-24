@@ -14,6 +14,7 @@ import { ZombiesClient } from './netzombies.js';
 import { Session, NetLink, MAX_PLAYERS, TEAM_SIZE, cleanName, normalizeCode } from './net.js';
 import { CROSSHAIRS, getCrosshair, drawCrosshair } from './crosshair.js';
 import { CS_DEG_PER_COUNT } from './player.js';
+import { ZMenu } from './zui.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -69,6 +70,8 @@ const input = new Input(canvas);
 const hud = new Hud();
 const sound = new Sound();
 const vm = new ViewModel();
+// Zombies: the Gun Shop, inventory and case opening menus (they take the mouse while open)
+const zmenu = new ZMenu({ sound, onClose: () => closeZMenu() });
 // Sensitivity uses the CS2 scale (0.022° per mouse count × sens), so your CS2 number works here.
 // Older saves used a different scale and are converted so aim feels the same.
 const settings = { sens: parseFloat(load('defuse.sens2')) };
@@ -154,6 +157,10 @@ function buildZombiesWorld() {
       `<table><tr><th>Player</th><th class="num">Kills</th><th class="num">HS</th><th class="num">Downs</th><th class="num">Points</th></tr>${rows}</table>`);
   };
   solo.onGameOver = client.onGameOver = onGameOver;
+  for (const game of [solo, client]) {
+    game.onMenu = (tab) => openZMenu(game, tab);
+    game.onCaseResult = (ev) => zmenu.caseResult(ev);
+  }
   return { scene, sky, fx, game: solo, solo, client, map, exposure: 1.3, orbit: { cx: ZW / 2, cz: ZH / 2, r: 58, h: 34 } };
 }
 
@@ -235,7 +242,7 @@ sens.addEventListener('input', () => {
 });
 if (matchMedia('(pointer: coarse)').matches && !matchMedia('(pointer: fine)').matches) $('mobile-warn').classList.remove('hidden');
 
-let state = 'menu'; // menu | lobby | playing | paused | over
+let state = 'menu'; // menu | lobby | playing | paused | over | zmenu (a Zombies menu: shop / inventory)
 const noPause = params.has('nopause');
 
 function setState(s) {
@@ -244,10 +251,28 @@ function setState(s) {
   $('lobby').classList.toggle('hidden', s !== 'lobby');
   $('pause').classList.toggle('hidden', s !== 'paused');
   $('endscreen').classList.toggle('hidden', s !== 'over');
-  hud.show(s === 'playing' || s === 'paused');
+  hud.show(s === 'playing' || s === 'paused' || s === 'zmenu');
+  if (s !== 'zmenu') zmenu.hide();
   input.active = s === 'playing';
   input.suspended = s !== 'playing';   // online matches keep running behind menus, without your input
   if (s === 'playing') { input.endTick(); tickAcc = 0; } // drop key presses made in menus
+}
+
+// Zombies menus: the mouse is let go so you can click (a solo game pauses meanwhile; online it
+// keeps running, like the Esc menu). Closing one captures the mouse again.
+function openZMenu(game, tab) {
+  if (state !== 'playing' || world.game !== game) return;
+  zmenu.open(game, tab, !!session);
+  setState('zmenu');
+  input.unlock();
+}
+function closeZMenu() {
+  zmenu.hide();
+  if (state !== 'zmenu') return;
+  setState('playing');
+  input.lock();
+  // (if the browser doesn't give the mouse back, show the pause menu: a click there captures it)
+  setTimeout(() => { if (state === 'playing' && !input.locked && !noPause) showPause(); }, 700);
 }
 
 // kind: 'pause', or 'ready' when the host has just started a match (a click captures the mouse)
@@ -481,7 +506,7 @@ function render() {
   renderer.toneMappingExposure = world.exposure;
   renderer.clear();
   renderer.render(world.scene, camera);
-  if ((state === 'playing' || state === 'paused' || state === 'test') && p?.alive && !p.scoped) {
+  if ((state === 'playing' || state === 'paused' || state === 'zmenu' || state === 'test') && p?.alive && !p.scoped) {
     renderer.clearDepth();
     renderer.render(vm.scene, vm.camera);
   }
@@ -507,7 +532,7 @@ function step(dt) {
 // Online matches keep running while a menu is open: nobody else can be paused.
 function advance(dt) {
   const g = world.game;
-  const live = state === 'playing' || (!!session && g.running && (state === 'paused' || state === 'over'));
+  const live = state === 'playing' || (!!session && g.running && (state === 'paused' || state === 'over' || state === 'zmenu'));
   if (live) {
     step(dt);
     if (g.player?.alive) vm.update(dt, g.player, g, input.dx, input.dy);

@@ -64,6 +64,7 @@ export class Combatant {
     this.burstLeft = 0; this.burstAt = 0;   // shots still to come in a burst (M16)
     this.reloading = false; this.reloadEnd = 0; this.autoReloadAt = 0; this.scoped = false;
     this.adsT = 0;                      // aiming down sights: 0 = from the hip, 1 = fully aimed (Zombies)
+    this.spinK = 0;                     // how far a minigun has spun up (0..1)
     this.punch = 0; this.useProgress = 0; this.wantsUse = false; this.spottedUntil = 0;
     this.lastAttacker = null;
     this.meleeName = 'Knife';
@@ -161,13 +162,19 @@ export class Combatant {
       return false;
     }
     if (!d.auto && !d.melee && !edge) return false;
-    this.nextFire = g.time + d.rate * (this.rateMul || 1);
+    this.nextFire = g.time + this.fireRate(d);
     this.lastShot = g.time;
     if (d.melee) { g.melee(this); this.onFire?.(); return true; }
     this.shoot(w);
     // burst weapons fire the rest of the burst on their own (see updateWeapon)
     if (d.burst) { this.burstLeft = Math.min(d.burst - 1, w.mag); this.burstAt = g.time + d.burstGap; }
     return true;
+  }
+
+  // seconds between shots: a minigun fires slowly until it has spun up
+  fireRate(d) {
+    const r = d.spin ? d.spin.from + (d.rate - d.spin.from) * this.spinK : d.rate;
+    return r * (this.rateMul || 1);
   }
 
   // one shot of a gun: spends a round, fires its bullet(s), adds recoil

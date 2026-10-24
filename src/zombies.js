@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { Combatant, RUN_SPEED, dirFrom, chaseCamera } from './combatant.js';
 import { Player } from './player.js';
 import { buildTungModel, makeCoconut, tickRainbow } from './bots.js';
-import { WEAPONS, papDef, MAX_PAP, ZOMBIE_SHOP, ZOMBIE_PRICES, ammoCost } from './weapons.js';
+import { WEAPONS, papDef, MAX_PAP, ZOMBIE_SHOP, ZOMBIE_PRICES, ammoCost, RARITIES, rarityOf, rollCase, BOX_WEAPONS, STASH_SIZE, sellValue } from './weapons.js';
 import { raycast, raySphere, rayBox, moveBody, wrapAngle } from './physics.js';
 import { PLAYER_START, AREAS, START_AREA } from './zmap.js';
 import { knifeName } from './viewmodel.js';
@@ -14,7 +14,30 @@ import { Avatar, Interp, F, r1, r2, r3, packSlots, showShot } from './avatar.js'
 import { NET_SOUNDS } from './game.js';
 
 const MAX_ALIVE = 24;
-const BOX_WEAPONS = [['smg', 3], ['shotgun', 3], ['ak', 3], ['m4', 3], ['sniper', 2], ['lmg', 2], ['raygun', 1]];
+// the Mystery Box label: the gun's name in its rarity's color
+export const boxColor = (key) => RARITIES[rarityOf(key)]?.color || '#ffd36a';
+
+// ----- inventory (I): the cases and guns a player has stored -----
+// items: { id, t: 'case', rarity } or { id, t: 'gun', key, pap, mag, reserve }
+// online: [id, 'c', rarity] / [id, 'g', key, pap, mag, reserve]
+export function packStash(p) {
+  return p.stash.map((x) => (x.t === 'case' ? [x.id, 'c', x.rarity] : [x.id, 'g', x.key, x.pap, x.mag, x.reserve]));
+}
+export function unpackStash(arr) {
+  if (!Array.isArray(arr)) return [];
+  const out = [];
+  for (const a of arr.slice(0, STASH_SIZE)) {
+    if (!Array.isArray(a)) continue;
+    const id = a[0] | 0;
+    if (a[1] === 'c' && RARITIES[a[2]]) out.push({ id, t: 'case', rarity: a[2] });
+    else if (a[1] === 'g' && WEAPONS[a[2]] && !WEAPONS[a[2]].melee) {
+      out.push({ id, t: 'gun', key: a[2], pap: Math.max(0, Math.min(MAX_PAP, a[3] | 0)), mag: Math.max(0, a[4] | 0), reserve: Math.max(0, a[5] | 0) });
+    }
+  }
+  return out;
+}
+// the weapon definition of a stored gun
+export const stashDef = (it) => (it.pap ? papDef(WEAPONS[it.key], it.pap) : WEAPONS[it.key]);
 export const POWERUPS = {
   maxammo: { label: 'MAX AMMO', short: 'AMMO', color: '#7dff6a' },
   instakill: { label: 'INSTA-KILL', short: 'KILL', color: '#ff5a5a' },
@@ -105,6 +128,7 @@ const START_OFFSETS = [[0, 0], [1.6, 0.8], [-1.6, 0.8], [0, -1.6]];
 export const spawnPoint = (i) => new THREE.Vector3(PLAYER_START.x + START_OFFSETS[i % 4][0], 0, PLAYER_START.z + START_OFFSETS[i % 4][1]);
 
 const _t = new THREE.Vector3(), _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _d = new THREE.Vector3(), _end = new THREE.Vector3();
+const _hp = new THREE.Vector3(), _ca = new THREE.Vector3(), _cb = new THREE.Vector3(), _cm = new THREE.Vector3();
 const _hit = {}, _s = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 };
 
 // ---------------------------------------------------------------- zombie
@@ -579,7 +603,7 @@ export class ZombiesGame {
   introBanner() {
     this.hud.banner('TUNG TUNG ZOMBIES', this.coop
       ? 'Survive together: every round opens more of the village. Revive downed teammates with E.'
-      : 'Every round you survive opens more of the village and a new gun at the Gun Shop.', 'T', 4);
+      : 'Every round opens more of the village and a new gun at the Gun Shop. Cases hold better guns.', 'T', 4);
   }
 
   setupPlayers(roster, myId, knife) {
@@ -617,6 +641,7 @@ export class ZombiesGame {
     Object.assign(p, {
       points: 500, kills: 0, headshots: 0, downs: 0, perks: new Set(), maxHealth: BASE_HEALTH, health: BASE_HEALTH,
       lastHurt: -10, downed: false, downT: 0, reviveT: 0, reviveFrac: 0, reviver: null, rebuildT: 0, reloadMul: 1, rateMul: 1,
+      stash: [], stashSeq: 0,
     });
   }
 
@@ -637,27 +662,43 @@ export class ZombiesGame {
   }
 
   // ----- interface used by Player / Combatant / HUD -----
-  // ----- buying: guns at the Gun Shop counter (E there), ammo anywhere (B) -----
-  // p.gunShop: the open menu is the Gun Shop's (keys 1-9 buy guns), not the B ammo menu (keys 1-2)
-  canBuy(p) {
-    if (!p || !p.alive || p.downed || this.phase === 'over') return false;
-    return !p.gunShop || this.nearGunShop(p);
-  }
+  // There's no B menu in Zombies: guns and ammo are bought at the Gun Shop counter (E there opens
+  // the shop), cases at their vending machines, and the inventory (I) holds what you don't carry.
+  canBuy() { return false; }
   // (a little extra reach once it's open, and for other players online: their position here lags)
   nearGunShop(p) { return this.map.atGunShop(p.body.pos, p.isAvatar ? 1.2 : 0.3); }
-  buyCount(p) { return p?.gunShop ? ZOMBIE_SHOP.length : 2; }
   // rounds survived so far: what the doors and the Gun Shop go by
   cleared() { return this.betweenRounds ? this.round : Math.max(0, this.round - 1); }
 
-  // gunShop: from the Gun Shop menu (other players online: what their message says)
-  buy(p, index, gunShop = !!p?.gunShop) {
-    if (!p || !p.alive || p.downed || this.phase === 'over') return;
-    if (!gunShop) {   // B: ammo for the gun in slot 1 or 2
-      const w = p.slots[index + 1];
-      if (w && !w.def.melee) this.refillAmmo(p, w);
-      return;
+  // Ask main.js to open a menu that takes the mouse: 'shop' (the Gun Shop) or 'inv' (inventory).
+  requestMenu(tab) {
+    const p = this.player;
+    if (!p?.alive || p.downed || this.phase === 'over') return;
+    if (tab === 'shop' && !this.nearGunShop(p)) return;
+    this.onMenu?.(tab);
+  }
+
+  // A Gun Shop or inventory action from the menus (here for you; a joining player's browser sends
+  // it to the host instead, see ZombiesClient)
+  invAct(ev) { this.invAction(this.player, ev); }
+
+  // ev.a: 'gun' (buy gun ev.k), 'ammo' (refill the gun in slot ev.s) - both at the Gun Shop -
+  // 'open' (open case ev.id), 'equip' (stored gun ev.id into slot ev.s), 'store' (put the gun in
+  // slot ev.s away), 'sell' (sell stored gun ev.id)
+  invAction(p, ev) {
+    if (!p || !p.alive || p.downed || this.phase === 'over' || !ev) return;
+    switch (ev.a) {
+      case 'gun': this.buyGun(p, String(ev.k)); break;
+      case 'ammo': this.buyAmmo(p, ev.s | 0); break;
+      case 'open': this.openCase(p, ev.id | 0); break;
+      case 'equip': this.equipGun(p, ev.id | 0, ev.s | 0); break;
+      case 'store': this.storeGun(p, ev.s | 0); break;
+      case 'sell': this.sellGun(p, ev.id | 0); break;
     }
-    const it = ZOMBIE_SHOP[index];
+  }
+
+  buyGun(p, key) {
+    const it = ZOMBIE_SHOP.find((x) => x.key === key);
     if (!it || !this.nearGunShop(p)) return;
     if (this.cleared() < it.after) {
       this.tell(p, { e: 'snd', n: 'denied' }); this.tell(p, { e: 'msg', s: `Unlocks after round ${it.after}`, d: 1.2 });
@@ -670,7 +711,13 @@ export class ZombiesGame {
     this.tell(p, { e: 'snd', n: 'purchase' });
   }
 
-  // fill a gun's spare ammo back up (Gun Shop or B menu)
+  buyAmmo(p, slot) {
+    const w = p.slots[slot];
+    if ((slot !== 1 && slot !== 2) || !w || w.def.melee || !this.nearGunShop(p)) return;
+    this.refillAmmo(p, w);
+  }
+
+  // fill a gun's spare ammo back up (at the Gun Shop)
   refillAmmo(p, w) {
     if (w.reserve >= w.def.reserve) { this.tell(p, { e: 'msg', s: 'Ammo is already full', d: 1 }); return; }
     if (!this.spend(p, ammoCost(w))) return;
@@ -678,6 +725,92 @@ export class ZombiesGame {
     this.syncInv(p, 'ammo');
     this.tell(p, { e: 'snd', n: 'purchase' });
   }
+
+  // a case from its vending machine (E there): it goes into your inventory
+  buyCase(p, rarity) {
+    const R = RARITIES[rarity];
+    if (!R) return;
+    if (p.stash.length >= STASH_SIZE) {
+      this.tell(p, { e: 'snd', n: 'denied' }); this.tell(p, { e: 'msg', s: 'Your inventory is full (press I to make room)', d: 1.8 });
+      return;
+    }
+    if (!this.spend(p, R.casePrice)) return;
+    p.stash.push({ id: ++p.stashSeq, t: 'case', rarity });
+    this.syncStash(p);
+    this.tell(p, { e: 'snd', n: 'purchase' });
+    this.tell(p, { e: 'msg', s: `${R.name} Case added to your inventory - press I to open it`, d: 2.5 });
+  }
+
+  // Open a case: the gun it gives takes the case's place in your inventory. The menu plays the
+  // case opening and lands on it (ev.k), so the host rolls it and tells the player.
+  openCase(p, id) {
+    const i = p.stash.findIndex((x) => x.id === id && x.t === 'case');
+    if (i < 0) return;
+    const rarity = p.stash[i].rarity, key = rollCase(rarity), def = WEAPONS[key];
+    const gun = { id: ++p.stashSeq, t: 'gun', key, pap: 0, mag: def.mag, reserve: def.reserve };
+    p.stash[i] = gun;
+    this.syncStash(p);
+    this.tell(p, { e: 'case', id, r: rarity, k: key, g: gun.id });
+    if (this.coop && (rarity === 'epic' || rarity === 'legendary')) this.announce(p, `${p.name} unboxed the ${RARITIES[rarity].name} ${def.name}!`);
+  }
+
+  // take a stored gun out into slot 1 or 2; whatever was there takes its place in the inventory
+  equipGun(p, id, slot) {
+    const i = p.stash.findIndex((x) => x.id === id && x.t === 'gun');
+    if (i < 0 || (slot !== 1 && slot !== 2)) return;
+    const it = p.stash[i], old = p.slots[slot];
+    p.stash.splice(i, 1);
+    if (old && !old.def.melee) p.stash.splice(i, 0, this.stashItem(p, old));
+    const def = stashDef(it);
+    p.slots[slot] = { key: it.key, def, mag: Math.min(it.mag, def.mag), reserve: Math.min(it.reserve, def.reserve) };
+    this.drawGun(p, slot);
+    this.syncStash(p);
+  }
+
+  // put the gun in slot 1 or 2 away (your other gun, or the knife, comes out)
+  storeGun(p, slot) {
+    const w = p.slots[slot];
+    if ((slot !== 1 && slot !== 2) || !w || w.def.melee) return;
+    if (!this.stashGun(p, w, true)) return;
+    p.slots[slot] = null;
+    if (p.slot === slot) {
+      const other = slot === 1 ? 2 : 1;
+      p.selectSlot(p.slots[other] ? other : 3);
+    }
+    this.syncInv(p, 'switch');
+  }
+
+  sellGun(p, id) {
+    const i = p.stash.findIndex((x) => x.id === id && x.t === 'gun');
+    if (i < 0) return;
+    const it = p.stash[i], v = sellValue(it.key, it.pap);
+    p.stash.splice(i, 1);
+    p.points += v;   // (not doubled by Double Points)
+    this.tell(p, { e: 'pts', n: v });
+    this.tell(p, { e: 'snd', n: 'purchase' });
+    this.tell(p, { e: 'msg', s: `Sold ${stashDef(it).name} for ${v}`, d: 1.5 });
+    this.syncStash(p);
+  }
+
+  stashItem(p, w) { return { id: ++p.stashSeq, t: 'gun', key: w.key, pap: w.def.pap || 0, mag: w.mag, reserve: w.reserve }; }
+  // put a gun into the inventory (false when it's full)
+  stashGun(p, w, quiet = false) {
+    if (!w || w.def.melee) return false;
+    if (p.stash.length >= STASH_SIZE) {
+      this.tell(p, { e: 'msg', s: `Your inventory is full: your ${w.def.name} was left behind`, d: 2 });
+      return false;
+    }
+    p.stash.push(this.stashItem(p, w));
+    this.syncStash(p);
+    if (!quiet) this.tell(p, { e: 'msg', s: `Your ${w.def.name} went into your inventory (I)`, d: 1.8 });
+    return true;
+  }
+
+  // the host changed what a player has stored: send them the list (your own menu reads it directly)
+  syncStash(p) {
+    if (p.isAvatar && this.net) this.net.emitTo(p.pid, { e: 'stash', it: packStash(p) });
+  }
+
   emitNoise() {}
   useInfo() { return null; }
   aliveZombies() { let n = 0; for (const z of this.zombies) if (z.active && z.alive) n++; return n; }
@@ -707,7 +840,7 @@ export class ZombiesGame {
     this.hud.zRound(r, true);
     this.sound.zRoundStart();
     this.net?.emit({ e: 'round', r });
-    if (r === 1) this.announce(null, 'Buy guns at the Gun Shop counter (E) · B buys ammo anywhere');
+    if (r === 1) this.announce(null, 'Guns and ammo at the Gun Shop (E) · cases by the north door · I opens your inventory');
   }
 
   endRound() {
@@ -850,30 +983,36 @@ export class ZombiesGame {
 
   // ----- combat -----
   fireBullet(shooter, origin, dir, def, extraPellet) {
-    const range = 250;
+    const range = def.range || 250;   // (the flamethrower only reaches a few meters)
     const wall = raycast(origin, dir, range, this.map.colliders, _hit);
     let hitT = wall ? wall.t : range;
     let wallInfo = wall ? { nx: wall.nx, ny: wall.ny, nz: wall.nz } : null;
     const gt = this.map.rayGround(origin, dir, hitT);
     if (gt !== null && gt < hitT) { hitT = gt; wallInfo = { nx: 0, ny: 1, nz: 0 }; }
+    // the zombie it hits, or every zombie in its path for a piercing gun
     let victim = null, part = null;
+    const pierced = def.pierce ? [] : null;
     for (const z of this.zombies) {
       if (!z.active || !z.alive) continue;
       const r = z.rayHit(origin, dir, hitT);
-      if (r && r.t < hitT) { hitT = r.t; victim = z; part = r.part; }
+      if (!r || r.t >= hitT) continue;
+      if (pierced) pierced.push({ z, t: r.t, part: r.part });
+      else { hitT = r.t; victim = z; part = r.part; }
+    }
+    if (pierced) {
+      pierced.sort((x, y) => x.t - y.t);
+      let k = 1;
+      for (const h of pierced) { this.bulletHit(shooter, h.z, h.part, h.t, origin, dir, def, k, extraPellet || k < 1); k *= def.pierce; }
+      victim = pierced[0]?.z || null;
     }
     _end.copy(origin).addScaledVector(dir, hitT);
     const end = _v2.copy(_end);
-    if (victim) {
-      const mult = part === 'head' ? (def.headMult || 4) : part === 'leg' ? 0.75 : 1;
-      let dmg = def.damage * mult * Math.pow(def.falloff || 1, hitT / 10);
-      if (shooter.perks?.has('dtap')) dmg *= 1.33;
-      this.fx.burst(end, 0xc9a06a, 5, 3); // wood splinters
-      this.logShot(end, 3);
-      this.hitZombie(victim, dmg, part === 'head', false, extraPellet, shooter);
-    } else if (wallInfo) {
-      this.fx.impact(end, wallInfo);
-      this.logShot(end, 1, wallInfo);
+    if (victim && !pierced) {
+      this.bulletHit(shooter, victim, part, hitT, origin, dir, def, 1, extraPellet);
+      if (def.chain) this.chainArc(shooter, victim, def);
+    } else if (wallInfo && hitT < range - 0.01) {
+      if (!def.flame) this.fx.impact(end, wallInfo);
+      this.logShot(end, def.flame ? 0 : 1, wallInfo);
     } else this.logShot(end, 0);
     if (def.splash) {
       for (const z of this.zombies) {
@@ -882,11 +1021,61 @@ export class ZombiesGame {
         const d = _v.distanceTo(end);
         if (d < def.splash.radius) this.hitZombie(z, def.splash.damage * (1 - d / def.splash.radius * 0.6), false, false, true, shooter);
       }
-      this.fx.burst(end, def.pap ? 0xff60ff : 0x50ff70, 22, 6);
+      this.fx.burst(end, def.pap ? 0xff60ff : def.splashColor ?? 0x50ff70, 22, 6);
+      if (def.sound === 'thumper') { this.fx.flash(end); this.sound.thumpBoom(end); }
     }
     _v.set(0.18, -0.15, 0).applyEuler(this.camera.rotation).add(origin);
-    if (def.tracer) this.fx.tracer(_v, end, def.tracer);
+    if (def.flame) this.flameFx(_v, end, dir, extraPellet);
+    else if (def.tracer) this.fx.tracer(_v, end, def.tracer);
     else if (!extraPellet && Math.random() < 0.35) this.fx.tracer(_v, end);
+  }
+
+  // one bullet (or pellet, or pierced zombie: k = its share of the damage) hitting zombie z
+  bulletHit(shooter, z, part, t, origin, dir, def, k, quiet) {
+    const mult = part === 'head' ? (def.headMult || 4) : part === 'leg' ? 0.75 : 1;
+    let dmg = def.damage * mult * Math.pow(def.falloff || 1, t / 10) * k;
+    if (shooter.perks?.has('dtap')) dmg *= 1.33;
+    _hp.copy(origin).addScaledVector(dir, t);
+    if (def.flame) this.fx.burst(_hp, 0xff7a1a, 2, 2);
+    else this.fx.burst(_hp, 0xc9a06a, 5, 3);   // wood splinters
+    this.logShot(_hp, 3);
+    this.hitZombie(z, dmg, part === 'head', false, quiet || !!def.noHitPoints, shooter);
+  }
+
+  // Petir Arc: the lightning jumps from the zombie it hit to the nearest ones, weaker each time
+  chainArc(shooter, first, def) {
+    const c = def.chain, done = new Set([first]);
+    let dmg = def.damage * (shooter.perks?.has('dtap') ? 1.33 : 1);
+    first.chestPos(_ca);
+    for (let j = 0; j < c.jumps; j++) {
+      let best = null, bd = c.range;
+      for (const z of this.zombies) {
+        if (!z.active || !z.alive || done.has(z)) continue;
+        const d = z.chestPos(_cm).distanceTo(_ca);
+        if (d < bd) { bd = d; best = z; }
+      }
+      if (!best) break;
+      done.add(best);
+      dmg *= c.mult;
+      best.chestPos(_cb);
+      this.fx.bolt(_ca, _cb, def.tracer || 0x8fe4ff);
+      this.logShot(_cb, 3);
+      this.hitZombie(best, dmg, false, false, true, shooter);
+      _ca.copy(_cb);
+    }
+  }
+
+  // Sambal Torch: tongues of fire along the shot instead of a tracer
+  flameFx(from, to, dir, extra) {
+    const n = extra ? 1 : 2;
+    for (let i = 0; i < n; i++) {
+      const k = 0.15 + Math.random() * 0.85;
+      _ca.lerpVectors(from, to, k);
+      _cb.copy(dir).multiplyScalar(3 + Math.random() * 4);
+      _cb.x += (Math.random() - 0.5) * 1.2; _cb.y += 0.4 + Math.random() * 0.8; _cb.z += (Math.random() - 0.5) * 1.2;
+      const col = [0xff4a10, 0xff8a20, 0xffc840][Math.floor(Math.random() * 3)];
+      this.fx.spawnParticle(_ca, _cb, col, 0.1 + Math.random() * 0.14 * k, 0.16 + Math.random() * 0.16, -3);
+    }
   }
 
   // online: remember where each bullet ended so the other players can draw it
@@ -921,7 +1110,7 @@ export class ZombiesGame {
     if (this.net) {
       const ev = { e: 'shot', n: c.nid, s: def.sound, d: this.shotEnds };
       if (def.tracer) ev.tc = def.tracer;
-      if (def.splash) ev.sp = def.pap ? 0xff60ff : 0x50ff70;
+      if (def.splash) ev.sp = def.pap ? 0xff60ff : def.splashColor ?? 0x50ff70;
       this.net.emit(ev);
       this.shotEnds = [];
     }
@@ -1087,12 +1276,24 @@ export class ZombiesGame {
     return 0;
   }
 
+  // A new gun goes into an empty slot, or replaces the one in your hands (which goes into your
+  // inventory, if there's room).
   givePlayerWeapon(p, key) {
     let slot = [1, 2].find((s) => !p.slots[s]);
-    if (!slot) slot = (p.slot === 1 || p.slot === 2) ? p.slot : 1;
+    if (!slot) {
+      slot = (p.slot === 1 || p.slot === 2) ? p.slot : 1;
+      this.stashGun(p, p.slots[slot]);
+    }
     p.give(key, slot);
-    if (p.slot === slot) { p.reloading = false; p.recoil = 0; p.deployUntil = this.time + (WEAPONS[key].deploy || 0.5); p.onSwitch?.(); }
-    else p.selectSlot(slot);
+    this.drawGun(p, slot);
+  }
+
+  // take out the gun now in `slot` (it was just put there)
+  drawGun(p, slot) {
+    if (p.slot === slot) {
+      p.reloading = false; p.recoil = 0; p.scoped = false; p.burstLeft = 0; p.spinK = 0; p.autoReloadAt = 0;
+      p.deployUntil = this.time + (p.slots[slot].def.deploy || 0.5); p.onSwitch?.();
+    } else p.selectSlot(slot);
     this.syncInv(p, 'switch');
   }
 
@@ -1133,6 +1334,7 @@ export class ZombiesGame {
     for (const d of map.doors) if (!d.open && level(d.center.y)) consider(flat(pos, d.center), 2.8, { type: 'door', d });
     for (const w of map.windows) if (w.boards < w.max && this.activeAreas.has(w.area)) consider(flat(pos, w.inside), 2.2, { type: 'window', w });
     for (const pm of map.perkMachines) if (!p.perks.has(pm.id)) consider(flat(pos, pm.at), 1.7, { type: 'perk', pm });
+    for (const cm of map.caseMachines) consider(flat(pos, cm.at), 1.6, { type: 'case', cm });
     for (const st of map.papStations) if (Math.abs(st.at.y - pos.y) < 1.5) consider(flat(pos, st.at), 1.9, { type: 'pap', st });
     consider(flat(pos, map.box.at), 2.0, { type: 'box' });
     if (map.atGunShop(pos)) consider(0, 1, { type: 'shop' });
@@ -1154,7 +1356,12 @@ export class ZombiesGame {
         const a = it.d.areas.map((id) => AREAS[id]).find((x) => x.after === it.d.after);
         return `${a.name} opens after round ${it.d.after}`;
       }
-      case 'shop': return p.buyOpen && p.gunShop ? '' : 'Press E to browse the Gun Shop';
+      case 'shop': return 'Press E to browse the Gun Shop (guns and ammo)';
+      case 'case': {
+        const R = RARITIES[it.cm.rarity];
+        if (p.stash.length >= STASH_SIZE) return 'Your inventory is full (press I to make room)';
+        return `Press E to buy ${R.name === 'Epic' ? 'an' : 'a'} ${R.name} Case [${R.casePrice}] · open it in your inventory (I)`;
+      }
       case 'window': return 'Hold E to rebuild the barrier';
       case 'perk': return `Press E to drink ${it.pm.name} [${it.pm.cost}]`;
       case 'pap': {
@@ -1168,7 +1375,11 @@ export class ZombiesGame {
       case 'box': {
         const b = this.map.box;
         if (b.state === 'idle') return `Press E for the Mystery Box [${b.cost}]`;
-        if (b.state === 'ready') return b.owner === p ? `Press E to take ${WEAPONS[b.weapon].name}` : `${b.owner?.name || 'Someone'}'s Mystery Box weapon`;
+        if (b.state === 'ready') {
+          if (b.owner !== p) return `${b.owner?.name || 'Someone'}'s Mystery Box weapon`;
+          const R = RARITIES[rarityOf(b.weapon)];
+          return `Press E to take the ${R ? R.name + ' ' : ''}${WEAPONS[b.weapon].name}`;
+        }
         return '';
       }
     }
@@ -1178,10 +1389,11 @@ export class ZombiesGame {
   use(it, p) {
     const map = this.map;
     switch (it.type) {
-      case 'shop':   // opens (or closes) the Gun Shop menu: only on your own screen
-        if (p !== this.player) return;
-        if (p.buyOpen && p.gunShop) p.buyOpen = false;
-        else { p.gunShop = true; p.buyOpen = true; }
+      case 'shop':   // opens the Gun Shop menu: only on your own screen
+        if (p === this.player) this.requestMenu('shop');
+        break;
+      case 'case':
+        this.buyCase(p, it.cm.rarity);
         break;
       case 'perk':
         if (p.perks.has(it.pm.id) || !this.spend(p, it.pm.cost)) return;
@@ -1273,7 +1485,7 @@ export class ZombiesGame {
       let r = Math.random() * total;
       b.weapon = pool[0][0];
       for (const [k, w] of pool) { r -= w; if (r <= 0) { b.weapon = k; break; } }
-      this.map.setBoxLabel(WEAPONS[b.weapon].name, b.weapon === 'raygun' ? '#7dff8a' : '#ffd36a');
+      this.map.setBoxLabel(WEAPONS[b.weapon].name, boxColor(b.weapon));
       b.state = 'ready'; b.t = 0;
     } else if (b.state === 'ready' && b.t > 9) { b.state = 'idle'; b.label.visible = false; b.owner = null; }
   }
@@ -1366,6 +1578,8 @@ export class ZombiesGame {
         if (!p.alive) continue;
         for (const s of [1, 2, 3]) { const w = p.slots[s]; if (w && !w.def.melee) w.reserve = w.def.reserve; }   // 3: a last-stand spare pistol
         this.syncInv(p, 'ammo');
+        for (const it of p.stash) if (it.t === 'gun') it.reserve = stashDef(it).reserve;   // and the guns in your inventory
+        this.syncStash(p);
       }
     }
     if (type === 'instakill') this.effects.instakill = 30;
@@ -1599,6 +1813,7 @@ export class ZombiesGame {
     for (const z of this.zombies) if (z.active) z.prevPos.copy(z.body.pos);
     for (const a of this.remotes) a.update(dt);   // other players: follow their position updates
     this.toggleMap();
+    if (this.input.pressed('KeyI')) this.requestMenu('inv');
 
     if (this.phase === 'over') {
       this.overT -= dt;
@@ -1663,6 +1878,7 @@ export class ZombiesGame {
       case 'msg': this.hud.center(String(ev.s), ev.d || 2); break;
       case 'snd': if (NET_SOUNDS.has(ev.n)) this.sound[ev.n](); break;
       case 'pts': this.hud.zPoints(ev.n | 0); break;
+      case 'case': this.onCaseResult?.(ev); break;   // a case you opened: the menu plays it
       case 'hurt':
         p.punch += 0.05;
         p.body.vel.x += (+ev.x || 0) * 3; p.body.vel.z += (+ev.z || 0) * 3;
@@ -1751,8 +1967,8 @@ export class ZombiesGame {
       case 'next':
         if (this.betweenRounds && this.time < this.nextRoundAt) this.nextRoundAt = this.time;
         break;
-      case 'shop':   // bought from the Gun Shop (g: 1) or ammo from the B menu
-        this.buy(p, ev.i | 0, !!ev.g);
+      case 'iv':     // the Gun Shop or the inventory (see invAction)
+        this.invAction(p, ev);
         break;
     }
   }
@@ -1764,6 +1980,7 @@ export class ZombiesGame {
       case 'perk': { const pm = map.perkMachines.find((x) => x.id === ev.id); return pm && near(pm.at, 1.7) ? { type: 'perk', pm } : null; }
       case 'pap': { const st = map.papStations[ev.id]; return st && near(st.at, 1.9) && Math.abs(st.at.y - pos.y) < 2 ? { type: 'pap', st } : null; }
       case 'box': return near(map.box.at, 2.0) ? { type: 'box' } : null;
+      case 'case': { const cm = map.caseMachines.find((x) => x.rarity === ev.id); return cm && near(cm.at, 1.6) ? { type: 'case', cm } : null; }
     }
     return null;
   }

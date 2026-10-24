@@ -2,7 +2,7 @@
 // power-ups; this side moves its own player, reports hits and button presses, and draws the
 // shared world from the host's snapshots.
 import * as THREE from 'three';
-import { ZombiesGame, Zombie } from './zombies.js';
+import { ZombiesGame, Zombie, boxColor, unpackStash } from './zombies.js';
 import { WEAPONS } from './weapons.js';
 import { START_AREA } from './zmap.js';
 import { F, r1, r2, r3, packSlots, applyInventory, showShot } from './avatar.js';
@@ -40,6 +40,7 @@ export class ZombiesClient extends ZombiesGame {
     for (const z of this.zombies) if (z.active) z.puppetUpdate(dt);
     this.updateProjectiles(dt, false);   // coconuts: the host decides who gets hit
     this.toggleMap();
+    if (this.input.pressed('KeyI')) this.requestMenu('inv');
     if (this.phase === 'over') {
       this.overT -= dt;
       if (this.overT <= 0) { this.running = false; this.onGameOver?.(this.finalStats()); }
@@ -87,11 +88,13 @@ export class ZombiesClient extends ZombiesGame {
     const req = { e: 'use', k: it.type };
     if (it.type === 'perk') req.id = it.pm.id;
     else if (it.type === 'pap') req.id = this.map.papStations.indexOf(it.st);
+    else if (it.type === 'case') req.id = it.cm.rarity;
     this.net.emit(req);
   }
 
-  // Gun Shop guns and B-menu ammo: the host checks the round and your points, then sends it
-  buy(p, index) { if (p === this.player && this.canBuy(p)) this.net.emit({ e: 'shop', i: index, g: p.gunShop ? 1 : 0 }); }
+  // Gun Shop and inventory actions: the host checks them (round, points, what you have) and
+  // sends back what you carry and store
+  invAct(ev) { if (ev && typeof ev.a === 'string') this.net.emit({ ...ev, e: 'iv' }); }
 
   // doors open with the rounds (the host also says so): no need to tell anyone
   openDoor(d) {
@@ -185,7 +188,7 @@ export class ZombiesClient extends ZombiesGame {
     const [bst, bw, bown] = s.bx, b = this.map.box;
     if (bst !== b.state) {
       b.t = 0; b.nextSwap = 0;
-      if (bst === 'ready' && WEAPONS[bw]) { b.weapon = bw; this.map.setBoxLabel(WEAPONS[bw].name, bw === 'raygun' ? '#7dff8a' : '#ffd36a'); }
+      if (bst === 'ready' && WEAPONS[bw]) { b.weapon = bw; this.map.setBoxLabel(WEAPONS[bw].name, boxColor(bw)); }
       b.label.visible = bst !== 'idle';
       b.state = bst;
     }
@@ -248,6 +251,7 @@ export class ZombiesClient extends ZombiesGame {
       case 'over': this.onOver(ev); break;
       case 'left': this.removeRemote(ev.n); break;
       case 'inv': applyInventory(this.player, ev); break;
+      case 'stash': this.player.stash = unpackStash(ev.it); break;
       default: this.feedback(ev);
     }
   }

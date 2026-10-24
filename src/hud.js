@@ -1,6 +1,6 @@
 // DOM-based heads-up display: vitals, ammo, radar, kill feed, menus.
 import { WORLD } from './map.js';
-import { BUY_ITEMS, WEAPONS, ZOMBIE_SHOP, ZOMBIE_PRICES, ammoCost } from './weapons.js';
+import { BUY_ITEMS, WEAPONS, RARITIES } from './weapons.js';
 import { drawCrosshair, crosshairScale } from './crosshair.js';
 import { PERKS, AREAS, ZW, FL, GUN_SHOP } from './zmap.js';
 
@@ -187,9 +187,7 @@ export class Hud {
       frac: Math.max(0, Math.min(1, bz.puppet ? bz.hpFrac ?? 1 : bz.health / bz.maxHealth)) } : null);
     const spec = !p.alive && g.phase !== 'over' && g.spectating;
     this.spectate(spec ? `Spectating <b>${esc(spec.name)}</b><small>You'll be back next round &middot; click to switch player</small>` : null);
-    const shop = !!p.buyOpen && g.canBuy(p);
-    this.toggle('buymenu', shop);
-    if (shop) this.renderZShop(g);
+    this.toggle('buymenu', false);   // (no B menu in Zombies: the Gun Shop and inventory are their own menus, see zui.js)
     this.zMap(g);
   }
 
@@ -370,6 +368,12 @@ export class Hud {
     };
     const hex = (c) => '#' + c.toString(16).padStart(6, '0');
     for (const pm of map.perkMachines) dot(pm.pos[0], pm.pos[2], 7.5, hex(pm.color), pm.short);
+    // the case vending machines: a little case in each rarity's color
+    for (const cm of map.caseMachines) {
+      const x = cm.pos[0] * k, z = cm.pos[2] * k + 4;
+      ctx.fillStyle = RARITIES[cm.rarity].color; ctx.fillRect(x - 3.5, z - 3, 7, 6);
+      ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(0,0,0,0.85)'; ctx.strokeRect(x - 3.5, z - 3, 7, 6);
+    }
     for (const st of map.papStations) {
       const x = st.pos[0] * k, z = st.pos[2] * k;
       ctx.save(); ctx.translate(x, z); ctx.rotate(Math.PI / 4);
@@ -413,43 +417,6 @@ export class Hud {
       ctx.fillStyle = '#ffd9a0'; ctx.fillText(t, cx, cz + 0.5);
     }
     return c;
-  }
-
-  // Zombies: the Gun Shop menu (guns, keys 1-9, one more unlocked every round you survive) or the
-  // B menu (ammo for the guns you carry, keys 1-2 like their slots)
-  renderZShop(g) {
-    const p = g.player;
-    const row = (k, name, cat, right, cls) => `<div class="buy-row ${cls}"><span class="k">${k}</span><span class="n">${name}</span>`
-      + `<span class="c">${cat}</span><span class="p">${right}</span></div>`;
-    let html;
-    if (p.gunShop) {
-      const cleared = g.cleared();
-      const rows = ZOMBIE_SHOP.map((it, i) => {
-        const locked = cleared < it.after, s = locked ? 0 : g.ownedSlot(p, it.key);
-        if (locked) return row(i + 1, WEAPONS[it.key].name, it.cat, `AFTER ROUND ${it.after}`, 'lock');
-        if (s) {   // already carried: buying it again refills its ammo
-          const w = p.slots[s], full = w.reserve >= w.def.reserve, cost = ammoCost(w);
-          return row(i + 1, esc(w.def.name), 'Owned', full ? 'FULL' : `AMMO ${cost}`, full || p.points >= cost ? 'own' : 'no');
-        }
-        const price = ZOMBIE_PRICES[it.key];
-        return row(i + 1, WEAPONS[it.key].name, it.cat, price, p.points < price ? 'no' : '');
-      }).join('');
-      const next = ZOMBIE_SHOP.find((it) => it.after > cleared);
-      html = `<h3>GUN SHOP <span class="z">${p.points}</span></h3>${rows}<div class="buy-foot">1-9 buy &middot; E or B to close`
-        + `${next ? ` &middot; next gun after round ${next.after}` : ''}<br>B anywhere buys ammo</div>`;
-    } else {
-      let rows = '';
-      for (const s of [1, 2]) {
-        const w = p.slots[s];
-        if (!w || w.def.melee) continue;
-        const full = w.reserve >= w.def.reserve, cost = ammoCost(w);
-        rows += row(s, esc(w.def.name), w === p.weapon ? 'In hand' : '', full ? 'FULL' : cost, full ? 'own' : p.points < cost ? 'no' : '');
-      }
-      if (!rows) rows = '<div class="buy-row lock"><span class="n">No guns to refill</span></div>';
-      html = `<h3>AMMO <span class="z">${p.points}</span></h3>${rows}<div class="buy-foot">1-2 refill that gun &middot; B to close`
-        + '<br>Buy guns at the Gun Shop in the Courtyard</div>';
-    }
-    if (this.cache.buy !== html) { this.cache.buy = html; $('buymenu').innerHTML = html; }
   }
 
   zReset(g) {

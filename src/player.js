@@ -53,7 +53,8 @@ export class Player extends Combatant {
     if (!this.alive) return;
 
     // ----- buy menu (Zombies: B is the ammo menu; the Gun Shop counter opens its own with E) -----
-    if (inp.pressed('KeyB')) {
+    if (inp.pressed('KeyB') && g.mode === 'zombies') g.hud.center('Buy guns and ammo at the Gun Shop counter (E)', 1.5);
+    else if (inp.pressed('KeyB')) {
       if (this.buyOpen) this.buyOpen = false;
       else {
         this.gunShop = false;
@@ -149,6 +150,11 @@ export class Player extends Combatant {
 
     // ----- shooting -----
     const w = this.weapon;
+    // a minigun spins up while you hold the trigger (and winds down when you let go)
+    if (w?.def.spin) {
+      const spinning = !this.buyOpen && !frozen && !using && !this.reloading && inp.mouseDown(0) && g.time >= this.deployUntil;
+      this.spinK = spinning ? Math.min(1, this.spinK + dt / w.def.spin.time) : Math.max(0, this.spinK - dt / 0.7);
+    } else this.spinK = 0;
     this.updateAim(dt, !this.buyOpen && !frozen && inp.mouseDown(2));
     if (!this.buyOpen && w) {
       if (w.def.scope && inp.mouseHit(2) && !this.reloading && g.time >= this.deployUntil) {

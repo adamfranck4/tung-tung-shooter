@@ -278,6 +278,7 @@ function buildSaya(parent) {
 const KUNAI_TIP = 0.178;
 const GLOW = {};
 function glow(c) { return GLOW[c] || (GLOW[c] = new THREE.MeshBasicMaterial({ color: c })); }
+const glowMat = (c) => glow(c);   // (inside buildModels, `glow` is the ray gun's material)
 function gunmetal(c) {
   return STEEL['g' + c] || (STEEL['g' + c] = new THREE.MeshPhongMaterial({
     color: c, shininess: 120, specular: 0xb4c4dc, envMap: studioEnv(), reflectivity: 0.22, combine: THREE.MixOperation,
@@ -937,6 +938,161 @@ function buildModels(team, gunsOnly = false) {
   arms(g, band, true, 0.0); mz = new THREE.Object3D(); mz.position.set(0, 0.03, -0.32); g.add(mz); g.userData.muzzle = mz;
   models.raygun = g;
 
+  // ----- Zombies case guns -----
+  const muzzle = (x, y, z) => { const m = new THREE.Object3D(); m.position.set(x, y, z); g.add(m); g.userData.muzzle = m; };
+  const ring = (r, tube, material, x, y, z) => {
+    const m = new THREE.Mesh(new THREE.TorusGeometry(r, tube, 6, 18), material); m.position.set(x, y, z); g.add(m); return m;
+  };
+
+  g = new THREE.Group(); // Six-Shooter: long steel barrel, a fat cylinder and a wooden grip
+  const rvSteel = shiny(0x8c9097), rvDark = shiny(0x4a4d52);
+  b(g, 0.026, 0.03, 0.2, 0, 0, 0.032, -0.15, 0, 0, 0, rvSteel);           // barrel
+  b(g, 0.012, 0.012, 0.18, 0, 0, 0.012, -0.14, 0, 0, 0, rvDark);          // ejector rod under it
+  b(g, 0.036, 0.05, 0.1, 0, 0, 0.022, -0.02, 0, 0, 0, rvDark);            // frame
+  cyl(g, 0.031, 0.062, 0x5d6066, 0, 0.022, -0.035).material = rvSteel;    // cylinder
+  for (const a of [0, 1, 2]) b(g, 0.064, 0.006, 0.05, 0x2a2b2e, 0, 0.022, -0.035, 0, 0, a * Math.PI / 3);   // flutes
+  b(g, 0.022, 0.012, 0.1, 0, 0, 0.053, -0.03, 0, 0, 0, rvDark);           // top strap
+  b(g, 0.012, 0.018, 0.022, 0x2a2b2e, 0, 0.046, 0.035, -0.4);             // hammer (kept under the sight line)
+  b(g, 0.033, 0.11, 0.046, 0x7a4a24, 0, -0.045, 0.045, -0.35);            // wooden grip
+  b(g, 0.01, 0.026, 0.035, 0x2a2b2e, 0, -0.018, -0.008);                  // trigger guard
+  b(g, 0.006, 0.016, 0.008, 0x111111, 0, 0.053, -0.235);                  // front sight
+  for (const sx of [-0.008, 0.008]) b(g, 0.005, 0.01, 0.008, 0x111111, sx, 0.054, 0.015);    // rear notch (under the front sight's line)
+  arms(g, band, true, 0.0); muzzle(0, 0.032, -0.26);
+  models.revolver = g;
+
+  g = new THREE.Group(); // Kampung Micro: a boxy machine pistol with a long mag through the grip
+  b(g, 0.05, 0.075, 0.2, 0x2e3033, 0, 0.0, -0.04);                         // receiver
+  b(g, 0.052, 0.012, 0.12, 0xc24a2a, 0, 0.03, -0.05);                      // painted stripe
+  b(g, 0.022, 0.022, 0.06, 0x161616, 0, 0.012, -0.17);                     // barrel stub
+  b(g, 0.034, 0.16, 0.045, 0x1c1d20, 0, -0.1, 0.02, -0.12);                // grip + mag
+  b(g, 0.03, 0.03, 0.044, 0xb89a48, 0, -0.18, 0.03, -0.12);               // mag base
+  b(g, 0.03, 0.05, 0.03, 0x1c1d20, 0, -0.055, -0.115);                     // front strap
+  for (const sx of [-0.02, 0.02]) b(g, 0.008, 0.008, 0.15, 0x111111, sx, 0.046, 0.04);   // folded wire stock
+  b(g, 0.006, 0.02, 0.008, 0x111111, 0, 0.047, -0.12);                     // front sight
+  for (const sx of [-0.009, 0.009]) b(g, 0.006, 0.014, 0.008, 0x111111, sx, 0.046, 0.04);  // rear sight
+  arms(g, band, true, -0.12); muzzle(0, 0.012, -0.21);
+  models.micro = g;
+
+  g = new THREE.Group(); // Hornet PDW: a bullpup with a see-through mag on top, yellow and black
+  b(g, 0.06, 0.09, 0.44, 0x26272a, 0, -0.005, 0.02);                       // body
+  for (const z of [-0.12, -0.02, 0.12]) b(g, 0.062, 0.022, 0.035, 0xf2c230, 0, -0.012, z);   // hornet stripes
+  b(g, 0.044, 0.03, 0.3, 0, 0, 0.055, 0.02, 0, 0, 0, new THREE.MeshLambertMaterial({ color: 0xe0a830, transparent: true, opacity: 0.75 }));
+  b(g, 0.022, 0.022, 0.08, 0x161616, 0, 0.0, -0.23);                       // barrel
+  b(g, 0.036, 0.09, 0.045, 0x1c1d20, 0, -0.08, 0.06, -0.2);                // grip
+  b(g, 0.034, 0.06, 0.04, 0x1c1d20, 0, -0.07, -0.14);                      // thumb hole front
+  b(g, 0.032, 0.01, 0.07, 0x161616, 0, 0.074, -0.08);                      // reflex sight: a mount...
+  for (const sx of [-0.016, 0.016]) b(g, 0.004, 0.032, 0.012, 0x161616, sx, 0.094, -0.112);   // ...an open frame
+  b(g, 0.036, 0.004, 0.012, 0x161616, 0, 0.11, -0.112);
+  b(g, 0.028, 0.03, 0.002, 0, 0, 0.094, -0.112, 0, 0, 0, new THREE.MeshBasicMaterial({ color: 0x233040, transparent: true, opacity: 0.25, depthWrite: false }));
+  b(g, 0.004, 0.004, 0.002, 0, 0, 0.094, -0.114, 0, 0, 0, glowMat(0xff3030)); // red dot
+  arms(g, band, true, -0.15); muzzle(0, 0.0, -0.28);
+  models.pdw = g;
+
+  g = new THREE.Group(); // Combat Shotgun: semi-auto with a drum
+  b(g, 0.055, 0.08, 0.32, 0x2b2d30, 0, 0, -0.02);                          // receiver
+  b(g, 0.03, 0.03, 0.36, 0x1a1b1d, 0, 0.022, -0.34);                       // barrel
+  b(g, 0.038, 0.02, 0.3, 0x3a3c40, 0, 0.045, -0.32);                       // heat shield
+  for (const z of [-0.24, -0.32, -0.4]) b(g, 0.04, 0.008, 0.02, 0x1a1b1d, 0, 0.056, z);
+  const drum = cyl(g, 0.07, 0.06, 0x1d1e20, 0, -0.1, -0.08); drum.rotation.set(0, 0, Math.PI / 2);
+  cyl(g, 0.04, 0.062, 0x8a3a24, 0, -0.1, -0.08).rotation.set(0, 0, Math.PI / 2);  // drum cap
+  b(g, 0.035, 0.09, 0.045, 0x1c1d20, 0, -0.07, 0.07, -0.3);                // grip
+  b(g, 0.03, 0.07, 0.03, 0x1c1d20, 0, -0.06, -0.3);                        // fore grip
+  b(g, 0.045, 0.08, 0.24, 0x2b2d30, 0, -0.02, 0.26);                       // stock
+  b(g, 0.01, 0.014, 0.01, 0, 0, 0.062, -0.47, 0, 0, 0, glowMat(0xff7a2a));    // fiber front sight
+  for (const sx of [-0.011, 0.011]) b(g, 0.007, 0.016, 0.01, 0x111111, sx, 0.05, 0.08);
+  arms(g, band, true, -0.3); muzzle(0, 0.022, -0.53);
+  models.autoshotgun = g;
+
+  g = new THREE.Group(); // Sentinel Auto-Sniper: a semi-auto marksman rifle with a big scope
+  b(g, 0.055, 0.08, 0.4, 0x3a3f46, 0, 0, -0.02);                           // receiver
+  b(g, 0.057, 0.012, 0.12, 0x3a8ad8, 0, 0.03, 0.0);                        // blue stripe
+  b(g, 0.05, 0.06, 0.24, 0x2a2e33, 0, 0.0, -0.34);                         // handguard
+  b(g, 0.022, 0.022, 0.24, 0x151515, 0, 0.012, -0.56);                     // barrel
+  b(g, 0.036, 0.032, 0.05, 0x111111, 0, 0.012, -0.69);                     // muzzle brake
+  cyl(g, 0.026, 0.28, 0x111111, 0, 0.088, -0.06);                          // scope
+  cyl(g, 0.035, 0.05, 0x111111, 0, 0.088, -0.21);
+  cyl(g, 0.032, 0.04, 0x111111, 0, 0.088, 0.09);
+  for (const z of [-0.12, 0.02]) b(g, 0.014, 0.04, 0.014, 0x111111, 0, 0.055, z);
+  b(g, 0.035, 0.11, 0.06, 0x1c1d20, 0, -0.085, -0.1);                      // magazine
+  b(g, 0.035, 0.09, 0.045, 0x1c1d20, 0, -0.07, 0.07, -0.3);                // grip
+  b(g, 0.05, 0.09, 0.26, 0x3a3f46, 0, -0.02, 0.3);                         // stock
+  b(g, 0.04, 0.03, 0.12, 0x2a2e33, 0, 0.04, 0.3);                          // cheek rest
+  arms(g, band, true, -0.3); muzzle(0, 0.012, -0.72);
+  models.autosniper = g;
+
+  g = new THREE.Group(); // Coconut Thumper: a fat single-barrel launcher with a wooden stock
+  cyl(g, 0.046, 0.34, 0x3a3d32, 0, 0.02, -0.25);                           // barrel
+  cyl(g, 0.052, 0.03, 0x222222, 0, 0.02, -0.42);                           // muzzle ring
+  cyl(g, 0.048, 0.025, 0xf2c230, 0, 0.02, -0.15);                          // yellow band
+  b(g, 0.06, 0.08, 0.18, 0x2b2d24, 0, 0, 0.0);                             // receiver
+  b(g, 0.045, 0.09, 0.26, 0x7a4a24, 0, -0.03, 0.24, -0.15);                // wooden stock
+  b(g, 0.035, 0.09, 0.045, 0x3a2a1a, 0, -0.07, 0.07, -0.3);                // grip
+  b(g, 0.04, 0.05, 0.08, 0x3a2a1a, 0, -0.045, -0.2);                       // fore grip
+  for (const sx of [-0.011, 0.011]) b(g, 0.006, 0.03, 0.006, 0x111111, sx, 0.07, -0.06);   // rear sight
+  b(g, 0.008, 0.032, 0.008, 0x111111, 0, 0.074, -0.38);                    // front post
+  arms(g, band, true, -0.2); muzzle(0, 0.02, -0.44);
+  models.thumper = g;
+
+  g = new THREE.Group(); // Sahur Shredder: a six-barrel minigun (the barrels spin, see ViewModel)
+  const spin = new THREE.Group(); spin.position.set(0, 0, -0.3); g.add(spin);
+  for (let i = 0; i < 6; i++) {
+    const a = i / 6 * Math.PI * 2;
+    b(spin, 0.016, 0.016, 0.42, 0x2a2a2c, Math.cos(a) * 0.034, Math.sin(a) * 0.034, -0.05);
+  }
+  for (const z of [-0.24, 0.1]) { const p = cyl(spin, 0.052, 0.02, 0x3a3d42, 0, 0, z); p.position.set(0, 0, z); }
+  cyl(g, 0.065, 0.14, 0x2b2d30, 0, 0.0, -0.13);                            // motor housing
+  b(g, 0.11, 0.12, 0.26, 0x3a3d42, 0, -0.01, 0.06);                        // body
+  b(g, 0.112, 0.022, 0.05, 0xd03a2a, 0, 0.032, -0.02);                     // red band
+  b(g, 0.112, 0.022, 0.03, 0xf2c230, 0, 0.032, 0.03);                      // gold band
+  b(g, 0.1, 0.12, 0.15, 0x4a5a30, 0.0, -0.14, 0.04);                       // ammo box
+  b(g, 0.025, 0.025, 0.22, 0x1a1a1a, 0, 0.11, -0.02);                      // carry handle
+  for (const z of [-0.11, 0.07]) b(g, 0.02, 0.05, 0.02, 0x1a1a1a, 0, 0.08, z);
+  b(g, 0.035, 0.09, 0.045, 0x1c1d20, 0, -0.07, 0.15, -0.3);                // grip
+  arms(g, band, true, -0.12); muzzle(0, 0, -0.56);
+  g.userData.spinner = spin;
+  models.minigun = g;
+
+  g = new THREE.Group(); // Petir Arc: a lightning gun with glowing coils and two prongs
+  const arc = glowMat(0x8fe4ff);
+  b(g, 0.06, 0.08, 0.3, 0x2a3040, 0, 0, -0.02);                            // body
+  cyl(g, 0.018, 0.26, 0xc87533, 0, 0.02, -0.27);                           // copper rod
+  for (const z of [-0.18, -0.24, -0.3]) ring(0.036, 0.008, arc, 0, 0.02, z);
+  for (const sx of [-0.026, 0.026]) b(g, 0.008, 0.008, 0.08, 0, sx, 0.02, -0.42, 0, 0, 0, arc);   // prongs
+  cyl(g, 0.018, 0.1, 0x5a6a80, 0.04, 0.03, 0.06);                          // battery on the side
+  b(g, 0.008, 0.038, 0.016, 0, 0.058, 0.03, 0.06, 0, 0, 0, arc);            // ...with a glowing band
+  b(g, 0.035, 0.09, 0.045, 0x1c1d20, 0, -0.07, 0.07, -0.3);                // grip
+  b(g, 0.045, 0.08, 0.2, 0x2a3040, 0, -0.02, 0.22);                        // stock
+  b(g, 0.006, 0.022, 0.008, 0, 0, 0.062, -0.34, 0, 0, 0, arc);             // glowing front fin
+  for (const sx of [-0.01, 0.01]) b(g, 0.006, 0.014, 0.008, 0x111111, sx, 0.05, 0.06);
+  arms(g, band, true, -0.24); muzzle(0, 0.02, -0.46);
+  models.petir = g;
+
+  g = new THREE.Group(); // Tung Lance: a railgun, two long rails with a cyan charge between them
+  const rail = glowMat(0x5ff2ff);
+  b(g, 0.06, 0.085, 0.36, 0x8e979f, 0, 0, -0.02);                          // body
+  b(g, 0.062, 0.012, 0.2, 0x2ab8c8, 0, 0.035, -0.02);                      // teal stripe
+  for (const sx of [-0.022, 0.022]) b(g, 0.012, 0.03, 0.5, 0x3a3d42, sx, 0.01, -0.42);   // rails
+  b(g, 0.01, 0.01, 0.46, 0, 0, 0.01, -0.42, 0, 0, 0, rail);                // the charge
+  for (const z of [-0.25, -0.42, -0.59]) b(g, 0.07, 0.07, 0.02, 0x2a2d30, 0, 0.01, z);   // capacitor rings
+  b(g, 0.006, 0.02, 0.008, 0x111111, 0, 0.06, -0.6);                       // front sight
+  b(g, 0.03, 0.016, 0.02, 0x111111, 0, 0.05, 0.06);                        // rear sight block
+  b(g, 0.035, 0.09, 0.045, 0x1c1d20, 0, -0.07, 0.07, -0.3);                // grip
+  b(g, 0.05, 0.09, 0.24, 0x8e979f, 0, -0.02, 0.28);                        // stock
+  arms(g, band, true, -0.32); muzzle(0, 0.01, -0.69);
+  models.rail = g;
+
+  g = new THREE.Group(); // Sambal Torch: a flamethrower with a red chili fuel tank
+  cyl(g, 0.05, 0.26, 0xd8261a, 0, -0.07, -0.05);                           // chili tank
+  cyl(g, 0.034, 0.05, 0x3a8a2a, 0, -0.07, 0.1);                            // green stem cap
+  b(g, 0.05, 0.07, 0.3, 0x2b2d30, 0, 0.02, -0.08);                         // body
+  cyl(g, 0.022, 0.3, 0x5a5d62, 0, 0.03, -0.36);                            // nozzle tube
+  cyl(g, 0.032, 0.05, 0x222222, 0, 0.03, -0.52);                           // nozzle
+  b(g, 0.014, 0.014, 0.025, 0, 0, 0.0, -0.53, 0, 0, 0, glowMat(0x6ab8ff));    // pilot light
+  b(g, 0.035, 0.09, 0.045, 0x1c1d20, 0, -0.05, 0.07, -0.3);                // grip
+  b(g, 0.03, 0.08, 0.03, 0x1c1d20, 0, -0.03, -0.28);                       // front handle
+  arms(g, band, true, -0.28); muzzle(0, 0.03, -0.56);
+  models.torch = g;
+
   if (gunsOnly) return models;
   for (const skin of KNIFE_SKINS) models['knife_' + skin.id] = buildKnife(skin, band);
   return models;
@@ -1045,6 +1201,8 @@ const SIGHTS = {
   ak: { y: 0.07, z: -0.4 }, m4: { y: 0.085, z: -0.4 }, m16: { y: 0.108, z: -0.4 }, smg: { y: 0.065, z: -0.38 },
   lmg: { y: 0.07, z: -0.4 }, shotgun: { y: 0.049, z: -0.4 }, pistol: { y: 0.054, z: -0.42 }, deagle: { y: 0.077, z: -0.42 },
   raygun: { y: 0.088, z: -0.4 },
+  revolver: { y: 0.061, z: -0.42 }, micro: { y: 0.057, z: -0.38 }, pdw: { y: 0.094, z: -0.4 }, autoshotgun: { y: 0.069, z: -0.4 },
+  thumper: { y: 0.09, z: -0.4 }, petir: { y: 0.073, z: -0.4 }, rail: { y: 0.07, z: -0.42 },
 };
 
 export class ViewModel {
@@ -1186,6 +1344,9 @@ export class ViewModel {
     this.root.position.set(x, y, z);
     this.root.rotation.set(rx, ry, rz);
     this.root.visible = !p.scoped;
+    // the minigun's barrels spin up with the trigger
+    const spinner = this.current?.userData.spinner;
+    if (spinner) spinner.rotation.z += dt * 45 * (p.spinK || 0);
 
     const knife = this.current?.userData.knife;
     if (knife) this.animateKnife(knife, dt, game);

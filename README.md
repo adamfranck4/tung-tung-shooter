@@ -66,22 +66,23 @@ Pick **Zombies** in the menu for survival in **Sahur Village**, a night-time map
 online with up to 3 friends.
 
 - **The Gun Shop** is where you spawn: the walk-in shop in the middle of the Courtyard (the middle of the village),
-  with glowing signs on its roof and over both doors. Press **E** at the counter to buy guns. The guns hang on the
-  wall behind the counter: the ones on sale in color with their price, the rest as faded outlines with the round
-  they unlock after. Buying a gun you already carry refills its ammo.
+  with glowing signs on its roof and over both doors. Press **E** at the counter to open the shop menu: it sells the
+  common and rare guns, and ammo for whatever two guns you carry (any rarity). Click a gun to buy it (or press 1-9, 0).
+  The guns also hang on the wall behind the counter: the ones on sale with their price (in their rarity's color),
+  the rest as faded outlines with the round they unlock after. Buying a gun you already carry refills its ammo.
 - **Everything unlocks as you survive.** Nobody buys doors: at the end of each round one more area opens (its doors
   swing open by themselves) and one more gun goes on sale at the Gun Shop. A banner says what's new.
 
   | Survive round | Area that opens | New at the Gun Shop |
   | --- | --- | --- |
-  | (start) | Courtyard | Desert Eagle 700, SMG 1000 |
-  | 1 | Village Hall (Quick Revive) | Pump Shotgun 1500 |
-  | 2 | Kitchen | M16 Burst 1600 |
-  | 3 | Drum Tower | Scout 1700 |
-  | 4 | Garden | AK Rifle 1800 |
-  | 5 | Rice Barn | M4 Rifle 1800 |
-  | 6 | Sahur Hill | Bolt Sniper 2000 |
-  | 7 | Tree House (upstairs) | Drum LMG 3000 |
+  | (start) | Courtyard | Six-Shooter 500, Desert Eagle 700, SMG-7 1000 |
+  | 1 | Village Hall (Quick Revive) | Kampung Micro 1100 |
+  | 2 | Kitchen | Pump Shotgun 1500 |
+  | 3 | Drum Tower | M16 Burst 1600 |
+  | 4 | Garden | Hornet PDW 1800 |
+  | 5 | Rice Barn | Scout 1700 |
+  | 6 | Sahur Hill | Combat Shotgun 2000 |
+  | 7 | Tree House (upstairs) | M4 Rifle 2200 |
   | 8 | Dead Orchard | |
   | 9 | Night Market | |
   | 10 | Spooky Woods | |
@@ -89,8 +90,67 @@ online with up to 3 friends.
 
   A door opens when both of the areas it joins are open. A locked door shows the round it opens after (on the
   door and on the map), and standing next to it tells you which area is behind it.
-- **Ammo (press B, anywhere):** refills the guns you carry, 1 or 2 for the gun in that slot (half the gun's price;
-  4500 / 6500 / 8500 / 10500 once it's upgraded to level I-IV). The B menu doesn't sell guns.
+- **Ammo:** at the Gun Shop only (there's no B menu in Zombies). It refills the spare ammo of a gun you carry: half
+  the gun's price for common and rare guns, 1500 for epic guns, 2500 for legendary guns, and 4500 / 6500 / 8500 / 10500
+  once it's upgraded to level I-IV.
+
+### Guns, rarities and cases
+
+Every Zombies gun (except the P-9 you start with) has a rarity: **common** (grey-blue), **rare** (blue), **epic**
+(purple) or **legendary** (gold). Rarer guns are stronger, but not by a mile: a legendary gun is a big help, not a win
+button.
+
+| Rarity | Guns | Where you get them |
+| --- | --- | --- |
+| Common | Six-Shooter (revolver), Desert Eagle, SMG-7, Kampung Micro (fast machine pistol), Pump Shotgun | Gun Shop, Common Case, Mystery Box |
+| Rare | M16 Burst, Hornet PDW (50-round bullpup), Scout, Combat Shotgun (semi-auto), M4 Rifle | Gun Shop, Rare Case, Mystery Box |
+| Epic | AK Rifle, Drum LMG, Bolt Sniper, Sentinel Auto-Sniper (semi-auto, scoped), Coconut Thumper (explosive launcher) | Epic Case, Mystery Box |
+| Legendary | Sahur Shredder, Petir Arc, Tung Lance, Sambal Torch, Tung Ray | Legendary Case, Mystery Box |
+
+The legendary guns each do something special:
+- **Sahur Shredder:** a six-barrel minigun. It fires slowly at first and spins up over about a second while you hold
+  the trigger (the barrels spin), 150-round belt. Fired from the hip, and you move a little slower with it.
+- **Petir Arc:** a lightning gun. Each shot jumps on from the zombie it hits to up to 3 more nearby (65% of the damage
+  each jump), with a crackle of blue lightning.
+- **Tung Lance:** a railgun. A slow, heavy shot that goes through every zombie in a line (each one takes 85% of what
+  the last one did).
+- **Sambal Torch:** a flamethrower with a red chili fuel tank. Short range (about 8 m), sets the front of a crowd alight
+  (the flames reach a second zombie at 60%). Its hits don't give the +10 points, only its kills do.
+- **Tung Ray:** the old wonder weapon, nerfed: 90 damage (was 140), a smaller and weaker blast (2.6 m / 110, was
+  3.2 m / 240), 16-shot magazine (was 20) and a bit slower. Still the best splash gun.
+
+**Case vending machines:** four machines stand side by side against the Courtyard's north wall, by the door to the Drum
+Tower, under a glowing CASES sign: one per rarity, in its color. Press **E** at one to buy that case; it goes into your
+inventory.
+
+| Case | Price |
+| --- | --- |
+| Common | 1000 |
+| Rare | 2500 |
+| Epic | 6000 |
+| Legendary | 15000 |
+
+**Inventory (press I, anywhere):** shows your loadout (slots 1 and 2, and your knife) and up to 24 stored cases and
+guns. Click **OPEN** on a case for the CS-style case opening: the case and its five guns with their odds, then **UNLOCK
+CASE** spins a strip of guns past a yellow line that slows down and stops on what you got (click or Esc to skip). The
+gun goes into your inventory; equip it to slot 1 or 2 right there, open another case of the same kind, or keep it
+stored. Stored guns keep their ammo and Pack-a-Punch level. On a stored gun: **SLOT 1 / SLOT 2** swaps it with what's in
+that slot, **SELL** (click twice) sells it (common 250, rare 600, epic 1500, legendary 3750, +1000 per Pack-a-Punch
+level). On a gun you carry: **PUT AWAY** stores it. When a new gun (Gun Shop, Mystery Box) replaces the one in your
+hands, that one goes into your inventory too, if there's room. Max Ammo refills stored guns as well.
+
+The case odds (each case holds its five guns):
+
+| Case | Odds |
+| --- | --- |
+| Common | Six-Shooter 24%, Desert Eagle 20%, SMG-7 20%, Kampung Micro 20%, Pump Shotgun 16% |
+| Rare | M16 Burst 24%, Hornet PDW 22%, Scout 20%, Combat Shotgun 18%, M4 Rifle 16% |
+| Epic | AK Rifle 24%, Drum LMG 20%, Bolt Sniper 20%, Sentinel Auto-Sniper 18%, Coconut Thumper 18% |
+| Legendary | Sahur Shredder 22%, Petir Arc 22%, Tung Lance 21%, Sambal Torch 21%, Tung Ray 14% |
+
+The Gun Shop and inventory menus free the mouse so you can click. In a solo game the game pauses while one is open;
+online the match keeps running (like the Esc menu), so find a quiet moment. Online, cases are rolled by the host and
+everyone is told when someone unboxes an epic or legendary gun.
 
 - Endless rounds of Tung Tung zombies with bats. They tear boards off the windows and climb in, or rise from
   the ground. Regular zombies have 100 HP (same as a player); each round brings more of them, and they get
@@ -155,11 +215,13 @@ online with up to 3 friends.
 - Every roof and hut doorway is tall enough for the rainbow giant. The village also has bunting with paper
   lanterns, painted shutters (some windows lit from inside), boarded-up doors, and dead trees and logs here and there.
 - Points: +10 per hit, +60 per kill, +100 headshot kill, +130 knife kill, +10 per board you rebuild (hold E).
-- At the Gun Shop, 1-9 buys a gun (it replaces the gun in your hands when you already carry two). It's the only
-  place that sells guns (there are no wall guns). The Tung Ray stays a Mystery Box exclusive.
+- At the Gun Shop a new gun replaces the gun in your hands when you already carry two (that one goes into your
+  inventory). It's the only place that sells guns (there are no wall guns); epic and legendary guns only come out of
+  cases and the Mystery Box.
 - Spend points on (press E):
   - Perks: Quick Revive 500 (gets you back up once), Double Tap 2000, Juggernog 2500 (more health), Speed Cola 3000 (faster reloads)
-  - Mystery Box 950: random gun, including the Drum LMG and the Tung Ray wonder weapon
+  - Mystery Box 950: a random gun of any rarity, but mostly common ones (55% common, 30% rare, 12% epic, 3% legendary).
+    A case is the sure way to get the rarity you want.
   - **Pack-a-Punch, four levels.** Each station upgrades the gun in your hands one level, in order, so a gun
     can keep up as the waves get harder. The hint at a station tells you where the next one is.
 
@@ -178,13 +240,13 @@ online with up to 3 friends.
 ### Co-op
 
 - Zombies go for whoever is closest. Each round has more of them with more players (+50% per extra player).
-- Areas, windows, the Mystery Box, Pack-a-Punch and power-ups are shared; points, perks and guns are your own.
+- Areas, windows, the Mystery Box, Pack-a-Punch and power-ups are shared; points, perks, guns and inventories are your own.
   Only the player who paid for the Mystery Box can take its gun. Max Ammo refills everyone; Carpenter and
   Kaboom give every player their points.
 - Going down doesn't end the game: you lose your perks and have 100 seconds. A teammate holds **E** next to you
   for 3 seconds to revive you (1.5 with Quick Revive). Downed teammates show a red cross you can see through walls.
 - While down you're in last stand: you can't move, but you can aim, shoot and reload a pistol to cover whoever is
-  reviving you. You get the strongest pistol you carry (P-9 or Desert Eagle, upgrades included) or a spare P-9
+  reviving you. You get the strongest pistol you carry (P-9, Six-Shooter or Desert Eagle, upgrades included) or a spare P-9
   if you have none, with at least two magazines of ammo. Your other gun comes back when you're revived.
 - If nobody gets to you, you bleed out and watch your teammates until the next round, when you come back next
   to a teammate with a pistol (you keep your points).
@@ -201,8 +263,9 @@ online with up to 3 friends.
 | Shift | Walk (quiet, more accurate) |
 | 1 / 2 / 3, Q, wheel | Switch weapons |
 | R | Reload |
-| B | Buy menu (in spawn during buy time), then 1-8 to buy. Zombies: ammo, anywhere (1-2 for that slot's gun) |
-| E | Zombies: buy (Gun Shop counter, perks, box, Pack-a-Punch) |
+| B | Buy menu (in spawn during buy time), then 1-8 to buy (5v5 only) |
+| E | Zombies: buy (Gun Shop counter, case machines, perks, box, Pack-a-Punch) |
+| I | Zombies: inventory (stored guns and cases, case opening) |
 | E (hold) | Plant / defuse, rebuild boards, revive a teammate |
 | Tab | Scoreboard |
 | M | Map (Zombies) |
@@ -246,6 +309,7 @@ vercel --prod
 - `src/player.js` — keyboard/mouse control
 - `src/bots.js`, `src/director.js` — bot AI and team strategy (and the Tung Tung model)
 - `src/zmap.js`, `src/zombies.js` — Zombies map (Sahur Village) and Zombies rules / zombie AI
+- `src/zui.js` — Zombies Gun Shop menu, inventory and case opening (gun pictures are rendered from the gun models)
 - `src/net.js` — online rooms, lobby and message batching (PeerJS)
 - `src/avatar.js` — other players' fighters, moved by network updates
 - `src/netclassic.js`, `src/netzombies.js` — 5v5 and Zombies on a joining player's browser (the host runs
