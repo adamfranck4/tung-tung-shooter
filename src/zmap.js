@@ -125,12 +125,13 @@ const HUTS = [
 const HUT_ROOFS = [[0.62, 0.3, 0.2], [0.36, 0.42, 0.5], [0.3, 0.45, 0.32]];
 // The stepped stone pyramid on Sahur Hill: a flat top (with the last Pack-a-Punch) and a staircase
 // up the middle of each side, so zombies come up at you from all four ways. Everything is on cell
-// lines. tiers: the steps of the pyramid round the top, [inset from the foot, height]; you can't
-// stand on them (see addSkyWalls), only on the stairs and the top.
+// lines. tiers: the steps of the pyramid round the top, [inset from the foot, height]: four 1 m wide
+// steps 0.8 m high, so players can hop up and down them and run all over the pyramid (zombies jump
+// up after you, see Zombie.chase).
 const PYRAMID = {
   x0: 96, z0: 30, x1: 102, z1: 36, top: 4.0, steps: 10, run: 6,
   out: [92, 26, 106, 40],                  // the foot of the pyramid
-  tiers: [[0, 1.4], [2, 2.75]],
+  tiers: [[0, 0.8], [1, 1.6], [2, 2.4], [3, 3.2]],
   sx: [98, 100], sz: [32, 34],             // the stair strips (north/south ones along x, west/east along z)
 };
 // boarded windows: wall cell, outward direction, and the spawn pocket carved outside
@@ -584,8 +585,8 @@ export class ZMap {
       ];
       for (const [px0, pz0, px1, pz1] of pieces) {
         add({ x0: px0, y0: 0, z0: pz0, x1: px1, y1: h, z1: pz1, tier: true }, i === 0);
-        // zombies can't walk on the tiers either
-        for (let cz = pz0 / C; cz < pz1 / C; cz++) for (let cx = px0 / C; cx < px1 / C; cx++) this.navBlock[cz * GW + cx] = 1;
+        // (the tiers aren't on the zombies' paths: they jump up when you're standing on one)
+        for (let cz = Math.floor(pz0 / C); cz < Math.ceil(pz1 / C); cz++) for (let cx = Math.floor(px0 / C); cx < Math.ceil(px1 / C); cx++) this.navBlock[cz * GW + cx] = 1;
       }
     });
     // a low parapet round the top, open at the four stairs (looks: the tiers stop you falling off)
@@ -593,9 +594,10 @@ export class ZMap {
     const wall = (a0, b0, a1, b1) => S.parapet.push({ x0: a0, y0: top, z0: b0, x1: a1, y1: top + PH, z1: b1 });
     wall(x0, z0, sx0, z0 + P); wall(sx1, z0, x1, z0 + P); wall(x0, z1 - P, sx0, z1); wall(sx1, z1 - P, x1, z1);
     wall(x0, z0 + P, x0 + P, sz0); wall(x0, sz1, x0 + P, z1 - P); wall(x1 - P, z0 + P, x1, sz0); wall(x1 - P, sz1, x1, z1 - P);
-    // braziers on the corners of the upper tier
-    const [it0, it1, iu0, iu1] = [ox0 + 2, ox1 - 2, oz0 + 2, oz1 - 2], th = t.tiers[1][1];
-    S.braziers = [[it0 + 0.7, th, iu0 + 0.7], [it1 - 0.7, th, iu0 + 0.7], [it0 + 0.7, th, iu1 - 0.7], [it1 - 0.7, th, iu1 - 0.7]];
+    // braziers on the corners of the top step
+    const [ti, th] = t.tiers[t.tiers.length - 1], [it0, it1, iu0, iu1] = [ox0 + ti, ox1 - ti, oz0 + ti, oz1 - ti];
+    S.braziers = [[it0 + 0.5, th, iu0 + 0.5], [it1 - 0.5, th, iu0 + 0.5], [it0 + 0.5, th, iu1 - 0.5], [it1 - 0.5, th, iu1 - 0.5]];
+    for (const [bx, by, bz] of S.braziers) this.staticColliders.push({ x0: bx - 0.4, y0: by, z0: bz - 0.4, x1: bx + 0.4, y1: by + 0.45, z1: bz + 0.4 });
     // the four staircases: solid steps rising toward the top. up: the way up
     const rise = top / steps, tread = run / steps;
     const flights = [
@@ -627,14 +629,15 @@ export class ZMap {
 
   // Invisible walls for players only, from the top of every wall, roof and tall prop up into the
   // sky: you can't jump up onto (or across) the walls and roofs, or stand on top of perk machines,
-  // lamp posts, containers or the pyramid's tiers. Floors (stairs, landings, the pyramid top, the
-  // block under the upstairs rooms) are left alone. Bullets and zombies don't see them.
+  // lamp posts or containers. Floors (stairs, landings, the pyramid top, the block under the upstairs
+  // rooms) and the pyramid's tiers (you can run all over it) are left alone. Bullets and zombies
+  // don't see them.
   addSkyWalls() {
     const SKY = 80, out = [];
     const up = (c) => { if (c.y1 < SKY) out.push({ x0: c.x0, z0: c.z0, x1: c.x1, z1: c.z1, y0: c.y1, y1: SKY }); };
     for (const c of this.staticColliders) {
-      if (c.floor) continue;
-      if (c.roof || c.tier || c.y1 - c.y0 >= 1.4) up(c);
+      if (c.floor || c.tier) continue;
+      if (c.roof || c.y1 - c.y0 >= 1.4) up(c);
     }
     for (const w of this.windows) up(w.blocker);
     return out;

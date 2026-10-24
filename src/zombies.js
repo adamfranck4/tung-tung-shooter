@@ -50,8 +50,19 @@ const JUGG_HEALTH = 250;
 export const BLEED_TIME = 100;    // co-op: seconds a downed player lasts without a revive
 export const REVIVE_TIME = 3;     // holding E next to them (half with Quick Revive)
 const BREAK_TIME = 20;            // seconds between waves (N starts the next one early)
-export const ZOMBIE_HP = 100;                            // regular zombies: same health as a player
+export const ZOMBIE_HP = 100;                            // regular zombies on round 1: same health as a player
 export const bigZombieHealth = (r) => 400 + 80 * r;      // big zombies: a real bullet sponge
+// Every zombie gets tougher as the rounds go on. Regular types (and the speedsters, crawlers,
+// throwers and flyers): +12% of their health a round up to double on round 10, then +8% a round
+// after that (x3 on 15, x4.5 on 20, x9.7 on 30, up to x20). The big ones, the rainbow giant and the
+// boss already grow with the round, so on top of that they get +3% a round, then +5% a round after
+// round 10 (up to x8).
+export const hpScale = (r) => Math.min(20, (1 + 0.12 * (Math.min(r, 10) - 1)) * Math.pow(1.08, Math.max(0, r - 10)));
+export const bigHpScale = (r) => Math.min(8, (1 + 0.03 * (Math.min(r, 10) - 1)) * Math.pow(1.05, Math.max(0, r - 10)));
+export const zombieHealth = (kind, r) => {
+  const v = VARIANTS[kind] || VARIANTS.normal, k = Math.max(1, r | 0);
+  return Math.round(v.hp(k) * (v.ground || v.boss ? bigHpScale(k) : hpScale(k)));
+};
 const BIG_SCALE = 1.7;
 // chance that a spawn is a big zombie (from round 3, up to 1 in 4), max 3 alive at once
 const bigChance = (r) => (r < 3 ? 0 : clamp(0.06 + (r - 3) * 0.02, 0, 0.25));
@@ -182,7 +193,7 @@ export class Zombie extends Combatant {
   spawn(sp, round, kind = 'normal') {
     this.reset(kind);
     const v = this.v, b = this.body, s = this.scale;
-    this.health = this.maxHealth = v.hp(round) * (kind === 'boss' ? 1 + 0.65 * (this.game.players.length - 1) : 1);
+    this.health = this.maxHealth = zombieHealth(kind, round) * (kind === 'boss' ? 1 + 0.65 * (this.game.players.length - 1) : 1);
     this.puppet = false;
     if (v.speed) this.speed = v.speed(round) * (0.95 + Math.random() * 0.1);
     else if (kind === 'big') this.speed = round >= 8 ? 3.4 : 1.8 + Math.random() * 0.3;
@@ -309,6 +320,8 @@ export class Zombie extends Combatant {
         if (this.stuckT > 0.8 && b.onGround) { jump = true; this.stuckT = 0; }
       }
       this.applyMovement(dt, wx, wz, speed / RUN_SPEED, jump);
+      // stuck under someone standing higher up (the pyramid's tiers): a bigger leap, up to ~1.9 m
+      if (jump && p && dy > 0.8 && b.vel.y > 0) b.vel.y = Math.max(b.vel.y, 8.8);
     }
     if (dist < 2.5 || hold) this.turnTo(Math.atan2(-dx, -dz), dt, 10);
     else if (wx || wz) this.turnTo(Math.atan2(-wx, -wz), dt, 7);

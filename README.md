@@ -153,8 +153,8 @@ online the match keeps running (like the Esc menu), so find a quiet moment. Onli
 everyone is told when someone unboxes an epic or legendary gun.
 
 - Endless rounds of Tung Tung zombies with bats. They tear boards off the windows and climb in, or rise from
-  the ground. Regular zombies have 100 HP (same as a player); each round brings more of them, and they get
-  faster (walkers → runners → sprinters).
+  the ground. Regular zombies start with 100 HP (same as a player); each round brings more of them, and they get
+  faster (walkers → runners → sprinters) and tougher (see *Zombie health* below).
 - **Big zombies** (from round 3): ~1.7x size, 400 + 80 × round HP, hit for 80, worth 250 points. They rise from
   the ground (max 3 at once).
 - **Zombie types.** Regular (red) zombies stay the most common (at least 40% of each round). The first time a
@@ -172,15 +172,33 @@ everyone is told when someone unboxes an epic or legendary gun.
   - **THE BOSS** (every 7th round: 7, 14, 21...): a huge crowned, winged Tung Tung with a health bar across the
     top of the screen. It flies, hovers to throw fans of big coconuts, and swoops in to hit for 90. Each visit
     it comes back in new colors (Magma, Frost, Venom, Void, then round again) and tougher: more health
-    (3200 on round 7, more per visit, and more with more players), more coconuts per volley (3, 4, 5... up
+    (4272 on round 7, more per visit, and more with more players), more coconuts per volley (3, 4, 5... up
     to 7), faster flying and throwing, and from round 14 it calls in purple flyers. Ignores Insta-Kill and
     Kaboom, worth 3000 points, and always drops a power-up. The round doesn't end until it's down.
   - Kill points: the usual 60 / 100 headshot / 130 knife, +30 speedster, +20 crawler, +40 thrower or flyer.
+- **Zombie health goes up every round.** The health above is round 1. Regular zombies and the speedster, crawler,
+  thrower and flyer gain 12% of it a round up to double on round 10, then 8% more each round after that (up to
+  20x). Big zombies, the rainbow giant and the boss already grow with the round, and on top of that gain 3% a
+  round, then 5% a round after round 10 (up to 8x).
+
+  | Round | Regular | Speedster | Big zombie | Rainbow giant | Boss |
+  | --- | --- | --- | --- | --- | --- |
+  | 1 | 100 | 70 | 480 | 1020 | |
+  | 5 | 148 | 104 | 896 | 1680 | |
+  | 7 | 172 | 120 | 1133 | 2053 | 4272 |
+  | 10 | 208 | 146 | 1524 | 2667 | |
+  | 14 | 283 | 198 | 2346 | 3983 | 9170 |
+  | 20 | 449 | 314 | 4137 | 6827 | |
+  | 21 | 485 | 339 | 4518 | 7429 | 17942 |
+  | 30 | 969 | 679 | 9435 | 15164 | |
+
+  (The boss gets 65% more for each extra player.)
 - You get 20 seconds between waves (time to get back to the Gun Shop); press **N** to start the next wave right away.
 - **Sahur Hill** (doors from the Courtyard and the Kitchen alley): two hills, a walk-through hut, and a stepped
   stone pyramid with a staircase up the middle of each side and braziers on its corners. The last Pack-a-Punch
-  is on top, and zombies come up all four staircases. You can't stand on the pyramid's tiers, only on the stairs
-  and the top. The Gun Shop in the Courtyard is walk-through too (doors east and west).
+  is on top, and zombies come up all four staircases. Its sides are four 1 m steps, each 0.8 m high: jump up and
+  down them and run all over it. Zombies jump up the steps after you, so it's no hiding place. The Gun Shop in the
+  Courtyard is walk-through too (doors east and west).
 - **The fountain** in the Courtyard sits on a round mound with a ramp all the way round, so zombies walk right
   up to anyone standing on it (no camping).
 - **Night Market** (doors from the alley, or up a zig-zag path from Sahur Hill): striped market stalls
@@ -201,6 +219,11 @@ everyone is told when someone unboxes an epic or legendary gun.
   Balconies look out over the Courtyard and Sahur Hill (and down on the stairs), and windows over the paths either side, so you can shoot
   down at the zombies coming for you. Zombies take the stairs; only flyers come straight in. You can jump down
   from a balcony or the landings to get out fast.
+- **Minimap (top left):** the area around you (32 m to the edge), turning with you so the way you face is up,
+  with N on the rim. It shows open and locked floor, walls, closed doors, the Gun Shop, perks, Pack-a-Punch, the
+  Mystery Box and the case machines, and your teammates as arrows in their map colors with their names (a red
+  cross when they're down). A teammate off the edge shows as a dot on the rim, in their direction. It hides while
+  the big map is open.
 - **Map (press M):** shows the whole village with the rooms you've opened lit up (locked ones hatched, with the round
   they open after), every closed door with its round (R3 = opens after round 3), the Gun Shop, the stairs (the arrow
   points up), perks, Pack-a-Punch stations and the Mystery Box,
@@ -210,7 +233,7 @@ everyone is told when someone unboxes an epic or legendary gun.
   middle of the screen. The view zooms in a little (more for rifles), spread is halved (moving too), recoil drops
   by a quarter, and you walk at 70% speed. Reloading lowers the gun. The Scout and Bolt Sniper still scope in.
 - **No standing on walls or roofs:** walls, roofs and tall props (perk machines, Pack-a-Punch, lamp posts,
-  trees, containers) have invisible walls above them, so you can't jump up onto (or across) them. Bullets and
+  trees, containers) have invisible walls above them (the pyramid's steps don't), so you can't jump up onto (or across) them. Bullets and
   zombies aren't affected.
 - Every roof and hut doorway is tall enough for the rainbow giant. The village also has bunting with paper
   lanterns, painted shutters (some windows lit from inside), boarded-up doors, and dead trees and logs here and there.

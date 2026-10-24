@@ -7,6 +7,8 @@ import { PERKS, AREAS, ZW, FL, GUN_SHOP } from './zmap.js';
 // Zombies map (M): marker colors for you and up to three teammates
 const MAP_COLORS = ['#ffd36a', '#7fd4ff', '#a6ff8a', '#ff9ad8'];
 const ROMAN = ['', 'I', 'II', 'III', 'IV'];
+const MINI_RANGE = 32;   // Zombies minimap: meters from the middle to the edge
+const MINI_K = 8;        // ...and its picture of the village: pixels a meter
 
 const $ = (id) => document.getElementById(id);
 // player names come from other people online: never put them in HTML unescaped
@@ -189,6 +191,127 @@ export class Hud {
     this.spectate(spec ? `Spectating <b>${esc(spec.name)}</b><small>You'll be back next round &middot; click to switch player</small>` : null);
     this.toggle('buymenu', false);   // (no B menu in Zombies: the Gun Shop and inventory are their own menus, see zui.js)
     this.zMap(g);
+    this.zMinimap(g);
+  }
+
+  // ---------- Zombies minimap (top left): the area round you, turning with you, and your teammates ----------
+  zMinimap(g) {
+    const show = !g.mapOpen && g.phase !== 'over';
+    if (!$('z-minimap')) {   // (an old cached page without it: add it)
+      const c = document.createElement('canvas'); c.id = 'z-minimap'; c.className = 'z-only hidden';
+      this.el.insertBefore(c, this.el.firstChild);
+    }
+    this.toggle('z-minimap', show);
+    if (!show) return;
+    const cv = $('z-minimap'), W = cv.clientWidth;
+    if (!W) return;
+    const dpr = Math.min(2, devicePixelRatio || 1), pw = Math.round(W * dpr);
+    if (cv.width !== pw) { cv.width = pw; cv.height = pw; }
+    // the map itself only changes when a door opens: drawn once (MINI_K px a meter), then cut out
+    const key = g.map.doors.map((d) => (d.open ? 1 : 0)).join('');
+    if (this.miniKey !== key) { this.miniKey = key; this.miniBase = this.drawMiniBase(g); }
+    const p = g.player, me = (!p.alive && g.spectating) || p;   // (out: follow who you're watching)
+    const R = W / 2, s = R / MINI_RANGE;                        // css px a meter
+    const ctx = cv.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, W);
+    ctx.save();
+    ctx.beginPath(); ctx.arc(R, R, R - 1, 0, 7); ctx.clip();
+    ctx.fillStyle = 'rgba(12,12,14,0.75)'; ctx.fillRect(0, 0, W, W);
+    // turn the map so the way you face is up
+    const yaw = me.yaw, px = me.body.pos.x, pz = me.body.pos.z, cos = Math.cos(yaw), sin = Math.sin(yaw);
+    ctx.save();
+    ctx.translate(R, R); ctx.rotate(yaw); ctx.scale(s / MINI_K, s / MINI_K);
+    ctx.drawImage(this.miniBase, -px * MINI_K, -pz * MINI_K);
+    ctx.restore();
+    // world point -> minimap point (and whether it fell off the edge)
+    const toMini = (x, z) => {
+      const dx = (x - px) * s, dz = (z - pz) * s;
+      return [R + dx * cos - dz * sin, R + dx * sin + dz * cos];
+    };
+    const arrow = (x, y, rot, color, size) => {
+      ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+      ctx.fillStyle = color; ctx.strokeStyle = 'rgba(0,0,0,0.85)'; ctx.lineWidth = 1.6; ctx.lineJoin = 'round';
+      ctx.beginPath(); ctx.moveTo(0, -7 * size); ctx.lineTo(5 * size, 5.5 * size); ctx.lineTo(0, 2.6 * size); ctx.lineTo(-5 * size, 5.5 * size); ctx.closePath();
+      ctx.stroke(); ctx.fill(); ctx.restore();
+    };
+    // teammates: an arrow the way they face (a red cross when they're down); off the edge, a dot on the rim
+    g.players.forEach((q, i) => {
+      if (q === me || !q.alive) return;
+      const color = MAP_COLORS[i % MAP_COLORS.length];
+      let [x, y] = toMini(q.body.pos.x, q.body.pos.z);
+      const dx = x - R, dy = y - R, d = Math.hypot(dx, dy), edge = R - 9;
+      if (d > edge) {
+        x = R + dx / d * edge; y = R + dy / d * edge;
+        ctx.beginPath(); ctx.arc(x, y, 5.5, 0, 7); ctx.fillStyle = q.downed ? '#e8261a' : color; ctx.fill();
+        ctx.lineWidth = 1.6; ctx.strokeStyle = 'rgba(0,0,0,0.85)'; ctx.stroke();
+        return;
+      }
+      if (q.downed) {
+        ctx.fillStyle = '#e8261a'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.rect(x - 6, y - 2, 12, 4); ctx.rect(x - 2, y - 6, 4, 12); ctx.fill();
+        ctx.strokeRect(x - 6.5, y - 6.5, 13, 13);
+      } else arrow(x, y, yaw - q.yaw, color, 1);
+      ctx.font = '700 11px Rajdhani, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.85)'; ctx.fillStyle = color;
+      ctx.strokeText(q.name, x, y + 8); ctx.fillText(q.name, x, y + 8);
+    });
+    // you, in the middle, pointing up
+    arrow(R, R, 0, me === p ? MAP_COLORS[Math.max(0, g.players.indexOf(p)) % MAP_COLORS.length] : '#ffffff', 1.15);
+    ctx.restore();
+    // a rim with north marked on it
+    ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,214,140,0.45)';
+    ctx.beginPath(); ctx.arc(R, R, R - 1, 0, 7); ctx.stroke();
+    const nx = R + sin * (R - 8), ny = R - cos * (R - 8);
+    ctx.font = '700 12px Rajdhani, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.9)'; ctx.fillStyle = '#ffd36a';
+    ctx.strokeText('N', nx, ny); ctx.fillText('N', nx, ny);
+  }
+
+  // The minimap's picture of the whole village (like the big map, without the labels): open floor
+  // lit up, locked areas dark, walls, closed doors, the Gun Shop and the machines.
+  drawMiniBase(g) {
+    const map = g.map, GW = map.gw, GH = map.gh, k = MINI_K, s = map.cell * k;
+    const c = document.createElement('canvas'); c.width = Math.ceil(GW * s); c.height = Math.ceil(GH * s);
+    const ctx = c.getContext('2d');
+    const reach = map.reachable();
+    for (let z = 0; z < GH; z++) for (let x = 0; x < GW; x++) {
+      const i = z * GW + x;
+      if (!map.floorCell(i)) continue;
+      const up = map.upper[i] === 1;
+      ctx.fillStyle = reach[i] ? (up ? '#5c7f9c' : '#8a7550') : (up ? '#26303a' : '#2e2b27');
+      ctx.fillRect(x * s, z * s, s + 0.6, s + 0.6);
+    }
+    ctx.strokeStyle = 'rgba(20,16,12,0.95)'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (let z = 0; z < GH; z++) for (let x = 0; x < GW; x++) {
+      const i = z * GW + x;
+      if (!map.floorCell(i)) continue;
+      if (x + 1 < GW && map.edgeX[i] && map.floorCell(i + 1)) { ctx.moveTo((x + 1) * s, z * s); ctx.lineTo((x + 1) * s, (z + 1) * s); }
+      if (z + 1 < GH && map.edgeZ[i] && map.floorCell(i + GW)) { ctx.moveTo(x * s, (z + 1) * s); ctx.lineTo((x + 1) * s, (z + 1) * s); }
+    }
+    ctx.stroke();
+    for (const d of map.doors) {   // closed doors: an orange bar
+      if (d.open) continue;
+      ctx.fillStyle = '#c8783a';
+      if (d.edgeX) ctx.fillRect((d.edgeX[0] + 1) * s - 2, d.edgeX[1] * s + 1, 4, s - 2);
+      else {
+        const [cx0, cz0, cx1, cz1] = d.cells, spanX = (cx1 - cx0) >= (cz1 - cz0);
+        if (spanX) ctx.fillRect(cx0 * s, d.center.z * k - 2, (cx1 - cx0) * s, 4);
+        else ctx.fillRect(d.center.x * k - 2, cz0 * s, 4, (cz1 - cz0) * s);
+      }
+    }
+    const hex = (v) => '#' + v.toString(16).padStart(6, '0');
+    const dot = (x, z, r, color) => {
+      ctx.beginPath(); ctx.arc(x * k, z * k, r, 0, 7); ctx.fillStyle = color; ctx.fill();
+      ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(0,0,0,0.8)'; ctx.stroke();
+    };
+    { const [x0, z0, x1, z1] = GUN_SHOP.rect.map((v) => v * k); ctx.fillStyle = 'rgba(255,198,92,0.8)'; ctx.fillRect(x0 + 2, z0 + 2, x1 - x0 - 4, z1 - z0 - 4); }
+    for (const pm of map.perkMachines) dot(pm.pos[0], pm.pos[2], 5, hex(pm.color));
+    for (const st of map.papStations) dot(st.pos[0], st.pos[2], 5, hex(st.color));
+    for (const cm of map.caseMachines) dot(cm.pos[0], cm.pos[2] + 0.6, 3.5, RARITIES[cm.rarity].color);
+    dot(map.box.pos[0], map.box.pos[2], 5, '#66b8ff');
+    return c;
   }
 
   // b: { name, color, frac } or null (hidden)

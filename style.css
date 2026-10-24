@@ -152,6 +152,9 @@ input[type=range] { width: 100%; accent-color: #ffc65c; }
   text-shadow: 0 0 18px rgba(200,0,0,0.55), 0 3px 0 #2a0000; transform-origin: left bottom; }
 #z-round.pulse { animation: zpulse 2.4s ease-out; }
 @keyframes zpulse { 0% { color: #fff; transform: scale(1.35); text-shadow: 0 0 30px #fff; } 45% { color: #fff; } 100% { color: #b3120c; transform: scale(1); } }
+#z-minimap { position: absolute; top: 14px; left: 14px; width: 190px; height: 190px; border-radius: 50%;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.5); }
+@media (max-height: 640px) { #z-minimap { width: 140px; height: 140px; } }
 #z-perks { position: absolute; left: 24px; bottom: 196px; display: flex !important; gap: 6px; }
 #hud:not(.zombies) #z-perks { display: none !important; }
 #z-perks .perk { width: 36px; height: 36px; border-radius: 8px; font: 700 15px 'Rajdhani', sans-serif; color: #111;
