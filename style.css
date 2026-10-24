@@ -163,6 +163,12 @@ input[type=range] { width: 100%; accent-color: #ffc65c; }
 #z-pop .pop.neg { color: #ff6a5a; }
 @keyframes zpop { from { transform: translate(0, 0); opacity: 1; } to { transform: translate(-44px, -46px); opacity: 0; } }
 #z-powerups { position: absolute; bottom: 26px; left: 50%; transform: translateX(-50%); display: flex !important; gap: 10px; }
+#z-boss { position: absolute; top: 54px; left: 50%; transform: translateX(-50%); width: min(520px, 70vw); text-align: center; pointer-events: none; }
+#hud:not(.zombies) #z-boss { display: none !important; }
+#z-boss b { display: block; font: 700 22px 'Rajdhani', sans-serif; letter-spacing: 4px; color: var(--boss, #ff5a1a);
+  text-shadow: 0 0 10px var(--boss, #ff5a1a), 0 2px 4px #000; margin-bottom: 4px; }
+#z-boss .bar { height: 12px; border-radius: 6px; background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.25); overflow: hidden; }
+#z-boss .bar i { display: block; height: 100%; width: 100%; background: var(--boss, #ff5a1a); box-shadow: 0 0 12px var(--boss, #ff5a1a); transition: width 0.15s; }
 #hud:not(.zombies) #z-powerups { display: none !important; }
 #z-powerups .pu { font: 700 18px 'Rajdhani', sans-serif; padding: 4px 12px; border-radius: 6px; background: rgba(0,0,0,0.55); }
 #z-powerups .pu.instakill { color: #ff6a6a; } #z-powerups .pu.double { color: #ffd84a; }
@@ -241,12 +247,12 @@ input[type=text]::placeholder { color: rgba(242,234,214,0.35); }
 
 /* ---------- Zombies map (M) ---------- */
 #zmap { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 2;
-  width: min(94vw, calc((100vh - 150px) * 1.5), 1100px); padding: 10px 14px 12px;
+  width: min(94vw, calc((100vh - 150px) * 1.11), 1000px); padding: 10px 14px 12px;
   background: rgba(8,10,16,0.86); border: 1px solid rgba(255,214,140,0.22); border-radius: 10px; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
 .zmap-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
 .zmap-head b { font-size: 22px; letter-spacing: 4px; color: #ffc65c; }
 .zmap-head span { font-size: 14px; opacity: 0.6; letter-spacing: 1px; }
-#zmap-canvas { display: block; width: 100%; aspect-ratio: 3 / 2; border-radius: 6px; background: #14120f; }
+#zmap-canvas { display: block; width: 100%; aspect-ratio: 120 / 108; border-radius: 6px; background: #14120f; }
 .zmap-foot { display: flex; justify-content: space-between; gap: 10px 18px; flex-wrap: wrap; margin-top: 8px; }
 .zmap-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 14px; opacity: 0.8; }
 .zmap-legend span { display: inline-flex; align-items: center; gap: 6px; }

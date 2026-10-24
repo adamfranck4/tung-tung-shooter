@@ -50,9 +50,11 @@ export const LOOKS = {
   zfly:    { body: 0x7446f0, limb: 0x3e1a80, hand: 0x5c30b8, pale: true },
   zthrow:  { body: 0xff82c8, limb: 0xb4447e, hand: 0xe062a6, pale: true },
   zgiant:  { body: 0xffffff, limb: 0xffffff, hand: 0xffd23a, rainbow: true, legs: [0xff4a3a, 0x3a86ff], arms: [0x3ad06a, 0xb05ae6] },
+  // the boss: repainted for each visit (see BOSS_LOOKS in zombies.js)
+  zboss:   { body: 0x2a1410, limb: 0xff5a1a, hand: 0xffb02a, pale: true },
 };
 // which look each zombie type uses (see VARIANTS in zombies.js)
-const ZOMBIE_LOOK = { normal: 'zombie', big: 'zombie', fast: 'zfast', crawler: 'zcrawl', flyer: 'zfly', thrower: 'zthrow', giant: 'zgiant' };
+const ZOMBIE_LOOK = { normal: 'zombie', big: 'zombie', fast: 'zfast', crawler: 'zcrawl', flyer: 'zfly', thrower: 'zthrow', giant: 'zgiant', boss: 'zboss' };
 const bodyMats = {}, faceMats = {};
 let skinTex = null, paleTex = null, faceTex = null, rainbow = null, rainbowAt = 0;
 function getBodyMat(look) {
@@ -286,7 +288,8 @@ function buildModel(team, opts = {}) {
       arms.visible = false;
       extra.armL = crawlArm(torso, -1, L); extra.armR = crawlArm(torso, 1, L);
     }
-    if (variant === 'flyer') { extra.wingL = wing(torso, -1, L); extra.wingR = wing(torso, 1, L); }
+    if (variant === 'flyer' || variant === 'boss') { extra.wingL = wing(torso, -1, L); extra.wingR = wing(torso, 1, L); }
+    if (variant === 'boss') extra.paint = bossDress(root, torso, bodyMat, L);
     if (variant === 'thrower') {   // a coconut ready in the throwing hand
       bat.visible = false;
       extra.coconut = makeCoconut(); extra.coconut.position.set(0.13, -0.03, -0.42); arms.add(extra.coconut);
@@ -298,6 +301,43 @@ function buildModel(team, opts = {}) {
 }
 
 export function buildTungModel(team, opts) { return buildModel(team, opts); }
+
+// The boss: a spiky gold crown and a soft glow round it, and its own copies of the limb, hand and
+// wing materials. Returns paint(colors): recolors it (body, limb, hand, wing, glow) for each visit.
+const spikeGeo = new THREE.ConeGeometry(0.035, 0.13, 6);
+let haloTex = null;
+function bossDress(root, torso, bodyMat, L) {
+  const gold = new THREE.MeshLambertMaterial({ color: 0xffd23a, emissive: 0x5a3c00 });
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.205, 0.215, 0.07, 18, 1, true), gold);
+  band.position.y = 1.19; torso.add(band);
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2, sp = new THREE.Mesh(spikeGeo, gold);
+    sp.position.set(Math.cos(a) * 0.2, 1.28, Math.sin(a) * 0.2); torso.add(sp);
+  }
+  if (!haloTex) {
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const ctx = c.getContext('2d'), gr = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(255,255,255,0.7)'); gr.addColorStop(0.45, 'rgba(255,255,255,0.22)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = gr; ctx.fillRect(0, 0, 64, 64);
+    haloTex = new THREE.CanvasTexture(c);
+  }
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false }));
+  halo.scale.set(1.9, 2.3, 1); halo.position.y = 0.95; root.add(halo);
+  const limbM = mat(L.limb), handM = mat(L.hand), own = { limb: [], hand: [], wing: [] };
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    const k = o.material === limbM ? 'limb' : o.material === handM ? 'hand' : o.material === wingMat ? 'wing' : null;
+    if (!k) return;
+    o.material = o.material.clone(); own[k].push(o.material);
+  });
+  return (c) => {
+    bodyMat.color.setHex(c.body); bodyMat.emissive.setHex(c.glow).multiplyScalar(0.1);
+    for (const m of own.limb) { m.color.setHex(c.limb); m.emissive.setHex(c.glow).multiplyScalar(0.55); }
+    for (const m of own.hand) { m.color.setHex(c.hand); m.emissive.setHex(c.hand).multiplyScalar(0.3); }
+    for (const m of own.wing) { m.color.setHex(c.wing); m.emissive.setHex(c.glow).multiplyScalar(0.35); }
+    halo.material.color.setHex(c.glow);
+  };
+}
 
 const _e = new THREE.Vector3(), _p = new THREE.Vector3(), _c = new THREE.Vector3(), _h = new THREE.Vector3(), _dir = new THREE.Vector3();
 

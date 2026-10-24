@@ -222,7 +222,7 @@ export class ZombiesClient extends ZombiesGame {
       case 'zt': {   // a pink zombie threw a coconut
         if (!Array.isArray(ev.p) || !Array.isArray(ev.v) || this.projectiles.some((q) => q.id === ev.i)) break;
         _v.set(+ev.p[0] || 0, +ev.p[1] || 0, +ev.p[2] || 0);
-        this.addProjectile(ev.i, _v, new THREE.Vector3(+ev.v[0] || 0, +ev.v[1] || 0, +ev.v[2] || 0));
+        this.addProjectile(ev.i, _v, new THREE.Vector3(+ev.v[0] || 0, +ev.v[1] || 0, +ev.v[2] || 0), 0, !!ev.b);
         this.sound.swing(_v);
         break;
       }

@@ -81,11 +81,11 @@ online with up to 3 friends.
   | 4 | Garden | AK Rifle 1800 |
   | 5 | Rice Barn | M4 Rifle 1800 |
   | 6 | Sahur Hill | Bolt Sniper 2000 |
-  | 7 | Lantern Loft (upstairs) | Drum LMG 3000 |
+  | 7 | Tree House (upstairs) | Drum LMG 3000 |
   | 8 | Dead Orchard | |
   | 9 | Night Market | |
-  | 10 | Sleeping Loft (upstairs) | |
-  | 11 | Lookout (upstairs) | |
+  | 10 | Spooky Woods | |
+  | 11 | Container Yard | |
 
   A door opens when both of the areas it joins are open. A locked door shows the round it opens after (on the
   door and on the map), and standing next to it tells you which area is behind it.
@@ -109,11 +109,18 @@ online with up to 3 friends.
   - **Rainbow giant** (round 5+): 2.2x size, 900 + 120 × round HP, hits for 100. Slow, shakes the ground
     as it walks, and ignores Insta-Kill and Kaboom. Worth 500 points and always drops a power-up.
     One at a time (two from round 12); it only rises out of open ground.
+  - **THE BOSS** (every 7th round: 7, 14, 21...): a huge crowned, winged Tung Tung with a health bar across the
+    top of the screen. It flies, hovers to throw fans of big coconuts, and swoops in to hit for 90. Each visit
+    it comes back in new colors (Magma, Frost, Venom, Void, then round again) and tougher: more health
+    (3200 on round 7, more per visit, and more with more players), more coconuts per volley (3, 4, 5... up
+    to 7), faster flying and throwing, and from round 14 it calls in purple flyers. Ignores Insta-Kill and
+    Kaboom, worth 3000 points, and always drops a power-up. The round doesn't end until it's down.
   - Kill points: the usual 60 / 100 headshot / 130 knife, +30 speedster, +20 crawler, +40 thrower or flyer.
 - You get 20 seconds between waves (time to get back to the Gun Shop); press **N** to start the next wave right away.
-- **Sahur Hill** (doors from the Courtyard and the Kitchen alley): two hills, a walk-in hut, and a watchtower
-  with a hanging kentongan, reached by stairs or a ladder (W climbs the way you look; S or look down to go down).
-  Zombies take the stairs. The Gun Shop in the Courtyard is walk-through too (doors east and west).
+- **Sahur Hill** (doors from the Courtyard and the Kitchen alley): two hills, a walk-through hut, and a stepped
+  stone pyramid with a staircase up the middle of each side and braziers on its corners. The last Pack-a-Punch
+  is on top, and zombies come up all four staircases. You can't stand on the pyramid's tiers, only on the stairs
+  and the top. The Gun Shop in the Courtyard is walk-through too (doors east and west).
 - **The fountain** in the Courtyard sits on a round mound with a ramp all the way round, so zombies walk right
   up to anyone standing on it (no camping).
 - **Night Market** (doors from the alley, or up a zig-zag path from Sahur Hill): striped market stalls
@@ -122,9 +129,15 @@ online with up to 3 friends.
   whose stall walls make a winding path through it.
 - **Dead Orchard** (doors from the Village Hall, or down a winding path from the Garden): dying trees,
   fallen logs, a tool shed, and graves that zombies rise from.
-- **Upstairs (2F):** a wooden second floor on the house between the Courtyard and Sahur Hill, with three rooms
-  in a row. Outdoor stone stairs climb to it from both sides: up the Courtyard's east wall to the **Lantern Loft**,
-  and up Sahur Hill's west wall to the **Lookout**. The **Sleeping Loft** in the middle opens onto both.
+- **Spooky Woods** (door from the Dead Orchard): a thicket of dead trees on dark earth, old graves, low mist
+  and two drifting will-o'-the-wisps (green and violet). Zombies rise out of the ground between the trees.
+- **Container Yard** (doors from the Spooky Woods, the Village Hall and the Night Market): a big concrete yard
+  along the south edge of the map, full of shipping containers (some stacked two high) under sodium lamps.
+  The containers stand apart from each other and the walls, so there are no dead ends to hide in.
+- **Tree House (upstairs, 2F):** a wooden second floor on the house between the Courtyard and Sahur Hill: three
+  rooms in a row (Lantern Loft, Sleeping Loft, Lookout) with wide open doorways between them, so it opens all
+  at once. Outdoor stone stairs climb to it from both sides, each with one door at the top: up the Courtyard's
+  east wall and up Sahur Hill's west wall.
   Balconies look out over the Courtyard and Sahur Hill (and down on the stairs), and windows over the paths either side, so you can shoot
   down at the zombies coming for you. Zombies take the stairs; only flyers come straight in. You can jump down
   from a balcony or the landings to get out fast.
@@ -136,6 +149,9 @@ online with up to 3 friends.
 - **Aim down sights (hold right click):** any gun without a scope comes up to your eye with its front sight on the
   middle of the screen. The view zooms in a little (more for rifles), spread is halved (moving too), recoil drops
   by a quarter, and you walk at 70% speed. Reloading lowers the gun. The Scout and Bolt Sniper still scope in.
+- **No standing on walls or roofs:** walls, roofs and tall props (perk machines, Pack-a-Punch, lamp posts,
+  trees, containers) have invisible walls above them, so you can't jump up onto (or across) them. Bullets and
+  zombies aren't affected.
 - Every roof and hut doorway is tall enough for the rainbow giant. The village also has bunting with paper
   lanterns, painted shutters (some windows lit from inside), boarded-up doors, and dead trees and logs here and there.
 - Points: +10 per hit, +60 per kill, +100 headshot kill, +130 knife kill, +10 per board you rebuild (hold E).
@@ -152,7 +168,7 @@ online with up to 3 friends.
     | I | Drum Tower (purple) | 5000 | x2.2 | x1.5 / x2 | same |
     | II | Kitchen (cyan) | 10000 | x3.2 | x1.75 / x2.5 | +11% |
     | III | Garden (gold) | 15000 | x4.6 | x2 / x3 | +22% |
-    | IV | Top of the watchtower (red) | 25000 | x6.6 | x2.5 / x3.5 | +35% |
+    | IV | Top of the pyramid (red) | 25000 | x6.6 | x2.5 / x3.5 | +35% |
 
     Buying a new gun starts it back at level 0.
 - Power-ups drop from zombies: Max Ammo, Insta-Kill, Double Points, Kaboom (nuke), Carpenter.

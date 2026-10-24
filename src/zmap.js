@@ -1,9 +1,10 @@
 // "Sahur Village": the Zombies map. A night-time village built on a grid of 2m cells.
 // You start at the Gun Shop in the middle of the Courtyard. The other areas sit behind doors
 // (some down winding corridors) that open by themselves as you survive rounds; zombies climb in
-// through boarded windows (spawning in small pockets outside) or rise out of the ground. Three
-// of the areas are upstairs, on a second floor over the solid block between the Courtyard and
-// Sahur Hill (see UPSTAIRS). The props and decoration are built in zdecor.js.
+// through boarded windows (spawning in small pockets outside) or rise out of the ground. The Tree
+// House is upstairs, on a second floor over the solid block between the Courtyard and Sahur Hill
+// (see UPSTAIRS). Along the south edge: the Spooky Woods and the Container Yard. The props and
+// decoration are built in zdecor.js.
 import * as THREE from 'three';
 import { BoxBuilder } from './map.js';
 import { surfaceMaterial } from './textures.js';
@@ -13,8 +14,8 @@ import { displayGuns } from './viewmodel.js';
 import { buildMound, buildTrees, buildLogs, buildStalls, buildBunting, buildWallDecor } from './zdecor.js';
 
 const C = 2;                 // cell size in meters
-const GW = 60, GH = 40;
-export const ZW = GW * C, ZH = GH * C;   // 120 m x 80 m
+const GW = 60, GH = 54;
+export const ZW = GW * C, ZH = GH * C;   // 120 m x 108 m
 export const ZWORLD = ZW;
 
 // [x0, z0, x1, z1] in cells, end exclusive. floor: tint of the indoor tiles; paving / earth: an
@@ -30,10 +31,12 @@ export const AREAS = {
   G: { name: 'Night Market', rect: [46, 28, 58, 38], paving: [0.62, 0.58, 0.66], after: 9 },
   H: { name: 'Rice Barn', rect: [32, 3, 39, 10], indoor: true, floor: [0.78, 0.6, 0.42], after: 5 },
   I: { name: 'Dead Orchard', rect: [1, 33, 14, 39], earth: [0.5, 0.44, 0.38], after: 8 },
-  // upstairs (upper: not carved out of the ground grid, the rooms sit on top of it)
-  J: { name: 'Lantern Loft', rect: [30, 13, 33, 18], upper: true, after: 7 },
-  K: { name: 'Sleeping Loft', rect: [33, 13, 37, 18], upper: true, after: 10 },
-  L: { name: 'Lookout', rect: [37, 13, 40, 18], upper: true, after: 11 },
+  // upstairs (upper: not carved out of the ground grid, the rooms sit on top of it): three rooms
+  // with open doorways between them, so it opens all at once
+  J: { name: 'Tree House', rect: [30, 13, 40, 18], upper: true, after: 7 },
+  // along the south edge of the map
+  W: { name: 'Spooky Woods', rect: [1, 42, 15, 53], earth: [0.3, 0.31, 0.27], after: 10 },
+  Y: { name: 'Container Yard', rect: [18, 41, 58, 53], paving: [0.5, 0.5, 0.53], after: 11 },
 };
 export const START_AREA = 'B';
 // The second floor. Its rooms stand on the solid block of cells under them (nothing walks
@@ -49,8 +52,9 @@ const UP_WALLS = [
   { line: 'z', at: 36, cells: [30, 40], windows: [31, 33, 36] },       // south, over the path to Sahur Hill
   { line: 'x', at: 60, cells: [13, 18], doors: [13], balcony: [15, 16] }, // west: over the Courtyard
   { line: 'x', at: 80, cells: [13, 18], doors: [17], balcony: [14, 15] }, // east: over Sahur Hill
-  { line: 'x', at: 66, cells: [13, 18], doors: [15] },                 // Lantern Loft | Sleeping Loft
-  { line: 'x', at: 74, cells: [13, 18], doors: [15] },                 // Sleeping Loft | Lookout
+  // between the rooms: wide open doorways (open: no door in them)
+  { line: 'x', at: 66, cells: [13, 18], open: [14, 15, 16] },          // Lantern Loft | Sleeping Loft
+  { line: 'x', at: 74, cells: [13, 18], open: [14, 15, 16] },          // Sleeping Loft | Lookout
 ];
 // Outdoor stone stairs: the column of cells they climb, the landing at the top (at a door), and
 // which way they come up from (+1: from higher z).
@@ -67,6 +71,10 @@ const CORRIDORS = [[19, 24, 21, 27], [25, 30, 27, 32], [27, 24, 29, 25], [19, 8,
   [39, 5, 40, 7],                                         // Rice Barn -> Sahur Hill
   [1, 24, 4, 26], [1, 26, 3, 33],                         // Garden -> Dead Orchard (winding path)
   [14, 33, 15, 35],                                       // Village Hall -> Dead Orchard
+  [6, 39, 8, 42],                                         // Dead Orchard -> Spooky Woods
+  [15, 46, 18, 48],                                       // Spooky Woods -> Container Yard
+  [23, 35, 25, 41],                                       // Village Hall -> Container Yard
+  [53, 38, 55, 41],                                       // Night Market -> Container Yard
 ];
 // Doors between two areas. Nobody buys them: each one opens by itself at the end of the round
 // that opens the second of its two areas (its `after`, worked out below).
@@ -84,12 +92,14 @@ const DOORS = [
   { id: 'd11', cells: [39, 5, 40, 7], areas: ['F', 'H'] },
   { id: 'd12', cells: [3, 24, 4, 26], areas: ['E', 'I'] },
   { id: 'd13', cells: [14, 33, 15, 35], areas: ['A', 'I'] },
-  // upstairs: at the top of each staircase and between the rooms. edgeX: [x, z] = the doorway
-  // between cell (x, z) and (x + 1, z), at floor height FL
+  { id: 'd14', cells: [6, 40, 8, 41], areas: ['I', 'W'] },
+  { id: 'd15', cells: [15, 46, 16, 48], areas: ['W', 'Y'] },
+  { id: 'd16', cells: [23, 36, 25, 37], areas: ['A', 'Y'] },
+  { id: 'd17', cells: [53, 39, 55, 40], areas: ['G', 'Y'] },
+  // upstairs: one at the top of each staircase. edgeX: [x, z] = the doorway between cell (x, z)
+  // and (x + 1, z), at floor height FL
   { id: 'u1', edgeX: [29, 13], areas: ['B', 'J'] },
-  { id: 'u2', edgeX: [32, 15], areas: ['J', 'K'] },
-  { id: 'u3', edgeX: [36, 15], areas: ['K', 'L'] },
-  { id: 'u4', edgeX: [39, 17], areas: ['F', 'L'] },
+  { id: 'u2', edgeX: [39, 17], areas: ['F', 'J'] },
 ];
 for (const d of DOORS) d.after = Math.max(...d.areas.map((a) => AREAS[a].after));
 // Smooth hills (cosine bumps): [x, z, radius, height] in meters
@@ -103,7 +113,7 @@ const ROOF_Y = 4.9;
 // are map walls; doors/windows = [side, cell index along that side]. h: wall height (doorways are
 // h - 0.7 tall, so even the rainbow giant fits); light: a lantern that lights the inside.
 const HUTS = [
-  { rect: [80, 8, 88, 16], skip: ['n', 'w'], doors: [['e', 6]], windows: [['s', 41]], h: 5, lantern: [84, 4.2, 12], light: true, roof: 0 },
+  { rect: [80, 8, 88, 16], skip: ['n', 'w'], doors: [['e', 6], ['s', 43]], windows: [['s', 41]], h: 5, lantern: [84, 4.2, 12], light: true, roof: 0 },
   // the Gun Shop (see GUN_SHOP), walk-through; its north wall holds the gun rack
   { rect: [48, 36, 56, 44], skip: [], doors: [['w', 19], ['e', 20]], windows: [['s', 26]], h: 5, lantern: [52, 4.2, 38.8], light: true, roof: 1 },
   // Night Market shop ("warung"), walk-through
@@ -113,11 +123,15 @@ const HUTS = [
 ];
 // tiered roof colors for the huts
 const HUT_ROOFS = [[0.62, 0.3, 0.2], [0.36, 0.42, 0.5], [0.3, 0.45, 0.32]];
-// Watchtower ("pos ronda") with a hanging kentongan: stairs on the west, ladder on the east.
-const TOWER = {
-  x0: 96, z0: 30, x1: 102, z1: 36, top: 4.0,
-  stairs: { x0: 90, x1: 96, z0: 32, z1: 34, steps: 10 },
-  ladder: { x0: 102, x1: 103, z0: 32.4, z1: 33.6, y0: -0.2, y1: 4.6, top: 4.0, out: [1, 0] },
+// The stepped stone pyramid on Sahur Hill: a flat top (with the last Pack-a-Punch) and a staircase
+// up the middle of each side, so zombies come up at you from all four ways. Everything is on cell
+// lines. tiers: the steps of the pyramid round the top, [inset from the foot, height]; you can't
+// stand on them (see addSkyWalls), only on the stairs and the top.
+const PYRAMID = {
+  x0: 96, z0: 30, x1: 102, z1: 36, top: 4.0, steps: 10, run: 6,
+  out: [92, 26, 106, 40],                  // the foot of the pyramid
+  tiers: [[0, 1.4], [2, 2.75]],
+  sx: [98, 100], sz: [32, 34],             // the stair strips (north/south ones along x, west/east along z)
 };
 // boarded windows: wall cell, outward direction, and the spawn pocket carved outside
 const WINDOWS = [
@@ -138,6 +152,7 @@ const WINDOWS = [
   { cell: [47, 3], dir: [0, -1], pocket: [46, 1, 49, 3], area: 'F' },
   { cell: [56, 12], dir: [1, 0], pocket: [57, 11, 59, 14], area: 'F' },
   { cell: [50, 22], dir: [0, 1], pocket: [49, 23, 52, 26], area: 'F' },
+  { cell: [40, 40], dir: [0, -1], pocket: [39, 38, 42, 40], area: 'Y' },
 ];
 // world-space obstacles [x0, y0, z0, x1, y1, z1, look]. look: 'stone', 'crate' or 'none' (drawn elsewhere)
 const OBSTACLES = [
@@ -156,6 +171,17 @@ const OBSTACLES = [
   // Dead Orchard: gravestones
   [22.6, 0, 70.85, 23.4, 1.0, 71.15, 'stone'], [26.6, 0, 76.85, 27.4, 0.9, 77.15, 'stone'],
   [3.6, 0, 70.85, 4.4, 0.95, 71.15, 'stone'], [8.6, 0, 76.85, 9.4, 0.85, 77.15, 'stone'],
+  // Spooky Woods: old graves between the trees
+  [12.6, 0, 97.85, 13.4, 1.05, 98.15, 'stone'], [24.6, 0, 89.85, 25.4, 0.9, 90.15, 'stone'], [6.6, 0, 101.85, 7.4, 1.0, 102.15, 'stone'],
+];
+// Container Yard: shipping containers [x0, z0, x1, z1, stacked, color], on cell lines and at least
+// 4 m from the walls and from each other, so there are no dead ends to hide in
+const CONT_H = 2.6;
+const CONTAINERS = [
+  [40, 86, 52, 88, 1, 0xb8332a], [64, 86, 76, 88, 1, 0x2f7a4a], [92, 86, 98, 88, 1, 0xd8a02a],
+  [56, 90, 58, 102, 2, 0x2a5aa8], [62, 92, 74, 94, 2, 0xd8642a], [62, 98, 68, 100, 1, 0x2a8a8a],
+  [80, 90, 82, 102, 2, 0x6a3a9a], [86, 96, 98, 98, 2, 0xa83a2a], [102, 88, 104, 100, 1, 0x3a7a3a],
+  [108, 94, 110, 100, 1, 0x2a4a8a], [42, 94, 48, 96, 2, 0x3a6ab8], [44, 100, 50, 102, 1, 0xd88a2a],
 ];
 // Night Market stalls against the north / south walls: a counter (the collider), posts and a striped
 // canopy stretching back to the wall at z = back. Each counter covers exactly two grid cells, so
@@ -170,6 +196,9 @@ const STALLS = [
 // dead trees [x, z, size]: a trunk collider stops you walking through them
 const TREES = [
   [5, 69, 1.1], [11, 77, 0.95], [23, 67, 1.05], [25, 77, 0.85],   // Dead Orchard
+  // Spooky Woods: a thicket of dead trees (each in the middle of a cell, so it blocks only that cell)
+  [5, 87, 1.25], [19, 87, 1.15], [25, 85, 1.0], [9, 93, 1.3], [17, 95, 1.2], [3, 99, 1.05], [11, 101, 1.25],
+  [21, 101, 1.15], [27, 103, 1.0], [7, 105, 1.1], [15, 105, 0.95], [25, 95, 1.05], [13, 89, 0.9], [29, 87, 0.9],
   [23, 39, 1.0], [57, 45, 1.15],                                // Courtyard
   [11, 51, 0.9],                                                // Garden
   [85, 31, 1.1], [111, 27, 1.0],                                // Sahur Hill
@@ -180,7 +209,8 @@ const LOGS = [
   [10, 68.6, 3.2, 0.32, 'x'], [25, 74.4, 2.4, 0.3, 'z'], [5, 74.6, 2.6, 0.28, 'z'],   // Dead Orchard
   [44.5, 45, 3, 0.32, 'x'], [23.2, 33.6, 2.6, 0.3, 'z'],                                 // Courtyard
   [5.6, 56, 2.6, 0.28, 'z'],                                                               // orchard path
-  [96, 20.6, 3, 0.32, 'x'], [104.6, 40.4, 2.8, 0.3, 'z'],                                  // Sahur Hill
+  [96, 20.6, 3, 0.32, 'x'], [110.6, 40.4, 2.8, 0.3, 'z'],                                  // Sahur Hill
+  [21.5, 91, 2.6, 0.3, 'x'], [4.6, 94, 2.4, 0.28, 'z'],                                    // Spooky Woods
 ];
 export const PERKS = [
   { id: 'quick', name: 'Quick Revive', short: 'QR', cost: 500, color: 0x3aa8ff, pos: [49.5, 0, 57], face: [-1, 0, 0], area: 'A' },
@@ -189,12 +219,12 @@ export const PERKS = [
   { id: 'jugg', name: 'Juggernog', short: 'JN', cost: 2500, color: 0xe03a2a, pos: [28.5, 0, 13], face: [1, 0, 0], area: 'D' },
 ];
 // Pack-a-Punch stations: each upgrades a gun one level further (I -> IV, in order), deeper into the map.
-// The last one sits on top of the watchtower.
+// The last one sits on top of the pyramid, in a corner clear of the stairs.
 export const PAP_STATIONS = [
   { level: 1, pos: [44, 0, 4.7], face: [0, 0, 1], cost: 5000, area: 'D', color: 0xc070ff, ink: '#d9a6ff' },
   { level: 2, pos: [70.5, 0, 73.3], face: [0, 0, -1], cost: 10000, area: 'C', color: 0x4fe3ff, ink: '#a8f3ff' },
   { level: 3, pos: [8.7, 0, 31], face: [1, 0, 0], cost: 15000, area: 'E', color: 0xffc93a, ink: '#ffe49a' },
-  { level: 4, pos: [99, 4, 30.75], face: [0, 0, 1], cost: 25000, area: 'F', color: 0xff3b3b, ink: '#ffa0a0' },
+  { level: 4, pos: [101, 4, 31.2], face: [-1, 0, 0], cost: 25000, area: 'F', color: 0xff3b3b, ink: '#ffa0a0' },
 ];
 export const BOX = { pos: [24, 0, 45.5], cost: 950, area: 'B' };
 // The Gun Shop: the walk-in hut in the middle of the Courtyard (the middle of the village), where
@@ -218,7 +248,10 @@ const GROUND_SPAWNS = [
   { pos: [65, 0, 7], area: 'H' }, { pos: [75, 0, 17], area: 'H' },
   { pos: [7, 0, 73], area: 'I' }, { pos: [25, 0, 71], area: 'I' }, { pos: [17, 0, 67], area: 'I' },   // the graves
   // upstairs: only flyers come in here (down from the rafters), the rest take the stairs
-  { pos: [63, 0, 30], area: 'J', fly: true }, { pos: [70, 0, 31], area: 'K', fly: true }, { pos: [77, 0, 30], area: 'L', fly: true },
+  { pos: [63, 0, 30], area: 'J', fly: true }, { pos: [70, 0, 31], area: 'J', fly: true }, { pos: [77, 0, 30], area: 'J', fly: true },
+  { pos: [7, 0, 89], area: 'W' }, { pos: [21, 0, 93], area: 'W' }, { pos: [5, 0, 103], area: 'W' }, { pos: [19, 0, 104], area: 'W' }, { pos: [27, 0, 99], area: 'W' },
+  { pos: [40, 0, 91], area: 'Y' }, { pos: [61, 0, 89], area: 'Y' }, { pos: [77, 0, 97], area: 'Y' }, { pos: [93, 0, 93], area: 'Y' },
+  { pos: [113, 0, 89], area: 'Y' }, { pos: [89, 0, 103], area: 'Y' }, { pos: [53, 0, 104], area: 'Y' },
 ];
 export const PLAYER_START = new THREE.Vector3(52, 0, 40.6);   // in the Gun Shop, facing the counter
 // bunting strings with little flags (and paper lanterns): [x0, y0, z0, x1, y1, z1, lanterns]
@@ -238,10 +271,18 @@ const LIGHTS = [
   { pos: [44, 1.8, 6.6], color: 0xb050ff, intensity: 30, dist: 9 },
   { pos: [13, 3.4, 39], color: 0xffa860, intensity: 90, dist: 24, post: true },
   { pos: [92, 3.4, 22], color: 0xffa860, intensity: 90, dist: 24, post: true },
-  { pos: [99, 6.1, 33], color: 0xffb36b, intensity: 80, dist: 22 },          // tower lantern
+  { pos: [99, 6.2, 33], color: 0xff9a4a, intensity: 85, dist: 22, noLamp: true },   // over the pyramid (its braziers glow)
   { pos: [104, 4.4, 59], color: 0xff9a6a, intensity: 95, dist: 26 },         // Night Market (hangs from the bunting)
   { pos: [74.5, 4.3, 12.5], color: 0xffb36b, intensity: 95, dist: 24 },     // Rice Barn
   { pos: [13, 3.4, 67], color: 0xb8d4ff, post: true, glowOnly: true },        // Dead Orchard: a cold lamp, moonlight does the rest
+  // Spooky Woods: two will-o'-the-wisps, ghostly green and violet
+  { pos: [9, 2.2, 97], color: 0x5affb4, intensity: 45, dist: 20, wisp: true },
+  { pos: [23, 2.6, 91], color: 0xa070ff, intensity: 40, dist: 18, wisp: true },
+  // Container Yard: sodium lamps on posts
+  { pos: [61, 3.4, 85], color: 0xffc070, intensity: 95, dist: 26, post: true },
+  { pos: [89, 3.4, 93], color: 0xffc070, intensity: 95, dist: 26, post: true },
+  { pos: [107, 3.4, 103], color: 0xffc070, intensity: 85, dist: 24, post: true },
+  { pos: [39, 3.4, 99], color: 0xffc070, intensity: 80, dist: 24, post: true },
   // upstairs: two lights near the room walls, each lighting the rooms on both sides (lanterns: see buildUpstairs)
   { pos: [64.5, FL + 3.6, 31], color: 0xffb36b, intensity: 48, dist: 14, noLamp: true },
   { pos: [75.5, FL + 3.6, 31], color: 0xffb36b, intensity: 48, dist: 14, noLamp: true },
@@ -359,7 +400,13 @@ export class ZMap {
     for (const { counter: [x0, z0, x1, z1] } of STALLS) this.obstacles.push({ x0, y0: 0, z0, x1, y1: 0.95, z1 });
     for (const [x0, z0, x1, z1, h] of UP_PROPS) this.obstacles.push({ x0, y0: FL, z0, x1, y1: FL + h, z1 });
     for (const p of PERKS) this.obstacles.push(this.machineBox(p.pos, p.face, 1.1, 0.9, 2.1));
-    for (const st of PAP_STATIONS) this.obstacles.push(this.machineBox(st.pos, st.face, 1.6, 1.2, 1.9));
+    for (const st of PAP_STATIONS) {
+      const b = this.machineBox(st.pos, st.face, 1.6, 1.2, 1.9);
+      if (st.pos[1] > 0) b.pad = 0;   // (the one on the pyramid top: block only its own corner cell for pathing)
+      this.obstacles.push(b);
+    }
+    // shipping containers (stacked ones are one tall box)
+    for (const [x0, z0, x1, z1, n] of CONTAINERS) this.obstacles.push({ x0, y0: 0, z0, x1, y1: CONT_H * n, z1 });
     this.obstacles.push({ x0: BOX.pos[0] - 0.9, y0: 0, z0: BOX.pos[2] - 0.4, x1: BOX.pos[0] + 0.9, y1: 0.9, z1: BOX.pos[2] + 0.4 });
     { const [x0, z0, x1, z1] = GUN_SHOP.counter; this.obstacles.push({ x0, y0: 0, z0, x1, y1: GUN_SHOP.counterH, z1 }); }
     for (const l of LIGHTS) if (l.post) this.obstacles.push({ x0: l.pos[0] - 0.15, y0: 0, z0: l.pos[2] - 0.15, x1: l.pos[0] + 0.15, y1: 3.3, z1: l.pos[2] + 0.15 });
@@ -380,7 +427,7 @@ export class ZMap {
       rc.y = rc.band === 9 ? FL : bandH[rc.band] + Math.floor(blockHash(cx, cz, 5) * 3) * 0.5;
       rc.tint = rc.band === 9 ? [0.93, 0.87, 0.78] : tints[Math.floor(blockHash(cx + 50, cz, 7) * tints.length)];
       for (let z = rc.z; z < rc.z + rc.d; z++) for (let x = rc.x; x < rc.x + rc.w; x++) this.cellH[z * GW + x] = rc.y;
-      this.staticColliders.push({ x0: rc.x * C, z0: rc.z * C, x1: (rc.x + rc.w) * C, z1: (rc.z + rc.d) * C, y0: 0, y1: rc.y });
+      this.staticColliders.push({ x0: rc.x * C, z0: rc.z * C, x1: (rc.x + rc.w) * C, z1: (rc.z + rc.d) * C, y0: 0, y1: rc.y, floor: rc.band === 9 });
     }
     for (const o of this.obstacles) this.staticColliders.push(o);
     // roofs over the indoor areas
@@ -388,7 +435,7 @@ export class ZMap {
     for (const a of Object.values(AREAS)) {
       if (!a.indoor) continue;
       const [x0, z0, x1, z1] = a.rect;
-      const roof = { x0: (x0 - 1) * C, z0: (z0 - 1) * C, x1: (x1 + 1) * C, z1: (z1 + 1) * C, y0: ROOF_Y, y1: ROOF_Y + 0.3 };
+      const roof = { x0: (x0 - 1) * C, z0: (z0 - 1) * C, x1: (x1 + 1) * C, z1: (z1 + 1) * C, y0: ROOF_Y, y1: ROOF_Y + 0.3, roof: true };
       this.roofs.push(roof); this.staticColliders.push(roof);
     }
 
@@ -401,16 +448,16 @@ export class ZMap {
     this.ladders = [];
     this.stairs = [];                       // for the map: { x0, z0, x1, z1, up: [dx, dz] the way up }
     this.gw = GW; this.gh = GH; this.cell = C;
-    this.struct = { walls: [], wood: [], stone: [], roofs: [], hutRoofs: [], tiles: [], shadow: [], lanterns: [],
+    this.struct = { walls: [], wood: [], stone: [], roofs: [], hutRoofs: [], tiles: [], shadow: [], lanterns: [], pyramid: [], parapet: [],
       upWalls: [], planks: [], rails: [], upTrim: [] };
     for (const h of HUTS) this.buildHut(h);
-    this.buildTower(TOWER);
+    this.buildPyramid(PYRAMID);
     this.buildUpstairs();
 
     this.buildWindows(tex);
     this.buildDoors();
     this.colliders = [...this.staticColliders, ...this.windowFrames, ...this.doors.map((d) => d.collider)];
-    this.playerColliders = [...this.colliders, ...this.windows.map((w) => w.blocker)];
+    this.playerColliders = [...this.colliders, ...this.windows.map((w) => w.blocker), ...this.addSkyWalls()];
     this.buildMeshes(tex, rects);
     this.buildStructureMeshes(tex);
     this.buildHillMeshes(tex);
@@ -502,6 +549,7 @@ export class ZMap {
     const tier = (inset, y0, y1, dark) => ({ x0: x0 - 0.45 + inset, y0, z0: z0 - 0.45 + inset, x1: x1 + 0.45 - inset, y1, z1: z1 + 0.45 - inset,
       tint: tint.map((c) => c * dark) });
     const base = tier(0, H, H + 0.25, 1);
+    base.roof = true;
     S.hutRoofs.push(base); this.staticColliders.push(base);
     S.hutRoofs.push(tier(0.9, H + 0.25, H + 0.5, 0.88), tier(1.8, H + 0.5, H + 0.72, 0.78));
     if (Math.min(x1 - x0, z1 - z0) > 6) S.hutRoofs.push(tier(2.7, H + 0.72, H + 0.86, 0.7));
@@ -509,38 +557,78 @@ export class ZMap {
     if (h.lantern) S.lanterns.push({ pos: h.lantern, light: !!h.light });
   }
 
-  // ---------- watchtower with stairs and a ladder ----------
-  buildTower(t) {
+  // ---------- the stepped pyramid with a staircase on each side ----------
+  buildPyramid(t) {
     const S = this.struct;
-    const add = (list, b, shadow) => { list.push(b); this.staticColliders.push(b); if (shadow) S.shadow.push(b); };
-    const { x0, z0, x1, z1, top } = t;
-    add(S.stone, { x0, y0: 0, z0, x1, y1: top - 0.15, z1 }, true);
-    add(S.wood, { x0, y0: top - 0.15, z0, x1, y1: top, z1 }, false); // flush deck: nothing to bump your head on from the ladder
-    // railings with gaps for the stairs (west) and the ladder (east)
-    const R = 0.12, RH = 1.0;
-    const rail = (ax0, az0, ax1, az1) => add(S.wood, { x0: ax0, y0: top, z0: az0, x1: ax1, y1: top + RH, z1: az1 }, false);
-    rail(x0, z0, x1, z0 + R); rail(x0, z1 - R, x1, z1);
-    rail(x0, z0, x0 + R, t.stairs.z0); rail(x0, t.stairs.z1, x0 + R, z1);
-    rail(x1 - R, z0, x1, t.ladder.z0 - 0.1); rail(x1 - R, t.ladder.z1 + 0.1, x1, z1);
-    // corner posts + roof
-    for (const [px, pz] of [[x0, z0], [x1, z0], [x0, z1], [x1, z1]]) {
-      add(S.wood, { x0: px - 0.14, y0: top, z0: pz - 0.14, x1: px + 0.14, y1: top + 2.6, z1: pz + 0.14 }, false);
+    const add = (b, shadow) => { S.pyramid.push(b); this.staticColliders.push(b); if (shadow) S.shadow.push(b); };
+    const { x0, z0, x1, z1, top, steps, run } = t, [sx0, sx1] = t.sx, [sz0, sz1] = t.sz;
+    add({ x0, y0: 0, z0, x1, y1: top, z1, floor: true }, false);   // the top
+    // the tiers: each a ring round the next one up, cut where the four stairs run through it
+    const [ox0, oz0, ox1, oz1] = t.out;
+    t.tiers.forEach(([inset, h], i) => {
+      const a0 = ox0 + inset, b0 = oz0 + inset, a1 = ox1 - inset, b1 = oz1 - inset;   // this ring's outside
+      const next = t.tiers[i + 1], ni = next ? next[0] : null;
+      const c0 = next ? ox0 + ni : x0, d0 = next ? oz0 + ni : z0, c1 = next ? ox1 - ni : x1, d1 = next ? oz1 - ni : z1;   // its inside
+      const pieces = [
+        [a0, b0, sx0, d0], [sx1, b0, a1, d0], [a0, d1, sx0, b1], [sx1, d1, a1, b1],   // north and south bands
+        [a0, d0, c0, sz0], [a0, sz1, c0, d1], [c1, d0, a1, sz0], [c1, sz1, a1, d1],   // west and east bands
+      ];
+      for (const [px0, pz0, px1, pz1] of pieces) {
+        add({ x0: px0, y0: 0, z0: pz0, x1: px1, y1: h, z1: pz1, tier: true }, i === 0);
+        // zombies can't walk on the tiers either
+        for (let cz = pz0 / C; cz < pz1 / C; cz++) for (let cx = px0 / C; cx < px1 / C; cx++) this.navBlock[cz * GW + cx] = 1;
+      }
+    });
+    // a low parapet round the top, open at the four stairs (looks: the tiers stop you falling off)
+    const P = 0.3, PH = 0.7;
+    const wall = (a0, b0, a1, b1) => S.parapet.push({ x0: a0, y0: top, z0: b0, x1: a1, y1: top + PH, z1: b1 });
+    wall(x0, z0, sx0, z0 + P); wall(sx1, z0, x1, z0 + P); wall(x0, z1 - P, sx0, z1); wall(sx1, z1 - P, x1, z1);
+    wall(x0, z0 + P, x0 + P, sz0); wall(x0, sz1, x0 + P, z1 - P); wall(x1 - P, z0 + P, x1, sz0); wall(x1 - P, sz1, x1, z1 - P);
+    // braziers on the corners of the upper tier
+    const [it0, it1, iu0, iu1] = [ox0 + 2, ox1 - 2, oz0 + 2, oz1 - 2], th = t.tiers[1][1];
+    S.braziers = [[it0 + 0.7, th, iu0 + 0.7], [it1 - 0.7, th, iu0 + 0.7], [it0 + 0.7, th, iu1 - 0.7], [it1 - 0.7, th, iu1 - 0.7]];
+    // the four staircases: solid steps rising toward the top. up: the way up
+    const rise = top / steps, tread = run / steps;
+    const flights = [
+      { x0: x0 - run, z0: sz0, x1: x0, z1: sz1, up: [1, 0] }, { x0: x1, z0: sz0, x1: x1 + run, z1: sz1, up: [-1, 0] },
+      { x0: sx0, z0: z0 - run, x1: sx1, z1: z0, up: [0, 1] }, { x0: sx0, z0: z1, x1: sx1, z1: z1 + run, up: [0, -1] },
+    ];
+    for (const f of flights) {
+      const [ux, uz] = f.up;
+      for (let i = 0; i < steps; i++) {
+        const b = { x0: f.x0, z0: f.z0, x1: f.x1, z1: f.z1, y0: 0, y1: (i + 1) * rise, floor: true };
+        if (ux > 0) b.x0 += i * tread; else if (ux < 0) b.x1 -= i * tread;
+        else if (uz > 0) b.z0 += i * tread; else b.z1 -= i * tread;
+        add(b, i === 0);
+      }
+      this.stairs.push({ ...f });
+      // pathing: each stair cell a step up toward the top; no stepping off the sides
+      const n = run / C;
+      for (let k = 0; k < n; k++) {
+        // k = 0: the bottom cell
+        const cx = ux > 0 ? f.x0 / C + k : ux < 0 ? f.x1 / C - 1 - k : f.x0 / C;
+        const cz = uz > 0 ? f.z0 / C + k : uz < 0 ? f.z1 / C - 1 - k : f.z0 / C;
+        this.navHOverride.set(cz * GW + cx, top * (k + 1) / (n + 1));
+        if (ux) { this.edgeZ[(cz - 1) * GW + cx] = 1; this.edgeZ[cz * GW + cx] = 1; }
+        else { this.edgeX[cz * GW + cx - 1] = 1; this.edgeX[cz * GW + cx] = 1; }
+      }
     }
-    add(S.roofs, { x0: x0 - 0.6, y0: top + 2.6, z0: z0 - 0.6, x1: x1 + 0.6, y1: top + 2.9, z1: z1 + 0.6 }, false);
-    S.kentongan = [(x0 + x1) / 2, top + 1.7, (z0 + z1) / 2];
-    // stairs: solid steps rising toward the tower
-    const st = t.stairs, tread = (st.x1 - st.x0) / st.steps, rise = top / st.steps;
-    for (let i = 0; i < st.steps; i++) add(S.stone, { x0: st.x0 + i * tread, y0: 0, z0: st.z0, x1: st.x1, y1: (i + 1) * rise, z1: st.z1 }, i === 0);
-    this.stairs.push({ x0: st.x0, z0: st.z0, x1: st.x1, z1: st.z1, up: [1, 0] });
-    // pathing: tower cells sit at the top height; stair cells step up 1 m each; no stepping off the stair sides
     for (let cz = z0 / C; cz < z1 / C; cz++) for (let cx = x0 / C; cx < x1 / C; cx++) this.navHOverride.set(cz * GW + cx, top);
-    const scz = st.z0 / C, n = (st.x1 - st.x0) / C;
-    for (let k = 0; k < n; k++) {
-      const cx = st.x0 / C + k;
-      this.navHOverride.set(scz * GW + cx, top * (k + 1) / (n + 1));
-      this.edgeZ[(scz - 1) * GW + cx] = 1; this.edgeZ[scz * GW + cx] = 1;
+  }
+
+  // Invisible walls for players only, from the top of every wall, roof and tall prop up into the
+  // sky: you can't jump up onto (or across) the walls and roofs, or stand on top of perk machines,
+  // lamp posts, containers or the pyramid's tiers. Floors (stairs, landings, the pyramid top, the
+  // block under the upstairs rooms) are left alone. Bullets and zombies don't see them.
+  addSkyWalls() {
+    const SKY = 80, out = [];
+    const up = (c) => { if (c.y1 < SKY) out.push({ x0: c.x0, z0: c.z0, x1: c.x1, z1: c.z1, y0: c.y1, y1: SKY }); };
+    for (const c of this.staticColliders) {
+      if (c.floor) continue;
+      if (c.roof || c.tier || c.y1 - c.y0 >= 1.4) up(c);
     }
-    this.ladders.push({ ...t.ladder });
+    for (const w of this.windows) up(w.blocker);
+    return out;
   }
 
   // ---------- the second floor: three rooms over the block between the Courtyard and Sahur Hill ----------
@@ -559,7 +647,7 @@ export class ZMap {
         const box = (y0, y1, t = T) => (w.line === 'z'
           ? { x0: s0, y0, z0: w.at - t / 2, x1: s1, y1, z1: w.at + t / 2 }
           : { x0: w.at - t / 2, y0, z0: s0, x1: w.at + t / 2, y1, z1: s1 });
-        const door = !!w.doors?.includes(i);
+        const door = !!w.doors?.includes(i) || !!w.open?.includes(i);
         if (door) add(S.upWalls, box(top - 0.7, top), false);
         else if (w.windows?.includes(i)) { add(S.upWalls, box(FL, FL + 1.0), false); add(S.upWalls, box(FL + 2.6, top), false); }
         else if (w.balcony?.includes(i)) {
@@ -594,6 +682,7 @@ export class ZMap {
     const tier = (inset, y0, y1, dark) => ({ x0: ux0 - 0.55 + inset, y0, z0: uz0 - 0.55 + inset, x1: ux1 + 0.55 - inset, y1, z1: uz1 + 0.55 - inset,
       tint: tint.map((c) => c * dark) });
     const roof = tier(0, top, top + 0.25, 1);
+    roof.roof = true;
     S.hutRoofs.push(roof); this.staticColliders.push(roof);
     S.hutRoofs.push(tier(1.0, top + 0.25, top + 0.5, 0.88), tier(2.0, top + 0.5, top + 0.74, 0.78), tier(3.0, top + 0.74, top + 0.9, 0.7));
     S.lanterns.push({ pos: [70, FL + 3.8, 31], light: false }, { pos: [77, FL + 3.8, 31], light: false });
@@ -602,10 +691,10 @@ export class ZMap {
     const n = 3, steps = 11, rise = FL / steps, run = n * C, tread = run / steps;
     for (const st of UP_STAIRS) {
       const x0 = st.x * C, x1 = x0 + C, lz0 = st.landing * C, lz1 = lz0 + C;
-      add(S.stone, { x0, y0: 0, z0: lz0, x1, y1: FL, z1: lz1 }, true);
+      add(S.stone, { x0, y0: 0, z0: lz0, x1, y1: FL, z1: lz1, floor: true }, true);
       for (let i = 0; i < steps; i++) {
         const z0 = st.from > 0 ? lz1 : lz0 - run + i * tread, z1 = st.from > 0 ? lz1 + run - i * tread : lz0;
-        add(S.stone, { x0, y0: 0, z0, x1, y1: (i + 1) * rise, z1 }, i === 0);
+        add(S.stone, { x0, y0: 0, z0, x1, y1: (i + 1) * rise, z1, floor: true }, i === 0);
       }
       // pathing: the landing at the top, each stair cell a step down; no stepping off the open
       // side or the far end of the landing
@@ -779,7 +868,10 @@ export class ZMap {
     for (const w of this.windows) this.setBoards(w, w.max);
   }
 
+  // every frame: doors flying off, and the woods' mist and wisps drifting
   updateDoors(dt) {
+    this.animT = (this.animT || 0) + dt;
+    this.updateMist(this.animT);
     for (const d of this.doors) {
       if (!d.open || !d.group.visible) continue;
       d.anim += dt;
@@ -928,23 +1020,19 @@ export class ZMap {
     mk(S.rails, plain(0x8a5e38), { uvScale: 2 });
     mk(S.upTrim, plain(0x5a3c24), { uvScale: 2 });
     this.buildUpstairsProps(plain);
-    // ladder: two rails and rungs on the tower's east face
-    for (const l of this.ladders) {
-      const lb = new BoxBuilder(), x = l.x0 + 0.06;
-      lb.box(x - 0.04, 0, l.z0 + 0.06, x + 0.04, TOWER.top + 1.1, l.z0 + 0.14, { uvScale: 1 });
-      lb.box(x - 0.04, 0, l.z1 - 0.14, x + 0.04, TOWER.top + 1.1, l.z1 - 0.06, { uvScale: 1 });
-      for (let y = 0.3; y < TOWER.top + 1; y += 0.34) lb.box(x - 0.03, y, l.z0 + 0.1, x + 0.03, y + 0.05, l.z1 - 0.1, { uvScale: 1 });
-      const m = new THREE.Mesh(lb.geometry(), plain(0x9a6a3c));
-      m.castShadow = true; this.scene.add(m);
+    // the pyramid: sandstone tiers, steps and top, a parapet, and braziers on the corners
+    mk(S.pyramid, surfaceMaterial(tex, 'wall'), { uvScale: 3, tint: [0.86, 0.74, 0.54], ao: true });
+    mk(S.parapet, surfaceMaterial(tex, 'wall'), { uvScale: 2, tint: [0.7, 0.6, 0.44] });
+    if (S.braziers) {
+      const bowl = new THREE.CylinderGeometry(0.42, 0.26, 0.4, 10), flameGeo = new THREE.ConeGeometry(0.3, 0.75, 8);
+      const iron = lambert(0x2a2420), fire = new THREE.MeshBasicMaterial({ color: 0xff8a2a }), core = new THREE.MeshBasicMaterial({ color: 0xffe08a });
+      for (const [bx, by, bz] of S.braziers) {
+        const m = new THREE.Mesh(bowl, iron); m.position.set(bx, by + 0.2, bz); m.castShadow = true; this.scene.add(m);
+        const f = new THREE.Mesh(flameGeo, fire); f.position.set(bx, by + 0.75, bz); this.scene.add(f);
+        const c = new THREE.Mesh(flameGeo, core); c.scale.set(0.55, 0.6, 0.55); c.position.set(bx, by + 0.62, bz); this.scene.add(c);
+      }
     }
-    // the kentongan drum hanging under the watchtower roof
-    if (S.kentongan) {
-      const [kx, ky, kz] = S.kentongan;
-      const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 1.3, 16), lambert(0x8a5a30));
-      drum.position.set(kx, ky, kz); drum.castShadow = true; this.scene.add(drum);
-      const slit = new THREE.Mesh(box, lambert(0x24140a)); slit.scale.set(0.06, 0.8, 0.02); slit.position.set(kx, ky, kz + 0.3); this.scene.add(slit);
-      const rope = new THREE.Mesh(box, lambert(0x3a2a1a)); rope.scale.set(0.04, 0.6, 0.04); rope.position.set(kx, ky + 0.95, kz); this.scene.add(rope);
-    }
+    this.buildContainers(plain);
     // hut lanterns: a small warm light so you can see zombies that follow you inside
     const glow = new THREE.MeshBasicMaterial({ color: 0xffc77a });
     for (const { pos: [lx, ly, lz], light } of S.lanterns) {
@@ -996,6 +1084,66 @@ export class ZMap {
     this.scene.add(m);
   }
 
+  // shipping containers: ribbed steel sides, doors with lock bars at one end, a darker rim on top
+  buildContainers(plain) {
+    const b = new BoxBuilder(), R = 0.05;
+    for (const [x0, z0, x1, z1, n, color] of CONTAINERS) {
+      const base = new THREE.Color(color).toArray(), dark = base.map((c) => c * 0.62), alongX = x1 - x0 > z1 - z0;
+      for (let k = 0; k < n; k++) {
+        const y0 = k * CONT_H, y1 = y0 + CONT_H - 0.02;
+        // stacked ones sit a little off line, like they were dropped there by a crane
+        const o = k ? (blockHash(x0 * 3 + k, z0, 1) - 0.5) * 0.3 : 0;
+        const a0 = x0 + (alongX ? o : 0), a1 = x1 + (alongX ? o : 0), c0 = z0 + (alongX ? 0 : o), c1 = z1 + (alongX ? 0 : o);
+        b.box(a0 + R, y0, c0 + R, a1 - R, y1, c1 - R, { uvScale: 2, tint: base, ao: true });
+        b.box(a0, y1 - 0.12, c0, a1, y1, c1, { uvScale: 2, tint: dark });            // top rim
+        b.box(a0, y0, c0, a1, y0 + 0.12, c1, { uvScale: 2, tint: dark });            // bottom rail
+        // ribs along both long sides
+        const len = alongX ? a1 - a0 : c1 - c0, ribs = Math.round(len / 0.45);
+        for (let r = 1; r < ribs; r++) {
+          const m = (alongX ? a0 : c0) + r * len / ribs;
+          if (alongX) { b.box(m - 0.06, y0 + 0.12, c0, m + 0.06, y1 - 0.12, c0 + R, { uvScale: 1, tint: dark }); b.box(m - 0.06, y0 + 0.12, c1 - R, m + 0.06, y1 - 0.12, c1, { uvScale: 1, tint: dark }); }
+          else { b.box(a0, y0 + 0.12, m - 0.06, a0 + R, y1 - 0.12, m + 0.06, { uvScale: 1, tint: dark }); b.box(a1 - R, y0 + 0.12, m - 0.06, a1, y1 - 0.12, m + 0.06, { uvScale: 1, tint: dark }); }
+        }
+        // doors at the +x / +z end: a seam down the middle and four lock bars
+        const steel = [0.32, 0.32, 0.34];
+        for (const f of [-0.6, -0.2, 0.2, 0.6]) {
+          if (alongX) { const z = (c0 + c1) / 2 + f; b.box(a1, y0 + 0.2, z - 0.03, a1 + 0.05, y1 - 0.2, z + 0.03, { uvScale: 1, tint: steel }); }
+          else { const x = (a0 + a1) / 2 + f; b.box(x - 0.03, y0 + 0.2, c1, x + 0.03, y1 - 0.2, c1 + 0.05, { uvScale: 1, tint: steel }); }
+        }
+      }
+    }
+    const m = new THREE.Mesh(b.geometry(), plain(0xffffff));
+    m.castShadow = m.receiveShadow = true;
+    this.scene.add(m);
+  }
+
+  // Spooky Woods: low drifting mist (soft sprites, a slow sway in updateMist)
+  buildMist() {
+    const tex = canvasTex(128, 128, (ctx) => {
+      const gr = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+      gr.addColorStop(0, 'rgba(255,255,255,0.55)'); gr.addColorStop(0.5, 'rgba(255,255,255,0.18)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = gr; ctx.fillRect(0, 0, 128, 128);
+    });
+    const [x0, z0, x1, z1] = AREAS.W.rect.map((v) => v * C);
+    this.mist = [];
+    for (let i = 0; i < 22; i++) {
+      const r = (k) => blockHash(i * 7 + k, i * 13 + k * 3, 1);
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: i % 3 ? 0xb8d8c8 : 0x9ad8b8, transparent: true, opacity: 0.32, depthWrite: false }));
+      const w = 6 + r(1) * 6;
+      s.scale.set(w, w * 0.32, 1);
+      s.position.set(x0 + 2 + r(2) * (x1 - x0 - 4), 0.5 + r(3) * 0.6, z0 + 2 + r(4) * (z1 - z0 - 4));
+      s.userData.home = s.position.clone(); s.userData.ph = r(5) * 6.28;
+      this.scene.add(s); this.mist.push(s);
+    }
+  }
+  updateMist(t) {
+    for (const s of this.mist || []) {
+      const h = s.userData.home, ph = s.userData.ph;
+      s.position.set(h.x + Math.sin(t * 0.13 + ph) * 1.6, h.y + Math.sin(t * 0.4 + ph) * 0.12, h.z + Math.cos(t * 0.11 + ph) * 1.2);
+    }
+    for (const w of this.wisps || []) w.position.y = w.userData.y + Math.sin(t * 1.3 + w.userData.y * 4) * 0.25;
+  }
+
   buildHillMeshes(tex) {
     const mat = surfaceMaterial(tex, 'sand', { roughness: 0.97, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
     for (const [hx, hz, r] of this.hills) {
@@ -1024,7 +1172,17 @@ export class ZMap {
     }
   }
 
+  // a soft round glow (for additive sprites)
+  haloTex() {
+    return this._halo ||= canvasTex(64, 64, (ctx) => {
+      const gr = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+      gr.addColorStop(0, 'rgba(255,255,255,0.9)'); gr.addColorStop(0.35, 'rgba(255,255,255,0.3)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = gr; ctx.fillRect(0, 0, 64, 64);
+    });
+  }
+
   buildProps() {
+    this.buildMist();
     // lights + lanterns + lamp posts
     const lantern = new THREE.MeshBasicMaterial({ color: 0xffc77a });
     const pole = lambert(0x2a2622);
@@ -1033,6 +1191,15 @@ export class ZMap {
         const light = new THREE.PointLight(l.color, l.intensity, l.dist, 2);
         light.position.set(...l.pos);
         this.scene.add(light);
+      }
+      if (l.wisp) {   // a floating ball of ghost light with a soft halo
+        const g = new THREE.Group(); g.position.set(...l.pos); g.userData.y = l.pos[1];
+        g.add(new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 8), new THREE.MeshBasicMaterial({ color: l.color })));
+        const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.haloTex(), color: l.color, transparent: true, opacity: 0.8,
+          blending: THREE.AdditiveBlending, depthWrite: false }));
+        halo.scale.set(1.6, 1.6, 1); g.add(halo);
+        this.scene.add(g); (this.wisps ||= []).push(g);
+        continue;
       }
       if (l.color === 0xb050ff || l.noLamp) continue;
       mesh(box, l.glowOnly ? new THREE.MeshBasicMaterial({ color: l.color }) : lantern, l.pos[0], l.pos[1] + 0.05, l.pos[2], 0.28, 0.36, 0.28, this.scene).castShadow = false;
@@ -1054,11 +1221,7 @@ export class ZMap {
     });
     // Pack-a-Punch stations (one per upgrade level), each glowing its level's color
     const rollGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.9, 12);
-    const haloTex = canvasTex(64, 64, (ctx) => {
-      const gr = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-      gr.addColorStop(0, 'rgba(255,255,255,0.9)'); gr.addColorStop(0.35, 'rgba(255,255,255,0.3)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
-      ctx.fillStyle = gr; ctx.fillRect(0, 0, 64, 64);
-    });
+    const haloTex = this.haloTex();
     this.papStations = PAP_STATIONS.map((st) => {
       const g = new THREE.Group(); g.position.set(...st.pos);
       g.rotation.y = Math.atan2(st.face[0], st.face[2]);   // front (sign side) toward the room
@@ -1217,7 +1380,8 @@ export class ZMap {
       let blocked = false;
       for (const o of this.obstacles) {
         if (o.y0 > h + 0.5 || (up && o.y1 < h + 0.2)) continue;   // (upstairs: only furniture up there)
-        if (o.x1 + 0.4 > cx0 && o.x0 - 0.4 < cx1 && o.z1 + 0.4 > cz0 && o.z0 - 0.4 < cz1) { blocked = true; break; }
+        const pad = o.pad ?? 0.4;
+        if (o.x1 + pad > cx0 && o.x0 - pad < cx1 && o.z1 + pad > cz0 && o.z0 - pad < cz1) { blocked = true; break; }
       }
       this.walk[i] = blocked ? 0 : 1;
     }

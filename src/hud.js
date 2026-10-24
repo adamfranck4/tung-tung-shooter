@@ -181,12 +181,32 @@ export class Hud {
       prog = { label: `REVIVING ${it.who.name.toUpperCase()}`, frac: it.who.reviveFrac };
     }
     this.progress(prog);
+    // the boss's health bar, across the top of the screen
+    const bz = g.phase !== 'over' && g.zombies.find((z) => z.active && z.alive && z.kind === 'boss');
+    this.zBoss(bz ? { name: bz.bossName || 'BOSS', color: bz.bossColor || '#ff5a1a',
+      frac: Math.max(0, Math.min(1, bz.puppet ? bz.hpFrac ?? 1 : bz.health / bz.maxHealth)) } : null);
     const spec = !p.alive && g.phase !== 'over' && g.spectating;
     this.spectate(spec ? `Spectating <b>${esc(spec.name)}</b><small>You'll be back next round &middot; click to switch player</small>` : null);
     const shop = !!p.buyOpen && g.canBuy(p);
     this.toggle('buymenu', shop);
     if (shop) this.renderZShop(g);
     this.zMap(g);
+  }
+
+  // b: { name, color, frac } or null (hidden)
+  zBoss(b) {
+    let e = this.bossEl;
+    if (!e) {
+      if (!b) return;
+      e = this.bossEl = document.createElement('div');
+      e.id = 'z-boss'; e.innerHTML = '<b></b><div class="bar"><i></i></div>';
+      this.el.appendChild(e);
+    }
+    e.style.display = b ? '' : 'none';
+    if (!b) return;
+    if (this.cache.bossName !== b.name) { this.cache.bossName = b.name; e.firstChild.textContent = b.name; e.style.setProperty('--boss', b.color); }
+    const w = (b.frac * 100).toFixed(1) + '%';
+    if (this.cache.bossW !== w) { this.cache.bossW = w; e.querySelector('i').style.width = w; }
   }
 
   // ---------- Zombies map (M): rooms you've opened, doors and their prices, and where everyone is ----------

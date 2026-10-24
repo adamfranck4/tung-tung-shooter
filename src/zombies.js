@@ -67,6 +67,29 @@ export const VARIANTS = {
              pitch: 0.4, tung: 0.95, ground: true, points: 500, rise: 3.2, boss: true,
              from: 5, chance: (r) => ramp(r, 5, 0.025, 0.004, 0.04), max: (r) => (r >= 12 ? 2 : 1),
              intro: 'A RAINBOW GIANT is coming!' },
+  // THE BOSS: comes every BOSS_EVERY rounds (never at random). A huge winged Tung Tung in a new
+  // color scheme each time: it flies, hovers to throw volleys of coconuts, swoops in to hit hard,
+  // and from its second visit calls in flyers. Each visit it has more health, more coconuts per
+  // volley and flies faster (see bossTier).
+  boss:    { hp: (r) => 3200 + 1900 * (bossTier(r) - 1) + 60 * r, scale: 2.5, speed: (r) => Math.min(6.4, 4.0 + 0.5 * bossTier(r)),
+             dmg: 90, reach: 2.7, hitReach: 3.4, cd: 1.4, throwDmg: 30, pitch: 0.32, tung: 1, fly: true, throws: true, boss: true,
+             points: 3000, rise: 3.2 },
+};
+// boss rounds: every 7th; tier = which visit it is (1, 2, 3...)
+export const BOSS_EVERY = 7;
+export const bossTier = (r) => Math.max(1, Math.floor(r / BOSS_EVERY));
+// each visit's name and colors (body, limbs, hands, wings, glow); after the fourth they come round again
+export const BOSS_LOOKS = [
+  { name: 'MAGMA SAHUR', body: 0x2a1410, limb: 0xff5a1a, hand: 0xffb02a, wing: 0x9a2008, glow: 0xff4a10 },
+  { name: 'FROST SAHUR', body: 0x183450, limb: 0x6ae8ff, hand: 0xeafcff, wing: 0x2a7ab8, glow: 0x40d0ff },
+  { name: 'VENOM SAHUR', body: 0x1c2a10, limb: 0x9aff3a, hand: 0xd070ff, wing: 0x5a1a8a, glow: 0x80ff40 },
+  { name: 'VOID SAHUR', body: 0x140a20, limb: 0xff3ad8, hand: 0x3affe8, wing: 0x2a0a4a, glow: 0xd040ff },
+];
+export const bossLook = (r) => BOSS_LOOKS[(bossTier(r) - 1) % BOSS_LOOKS.length];
+// "MAGMA SAHUR", then "MAGMA SAHUR II" the next time round
+export const bossName = (r) => {
+  const t = bossTier(r), lap = Math.floor((t - 1) / BOSS_LOOKS.length);
+  return bossLook(r).name + (lap ? ' ' + ['', 'II', 'III', 'IV', 'V'][Math.min(4, lap)] : '');
 };
 export const KINDS = Object.keys(VARIANTS);   // a type's index here is its id online
 const modelOf = (kind) => (kind === 'big' ? 'normal' : kind);   // big zombies are a scaled-up regular one
@@ -122,14 +145,21 @@ export class Zombie extends Combatant {
     this.soundT = 1 + Math.random() * 5; this.walkPhase = Math.random() * 6; this.lastStep = 0; this.lastBeat = 0;
     const m = this.model;
     m.root.visible = true;
-    m.root.scale.setScalar(v.ground ? s : s * (0.95 + Math.random() * 0.1));
+    m.root.scale.setScalar(v.ground || v.boss ? s : s * (0.95 + Math.random() * 0.1));
+    if (kind === 'boss') {
+      const r = this.game.round || 1;
+      this.tier = bossTier(r); this.summonT = 9; this.hpFrac = 1;
+      this.bossName = bossName(r); this.bossColor = '#' + bossLook(r).limb.toString(16).padStart(6, '0');
+      m.paint?.(bossLook(r));
+    }
     if (m.coconut) m.coconut.visible = true;
   }
 
   spawn(sp, round, kind = 'normal') {
     this.reset(kind);
     const v = this.v, b = this.body, s = this.scale;
-    this.health = this.maxHealth = v.hp(round);
+    this.health = this.maxHealth = v.hp(round) * (kind === 'boss' ? 1 + 0.65 * (this.game.players.length - 1) : 1);
+    this.puppet = false;
     if (v.speed) this.speed = v.speed(round) * (0.95 + Math.random() * 0.1);
     else if (kind === 'big') this.speed = round >= 8 ? 3.4 : 1.8 + Math.random() * 0.3;
     else {
@@ -227,6 +257,11 @@ export class Zombie extends Combatant {
         this.attackT = 0.75; this.attackCd = v.cd; g.sound.swing(b.pos);
       }
     }
+    // the boss calls in flyers every so often, from its second visit on
+    if (this.kind === 'boss' && this.tier >= 2 && canAttack) {
+      this.summonT -= dt;
+      if (this.summonT <= 0) { this.summonT = Math.max(9, 18 - this.tier * 2); g.bossSummon(this); }
+    }
     // pink throwers stop at range with a clear view and lob coconuts
     if (!canAttack) this.throwT = 0;
     const hold = v.throws && canAttack && this.updateThrow(dt, p, dist);
@@ -295,10 +330,14 @@ export class Zombie extends Combatant {
     }
     this.throwCd -= dt;
     this.losT -= dt;
-    if (this.losT <= 0) { this.losT = 0.25; this.los = dist < 22 && g.clearShot(this, p); }
+    const boss = this.kind === 'boss';
+    if (this.losT <= 0) { this.losT = 0.25; this.los = dist < (boss ? 32 : 22) && g.clearShot(this, p); }
     if (!this.los || dist < 3.5) return false;
-    if (this.throwCd <= 0 && this.attackT <= 0) { this.throwT = THROW_TIME; this.throwCd = 2.0 + Math.random() * 1.2; }
-    return dist < 10;
+    if (this.throwCd <= 0 && this.attackT <= 0) {
+      this.throwT = THROW_TIME;
+      this.throwCd = boss ? Math.max(1.3, 3.0 - 0.35 * this.tier) + Math.random() * 0.8 : 2.0 + Math.random() * 1.2;
+    }
+    return !boss && dist < 10;
   }
 
   // where a thrown coconut leaves its hand (over the right shoulder)
@@ -395,7 +434,7 @@ export class Zombie extends Combatant {
     if (v.boss) {
       tickRainbow();
       const step = Math.floor(this.walkPhase / Math.PI);   // the ground shakes with each step
-      if (step !== this.lastStep) { this.lastStep = step; if (this.alive && this.state === 'chase' && sp > 0.4) g.giantStep?.(this); }
+      if (step !== this.lastStep) { this.lastStep = step; if (this.alive && this.state === 'chase' && sp > 0.4 && !v.fly) g.giantStep?.(this); }
     }
   }
 
@@ -458,6 +497,7 @@ export class Zombie extends Combatant {
     const atk = e[7] / 100;
     if (atk > 0 && this.netAtk <= 0) { this.attackT = atk; this.game.sound.swing(this.body.pos); }
     this.netAtk = atk;
+    if (e[10] !== undefined) this.hpFrac = e[10] / 1000;   // the boss's health bar
     const th = (e[9] || 0) / 100;
     if (th > 0 && this.netThrow <= 0) this.throwT = th;
     this.netThrow = th;
@@ -467,7 +507,7 @@ export class Zombie extends Combatant {
     this.reset(kind);
     const v = this.v;
     this.speed = v.speed ? v.speed(this.game.round || 1) : fast ? 5.9 : 2;   // only changes how it looks
-    this.netAtk = 0; this.netThrow = 0; this.state = 'chase'; this.placed = false;
+    this.netAtk = 0; this.netThrow = 0; this.state = 'chase'; this.placed = false; this.puppet = true;
     this.interp.clear();
   }
 
@@ -525,7 +565,7 @@ export class ZombiesGame {
     this.round = 0;
     this.effects = { instakill: 0, double: 0 };
     this.powerupsThisRound = 0; this.killsSinceDrop = 0; this.puId = 0;
-    this.seenKinds = new Set(); this.spawnedThisRound = 0;
+    this.seenKinds = new Set(); this.spawnedThisRound = 0; this.bossDue = 0;
     this.interaction = null; this.flowT = 0; this.mapOpen = false;
     this.setupPlayers(roster || [{ nid: 0, name: 'You', kind: 'local' }], net ? net.myId : null, knife);
     for (const a of this.remotes) a.spawnEpoch = 0;   // matches the joining player's first state
@@ -663,6 +703,7 @@ export class ZombiesGame {
     this.toSpawn = Math.round(zombieCount(r) * (1 + 0.5 * (this.players.length - 1)));
     this.spawnT = 1.5;
     this.powerupsThisRound = 0; this.spawnedThisRound = 0;
+    this.bossDue = r % BOSS_EVERY === 0 ? this.time + 5 : 0;   // boss round: it shows up a few seconds in
     this.hud.zRound(r, true);
     this.sound.zRoundStart();
     this.net?.emit({ e: 'round', r });
@@ -772,6 +813,31 @@ export class ZombiesGame {
       if (VARIANTS[kind].intro) this.announce(null, VARIANTS[kind].intro);
     }
     return true;
+  }
+
+  // the boss flies in from the sky over an open area near (not on top of) the players
+  spawnBoss() {
+    const sp = this.pickSpawn(true, true);
+    if (!sp) return false;
+    this.getZombie('boss').spawn(sp, this.round, 'boss');
+    const name = bossName(this.round), t = bossTier(this.round);
+    const sub = t === 1 ? 'BOSS · It flies and throws coconuts · shoot it down!'
+      : `BOSS · Visit ${t}: tougher, bigger volleys, and it calls in flyers`;
+    this.hud.banner(name, sub, 'T', 5);
+    this.announce(this.player, `${name} is here! (boss)`);
+    this.giantStep({ body: this.player.body }, 2);
+    return true;
+  }
+
+  // the boss calls a few flyers down out of the sky round itself
+  bossSummon(z) {
+    const n = Math.min(4, z.tier), b = z.body.pos;
+    for (let i = 0; i < n && this.aliveZombies() < MAX_ALIVE; i++) {
+      const a = Math.random() * Math.PI * 2, x = b.x + Math.cos(a) * 3, zz = b.z + Math.sin(a) * 3;
+      if (!this.map.walkablePoint(x, zz)) continue;
+      this.getZombie('flyer').spawn({ pos: new THREE.Vector3(x, 0, zz) }, this.round, 'flyer');
+    }
+    this.sound.swing(b);
   }
 
   // a free zombie from the pool, preferably one that already has this type's model
@@ -885,6 +951,10 @@ export class ZombiesGame {
       // power-ups land on the floor, even when a flyer drops them
       const at = _v.set(b.x, v.fly ? this.map.surfaceAt(b.x, b.z) : b.y, b.z);
       if (v.boss) this.dropPowerup(at); else this.maybeDropPowerup(at);
+    }
+    if (z.kind === 'boss') {
+      this.hud.banner(`${bossName(this.round)} DEFEATED`, attacker ? `Finished off by ${attacker === this.player ? 'you' : attacker.name}` : '', 'CT', 4);
+      this.announce(this.player, `${bossName(this.round)} is down!`);
     }
   }
 
@@ -1376,14 +1446,21 @@ export class ZombiesGame {
     t.z += p.body.vel.z * lead + (Math.random() - 0.5) * 0.6;
     const dx = t.x - o.x, dz = t.z - o.z, d = Math.hypot(dx, dz) || 1, T = d / hs;
     const vel = new THREE.Vector3(dx / d * hs, (t.y - o.y + 0.5 * COCO_G * T * T) / T, dz / d * hs);
-    const pj = this.addProjectile(++this.pjId, o, vel, z.v.throwDmg);
+    // the boss throws a fan of them (more each visit), and hits harder
+    const n = z.kind === 'boss' ? Math.min(7, 2 + z.tier) : 1, dmg = z.v.throwDmg + (z.kind === 'boss' ? 5 * (z.tier - 1) : 0);
+    for (let i = 0; i < n; i++) {
+      const a = (i - (n - 1) / 2) * 0.17, c = Math.cos(a), sn = Math.sin(a);
+      const v = new THREE.Vector3(vel.x * c - vel.z * sn, vel.y, vel.x * sn + vel.z * c);
+      const pj = this.addProjectile(++this.pjId, o, v, dmg, n > 1);
+      this.net?.emit({ e: 'zt', i: pj.id, p: [r2(o.x), r2(o.y), r2(o.z)], v: [r2(v.x), r2(v.y), r2(v.z)], b: n > 1 ? 1 : 0 });
+    }
     this.sound.swing(o);
-    this.net?.emit({ e: 'zt', i: pj.id, p: [r2(o.x), r2(o.y), r2(o.z)], v: [r2(vel.x), r2(vel.y), r2(vel.z)] });
   }
 
-  addProjectile(id, pos, vel, dmg = 0) {
+  addProjectile(id, pos, vel, dmg = 0, big = false) {
     const mesh = makeCoconut();
     mesh.position.copy(pos);
+    if (big) mesh.scale.setScalar(1.6);   // the boss's
     this.scene.add(mesh);
     const pj = { id, pos: mesh.position, vel: vel.clone(), t: 0, dmg, mesh };
     this.projectiles.push(pj);
@@ -1542,6 +1619,7 @@ export class ZombiesGame {
         if (this.spawnNext()) this.toSpawn--;
         this.spawnT = Math.max(0.35, 2.0 - this.round * 0.12) * (0.6 + Math.random() * 0.8);
       }
+      if (this.bossDue && this.time >= this.bossDue && this.spawnBoss()) this.bossDue = 0;
     }
 
     if (p.alive) {
@@ -1569,7 +1647,7 @@ export class ZombiesGame {
     this.map.updateDoors(dt);
     this.updateSpectate();
 
-    if (!this.betweenRounds && this.toSpawn === 0 && this.aliveZombies() === 0) this.endRound();
+    if (!this.betweenRounds && this.toSpawn === 0 && !this.bossDue && this.aliveZombies() === 0) this.endRound();
   }
 
   // ---------- online (host side) ----------
@@ -1624,7 +1702,8 @@ export class ZombiesGame {
       if (!zb.active) continue;
       const b = zb.body.pos;
       z.push([zb.netId, r2(b.x), r2(b.y), r2(b.z), r2(zb.yaw), zb.state, (zb.alive ? 1 : 0) | (zb.speed > 4.5 ? 4 : 0),
-        Math.round(zb.attackT * 100), KINDS.indexOf(zb.kind), Math.round(zb.throwT * 100)]);
+        Math.round(zb.attackT * 100), KINDS.indexOf(zb.kind), Math.round(zb.throwT * 100),
+        ...(zb.kind === 'boss' ? [Math.round(Math.max(0, zb.health) / zb.maxHealth * 1000)] : [])]);
     }
     const box = this.map.box;
     return {
