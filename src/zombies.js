@@ -11,6 +11,7 @@ import { raycast, raySphere, rayBox, moveBody, wrapAngle } from './physics.js';
 import { PLAYER_START, AREAS, START_AREA } from './zmap.js';
 import { knifeName } from './viewmodel.js';
 import { Avatar, Interp, F, r1, r2, r3, packSlots, showShot } from './avatar.js';
+import { Statue, STATUE_R, statueMaxHp, hunterChance, chooseRoom, statueSpot } from './zstatue.js';
 import { NET_SOUNDS } from './game.js';
 
 const MAX_ALIVE = 24;
@@ -49,7 +50,6 @@ export const BASE_HEALTH = 150;
 const JUGG_HEALTH = 250;
 export const BLEED_TIME = 100;    // co-op: seconds a downed player lasts without a revive
 export const REVIVE_TIME = 3;     // holding E next to them (half with Quick Revive)
-const BREAK_TIME = 20;            // seconds between waves (N starts the next one early)
 export const ZOMBIE_HP = 100;                            // regular zombies on round 1: same health as a player
 export const bigZombieHealth = (r) => 400 + 80 * r;      // big zombies: a real bullet sponge
 // Every zombie gets tougher as the rounds go on. Regular types (and the speedsters, crawlers,
@@ -195,6 +195,8 @@ export class Zombie extends Combatant {
     const v = this.v, b = this.body, s = this.scale;
     this.health = this.maxHealth = zombieHealth(kind, round) * (kind === 'boss' ? 1 + 0.65 * (this.game.players.length - 1) : 1);
     this.puppet = false;
+    // some zombies go straight for the Golden Tung Tung instead of you (never the boss)
+    this.hunter = kind !== 'boss' && Math.random() < hunterChance(round, this.game.players.length);
     if (v.speed) this.speed = v.speed(round) * (0.95 + Math.random() * 0.1);
     else if (kind === 'big') this.speed = round >= 8 ? 3.4 : 1.8 + Math.random() * 0.3;
     else {
@@ -276,19 +278,31 @@ export class Zombie extends Combatant {
   // go for the closest player who is still on their feet
   chase(dt) {
     const g = this.game, b = this.body, map = g.map, v = this.v;
-    const p = g.nearestPlayer(b.pos, true);
+    let p = g.nearestPlayer(b.pos, true);
+    // The Golden Tung Tung: hunters head straight for it (unless you get right in their face), and
+    // any zombie that wanders close to it while you're further away has a go at it too.
+    const st = g.statueTarget();
+    if (st) {
+      const ds = flat(st.body.pos, b.pos), dp = p ? flat(p.body.pos, b.pos) : Infinity;
+      const level = v.fly || Math.abs(st.body.pos.y - b.pos.y) < 1.5;
+      if ((this.hunter && dp > 3.5) || (level && ds < 6 && ds < dp)) p = st;
+    }
+    const onStatue = !!p?.isStatue;
     const canAttack = !!p && g.phase !== 'over';
     let dx = 0, dz = 0, dy = 0, dist = Infinity;
     if (p) { const tp = p.body.pos; dx = tp.x - b.pos.x; dz = tp.z - b.pos.z; dy = tp.y - b.pos.y; dist = Math.hypot(dx, dz); }
+    const rd = onStatue ? Math.max(0, dist - STATUE_R) : dist;   // how far it has to reach (the statue is wide)
     // flyers hit from above; everyone else needs you on about their level
     const inReach = v.fly ? dy > -1.8 && dy < 1.0 : dy > -0.5 && dy < 1.4 * this.scale;
     if (this.attackT > 0) {
       const prev = this.attackT;
       this.attackT -= dt;
-      if (prev > 0.32 && this.attackT <= 0.32 && canAttack && dist < v.hitReach && inReach) g.hurtPlayer(v.dmg, b.pos, p);
+      if (prev > 0.32 && this.attackT <= 0.32 && canAttack && rd < v.hitReach && inReach) {
+        if (onStatue) g.hurtStatue(v.dmg); else g.hurtPlayer(v.dmg, b.pos, p);
+      }
     } else {
       this.attackCd -= dt;
-      if (canAttack && dist < v.reach && inReach && this.attackCd <= 0 && this.throwT <= 0) {
+      if (canAttack && rd < v.reach && inReach && this.attackCd <= 0 && this.throwT <= 0) {
         this.attackT = 0.75; this.attackCd = v.cd; g.sound.swing(b.pos);
       }
     }
@@ -301,12 +315,12 @@ export class Zombie extends Combatant {
     if (!canAttack) this.throwT = 0;
     const hold = v.throws && canAttack && this.updateThrow(dt, p, dist);
     let wx = 0, wz = 0, jump = false;
-    if (canAttack && dist > 0.85 * this.scale && !hold) {
+    if (canAttack && (onStatue ? rd > 0.45 * this.scale : dist > 0.85 * this.scale) && !hold) {
       // run straight at you only when you're on the same level and nothing is in the way
       const level = v.fly ? p.body.pos.y - map.surfaceAt(b.pos.x, b.pos.z) : dy;
       if (dist < 14 && Math.abs(level) < 1.2 && map.clearLine(b.pos, p.body.pos, 0.3 * this.scale)) { wx = dx / dist; wz = dz / dist; }
       else {
-        const t = map.flowTarget(b.pos, _t, Math.max(0.35, b.halfW));
+        const t = map.flowTarget(b.pos, _t, Math.max(0.35, b.halfW), onStatue ? map.statueDist : undefined);
         if (t) { const tx = t.x - b.pos.x, tz = t.z - b.pos.z, l = Math.hypot(tx, tz) || 1; wx = tx / l; wz = tz / l; }
         else { wx = dx / dist; wz = dz / dist; }
       }
@@ -578,6 +592,9 @@ export class ZombiesGame {
     this.bomb = { state: 'none' };
     this.lastZSound = 0; this.lastFlap = 0; this.pjId = 0;
     this.puTex = {};
+    // the Golden Tung Tung (one per scene: the solo and online games take turns with it)
+    this.statue = scene.userData.statue || (scene.userData.statue = new Statue(scene));
+    this.ready = new Set();
     // one hidden zombie of each type, so their materials get compiled with the map
     // (no hitch the first time one shows up)
     if (!scene.userData.zombieWarmup) {
@@ -607,16 +624,17 @@ export class ZombiesGame {
     this.setupPlayers(roster || [{ nid: 0, name: 'You', kind: 'local' }], net ? net.myId : null, knife);
     for (const a of this.remotes) a.spawnEpoch = 0;   // matches the joining player's first state
     this.resetBox();
-    this.betweenRounds = true; this.nextRoundAt = 2.5; this.toSpawn = 0;
+    this.betweenRounds = true; this.nextRoundAt = 0; this.toSpawn = 0;
+    this.ready = new Set(); this.roomVisits = {}; this.statue.room = null; this.overWhy = null;
     this.syncUnlocks(0);
+    this.prepareStatue();
     this.hud.zReset(this);
     this.introBanner();
   }
 
   introBanner() {
-    this.hud.banner('TUNG TUNG ZOMBIES', this.coop
-      ? 'Survive together: every round opens more of the village. Revive downed teammates with E.'
-      : 'Every round opens more of the village and a new gun at the Gun Shop. Cases hold better guns.', 'T', 4);
+    this.hud.banner('TUNG TUNG ZOMBIES', 'Defend the Golden Tung Tung: it moves to a new room every round and the zombies want it broken. '
+      + (this.coop ? 'Everyone presses N when ready.' : 'Press N when you are ready.'), 'T', 6);
   }
 
   setupPlayers(roster, myId, knife) {
@@ -666,6 +684,7 @@ export class ZombiesGame {
 
   stop() {
     this.running = false;
+    this.statue.hide(); this.removeStatueCollider();
     for (const z of this.zombies) z.deactivate();
     this.clearProjectiles();
     for (const pu of this.powerups) this.scene.remove(pu.sprite, pu.glow);
@@ -845,6 +864,12 @@ export class ZombiesGame {
     this.respawnPlayers();
     this.round = r;
     this.betweenRounds = false;
+    this.ready.clear();
+    this.statueWarnT = -99; this.statueLow = false;
+    const st = this.statue;
+    if (!st.alive) this.prepareStatue();
+    this.map.computeFlow([st.body.pos], this.map.statueDist);
+    this.hud.banner(`ROUND ${r}`, `Defend the Golden Tung Tung in the ${AREAS[st.room].name}!`, 'T', 3.5);
     // more players, more zombies
     this.toSpawn = Math.round(zombieCount(r) * (1 + 0.5 * (this.players.length - 1)));
     this.spawnT = 1.5;
@@ -856,14 +881,88 @@ export class ZombiesGame {
     if (r === 1) this.announce(null, 'Guns and ammo at the Gun Shop (E) · cases by the north door · I opens your inventory');
   }
 
+  // Round won: the next one waits until everyone presses N (solo: until you do).
   endRound() {
     this.betweenRounds = true;
-    this.nextRoundAt = this.time + BREAK_TIME;
+    this.ready.clear();
     this.sound.zRoundEnd();
     this.hud.zRound(this.round, true);
     this.syncUnlocks(this.round);
-    this.roundBanner(this.round);
-    this.net?.emit({ e: 'rend', r: this.round });
+    this.prepareStatue();
+    this.roundBanner(this.round, this.statue.room);
+    this.net?.emit({ e: 'rend', r: this.round, st: this.statue.room });
+  }
+
+  // between rounds: N says you're ready (press it again to take it back)
+  updateReady() {
+    if (this.input.pressed('KeyN')) this.toggleReady(this.player);
+    if (this.players.length && this.players.every((q) => this.ready.has(q.nid))) this.startRound(this.round + 1);
+  }
+  toggleReady(p) {
+    if (this.ready.has(p.nid)) this.ready.delete(p.nid); else this.ready.add(p.nid);
+    if (this.coop && this.ready.has(p.nid)) this.announce(p, `${p.name} is ready (${this.ready.size}/${this.players.length}) - press N when you are`);
+  }
+
+  // ----- the Golden Tung Tung -----
+  // Before each round (host / solo): move the statue to its next room, at full health.
+  prepareStatue() {
+    const st = this.statue, open = Object.keys(AREAS).filter((id) => AREAS[id].after <= this.cleared());
+    let room = chooseRoom(open, st.room, this.roomVisits), pos = statueSpot(this.map, room);
+    for (const id of open) { if (pos) break; room = id; pos = statueSpot(this.map, id); }
+    if (!pos) { room = START_AREA; pos = spawnPoint(0); }
+    this.roomVisits[room] = (this.roomVisits[room] || 0) + 1;
+    this.placeStatue(room, pos);
+    st.maxHp = st.hp = statueMaxHp(this.round + 1, this.players.length);
+    this.map.computeFlow([pos], this.map.statueDist);
+  }
+
+  // show it in a room (host and joining players): its model, and a box nobody walks or shoots through
+  placeStatue(room, pos) {
+    const st = this.statue, map = this.map;
+    this.removeStatueCollider();
+    st.place(room, pos, map.ceilAt(pos.x, pos.z));
+    map.colliders.push(st.collider); map.playerColliders.push(st.collider);
+  }
+  removeStatueCollider() {
+    for (const list of [this.map.colliders, this.map.playerColliders]) {
+      const i = list.indexOf(this.statue.collider); if (i >= 0) list.splice(i, 1);
+    }
+  }
+
+  // what zombies can go for during a round (null between rounds)
+  statueTarget() { return !this.betweenRounds && this.statue.alive && this.phase !== 'over' ? this.statue : null; }
+
+  // a point right against the statue (a coconut that hit it)
+  nearStatue(pos, pad = 0.25) {
+    const c = this.statue.collider;
+    return this.statue.alive && pos.x > c.x0 - pad && pos.x < c.x1 + pad && pos.z > c.z0 - pad && pos.z < c.z1 + pad && pos.y > c.y0 - pad && pos.y < c.y1 + pad;
+  }
+
+  hurtStatue(dmg) {
+    const st = this.statue;
+    if (!st.alive || this.betweenRounds || this.phase === 'over') return;
+    st.hp -= dmg; st.hit();
+    if (this.time - (this.statueCrackT || 0) > 0.25) { this.statueCrackT = this.time; this.sound.boardBreak(st.body.pos); }
+    const name = AREAS[st.room].name;
+    if (st.hp > 0 && st.hp / st.maxHp < 0.3 && !this.statueLow) {
+      this.statueLow = true; this.statueWarnT = this.time;
+      this.announce(null, `The Golden Tung Tung is about to break! (${name})`);
+    } else if (this.time - this.statueWarnT > 12) {
+      this.statueWarnT = this.time;
+      this.announce(null, `The Golden Tung Tung is under attack in the ${name}!`);
+    }
+    if (st.hp <= 0) { st.hp = 0; this.statueBreakFx(); this.gameOver('statue'); }
+  }
+
+  // it shatters into gold (host and joining players)
+  statueBreakFx() {
+    const st = this.statue;
+    if (!st.root.visible) return;
+    st.chestPos(_v);
+    this.fx.burst(_v, 0xffc83a, 40, 7);
+    this.fx.burst(_v.setY(_v.y + 0.8), 0xfff0a0, 24, 5);
+    this.sound.explosion(st.body.pos);
+    st.hide(); this.removeStatueCollider();
   }
 
   // Open every area due after `cleared` rounds survived (and the doors between open areas), and
@@ -875,14 +974,15 @@ export class ZombiesGame {
   }
 
   // "ROUND 3 SURVIVED · Drum Tower is open · New at the Gun Shop: Scout"
-  roundBanner(r) {
+  roundBanner(r, room) {
     const areas = Object.values(AREAS).filter((a) => a.after === r).map((a) => a.name);
     const guns = ZOMBIE_SHOP.filter((it) => it.after === r).map((it) => WEAPONS[it.key].name);
     const parts = [];
     if (areas.length) parts.push(`${areas.join(' and ')} ${areas.length > 1 ? 'are' : 'is'} open`);
     if (guns.length) parts.push(`New at the Gun Shop: ${guns.join(', ')}`);
-    if (parts.length) this.hud.banner(`ROUND ${r} SURVIVED`, parts.join(' · '), 'T', 5);
-    else this.hud.center(`Round ${r} survived`, 3);
+    if (AREAS[room]) parts.push(`Next: the Golden Tung Tung moves to the ${AREAS[room].name}`);
+    parts.push('Press N when ready');
+    this.hud.banner(`ROUND ${r} SURVIVED`, parts.join(' · '), 'T', 6);
   }
 
   // co-op: players who bled out come back at the start of the next round, next to a teammate
@@ -912,6 +1012,15 @@ export class ZombiesGame {
       for (const s of this.map.groundSpawns) if (this.activeAreas.has(s.area) && (flyer || !s.fly)) all.push({ pos: s.pos, weight: 1 });
     }
     if (!all.length) return null;
+    // not right on top of the Golden Tung Tung, but more of them round it
+    const st = this.statueTarget();
+    if (st) {
+      for (let i = all.length - 1; i >= 0; i--) {
+        const d = flat(all[i].pos, st.body.pos);
+        if (d < 6) all.splice(i, 1); else if (d < 30) all[i].weight *= 2;
+      }
+      if (!all.length) return null;
+    }
     let pool = all.filter((s) => { const d = near(s.pos); return d > 7 && d < 42; });
     if (!pool.length) pool = all.filter((s) => near(s.pos) > 5);
     if (!pool.length) pool = all;
@@ -1253,12 +1362,17 @@ export class ZombiesGame {
     if (this.phase !== 'over' && !this.players.some((o) => o.alive && !o.downed)) this.gameOver();
   }
 
-  gameOver() {
-    this.phase = 'over'; this.overT = 3.5;
+  // why: 'statue' when the Golden Tung Tung broke (otherwise everyone went down)
+  gameOver(why = null) {
+    this.phase = 'over'; this.overT = 3.5; this.overWhy = why;
     for (const p of this.players) { if (p.isAvatar && p.alive) p.onDeath(); p.health = 0; p.alive = false; p.scoped = false; p.downed = false; }
-    this.hud.center('GAME OVER', 3.5);
+    this.overMessage();
     this.sound.roundEnd(false);
-    this.net?.emit({ e: 'over', r: this.round, st: this.stats() });
+    this.net?.emit({ e: 'over', r: this.round, st: this.stats(), w: why || undefined });
+  }
+  overMessage() {
+    this.hud.center('GAME OVER', 3.5);
+    if (this.overWhy === 'statue') this.hud.banner('THE GOLDEN TUNG TUNG IS BROKEN', `The zombies smashed it in the ${AREAS[this.statue.room]?.name || 'village'}`, 'T', 3.5);
   }
 
   stats() { return this.players.map((p) => [p.nid, p.kills, p.headshots, p.points, p.downs]); }
@@ -1266,6 +1380,7 @@ export class ZombiesGame {
     const p = this.player;
     return {
       round: this.round, kills: p.kills, headshots: p.headshots, points: p.points, coop: this.coop,
+      why: this.overWhy, room: AREAS[this.statue.room]?.name || '',
       players: this.players.map((q) => ({ name: q.name, kills: q.kills, headshots: q.headshots, points: q.points, downs: q.downs, me: q === p })),
     };
   }
@@ -1358,8 +1473,11 @@ export class ZombiesGame {
     const it = this.interaction, p = this.player;
     if (!it) {
       if (this.betweenRounds && this.phase !== 'over') {
-        const left = Math.max(0, Math.ceil(this.nextRoundAt - this.time));
-        return `Next wave in ${left}s — press N to start it now`;
+        const room = AREAS[this.statue.room]?.name || 'village', nr = this.round + 1;
+        if (!this.coop) return `Round ${nr}: defend the Golden Tung Tung in the ${room} — press N to start`;
+        const n = `${this.ready.size}/${this.players.length} ready`;
+        return this.ready.has(this.player.nid) ? `You're ready (${n}) — waiting for your team · N to cancel`
+          : `Round ${nr}: defend the Golden Tung Tung in the ${room} — press N when ready (${n})`;
       }
       return '';
     }
@@ -1597,7 +1715,12 @@ export class ZombiesGame {
     }
     if (type === 'instakill') this.effects.instakill = 30;
     if (type === 'double') this.effects.double = 30;
-    if (type === 'carpenter') { for (const w of this.map.windows) this.map.setBoards(w, w.max); for (const p of this.players) this.addPoints(p, 200); }
+    if (type === 'carpenter') {
+      for (const w of this.map.windows) this.map.setBoards(w, w.max);
+      for (const p of this.players) this.addPoints(p, 200);
+      const st = this.statue;   // ...and patches up half the Golden Tung Tung
+      if (st.alive && st.hp < st.maxHp) { st.hp = Math.min(st.maxHp, st.hp + st.maxHp * 0.5); this.statueLow = st.hp / st.maxHp < 0.3; }
+    }
     if (type === 'nuke') {
       for (const z of this.zombies) if (z.active && z.alive && !z.v.boss) this.killZombie(z, false, false, true, taker);
       for (const p of this.players) this.addPoints(p, 400);
@@ -1659,7 +1782,8 @@ export class ZombiesGame {
   clearShot(z, p) {
     const o = z.handPos(_v), t = p.chestPos(_v2);
     _d.copy(t).sub(o);
-    const len = _d.length();
+    let len = _d.length();
+    if (p.isStatue) len = Math.max(0, len - STATUE_R * 1.5);   // (stop short of its own box)
     if (len < 0.1) return true;
     _d.divideScalar(len);
     return !raycast(o, _d, len, this.map.colliders, _hit) && this.map.rayGround(o, _d, len) === null;
@@ -1723,6 +1847,7 @@ export class ZombiesGame {
         if (pos.y <= this.map.groundAt(pos.x, pos.z)) done = true;
       }
       if (victim) this.hurtPlayer(pj.dmg, _v, victim);
+      else if (done && hits && this.nearStatue(pos)) this.hurtStatue(pj.dmg);
       if (victim || done) this.popProjectile(pj, hits);
     }
   }
@@ -1839,9 +1964,8 @@ export class ZombiesGame {
       return;
     }
 
-    if (this.betweenRounds && this.input.pressed('KeyN') && this.time < this.nextRoundAt) this.nextRoundAt = this.time;
-    if (this.betweenRounds && this.time >= this.nextRoundAt) this.startRound(this.round + 1);
-    if (!this.betweenRounds) {
+    if (this.betweenRounds) this.updateReady();
+    else {
       this.spawnT -= dt;
       if (this.toSpawn > 0 && this.spawnT <= 0 && this.aliveZombies() < MAX_ALIVE) {
         if (this.spawnNext()) this.toSpawn--;
@@ -1873,6 +1997,7 @@ export class ZombiesGame {
     this.updatePowerups(dt);
     this.updateBox(dt);
     this.map.updateDoors(dt);
+    this.statue.animate(dt, this.time, this.camera.position);
     this.updateSpectate();
 
     if (!this.betweenRounds && this.toSpawn === 0 && !this.bossDue && this.aliveZombies() === 0) this.endRound();
@@ -1941,6 +2066,9 @@ export class ZombiesGame {
       bx: [box.state, box.weapon || '', box.owner ? box.owner.nid : -1],
       ef: [r1(this.effects.instakill), r1(this.effects.double)],
       pu: this.powerups.map((q) => [q.id, q.type, r2(q.pos.x), r2(q.pos.y), r2(q.pos.z), r1(q.t)]),
+      sa: this.statue.alive ? [this.statue.room, r2(this.statue.body.pos.x), r2(this.statue.body.pos.y), r2(this.statue.body.pos.z),
+        Math.max(0, Math.ceil(this.statue.hp)), this.statue.maxHp] : null,
+      rd: [...this.ready],
     };
   }
 
@@ -1977,8 +2105,8 @@ export class ZombiesGame {
         if (it) this.use(it, p);
         break;
       }
-      case 'next':
-        if (this.betweenRounds && this.time < this.nextRoundAt) this.nextRoundAt = this.time;
+      case 'next':   // ready (or not) for the next round
+        if (this.betweenRounds) this.toggleReady(p);
         break;
       case 'iv':     // the Gun Shop or the inventory (see invAction)
         this.invAction(p, ev);

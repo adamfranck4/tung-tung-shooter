@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { ZombiesGame, Zombie, boxColor, unpackStash } from './zombies.js';
 import { WEAPONS } from './weapons.js';
-import { START_AREA } from './zmap.js';
+import { START_AREA, AREAS } from './zmap.js';
 import { F, r1, r2, r3, packSlots, applyInventory, showShot } from './avatar.js';
 
 const _v = new THREE.Vector3();
@@ -23,7 +23,8 @@ export class ZombiesClient extends ZombiesGame {
     this.setupPlayers(roster, net.myId, knife);
     this.player.spawnEpoch = 0; this.player.invVer = 0;
     this.resetBox();
-    this.betweenRounds = true; this.nextRoundAt = 2.5;
+    this.betweenRounds = true; this.nextRoundAt = 0;
+    this.ready = new Set(); this.statue.room = null; this.overWhy = null;
     this.syncUnlocks(0);
     this.hud.zReset(this);
     this.introBanner();
@@ -46,7 +47,7 @@ export class ZombiesClient extends ZombiesGame {
       if (this.overT <= 0) { this.running = false; this.onGameOver?.(this.finalStats()); }
       return;
     }
-    if (this.betweenRounds && this.input.pressed('KeyN') && this.time < this.nextRoundAt) this.net.emit({ e: 'next' });
+    if (this.betweenRounds && this.input.pressed('KeyN')) this.net.emit({ e: 'next' });   // ready / not ready
     if (p.alive) {
       if (p.downed) { p.eyeH += (0.55 - p.eyeH) * Math.min(1, dt * 6); p.applyMovement(dt, 0, 0, 1, false); p.lastStand(dt); }
       else p.update(dt);
@@ -57,6 +58,7 @@ export class ZombiesClient extends ZombiesGame {
     this.animatePowerups(dt);
     this.animateBox(dt);
     this.map.updateDoors(dt);
+    this.statue.animate(dt, this.time, this.camera.position);
     this.updateSpectate();
   }
 
@@ -201,6 +203,15 @@ export class ZombiesClient extends ZombiesGame {
       keep.add(pu);
     }
     for (const pu of this.powerups.slice()) if (!keep.has(pu)) this.removePowerup(pu);
+    // the Golden Tung Tung: where it is and how much health it has left
+    const st = this.statue;
+    if (Array.isArray(s.sa)) {
+      const [room, x, y, z, hp, max] = s.sa;
+      if (room !== st.room || !st.alive || Math.abs(st.body.pos.x - x) + Math.abs(st.body.pos.z - z) > 0.1) this.placeStatue(room, _v.set(x, y, z));
+      if (hp < st.hp) st.hit();
+      st.hp = hp; st.maxHp = max || 1;
+    } else if (st.alive) { st.hide(); this.removeStatueCollider(); }
+    this.ready = new Set(Array.isArray(s.rd) ? s.rd : []);
   }
 
   onHostEvent(ev) {
@@ -209,12 +220,13 @@ export class ZombiesClient extends ZombiesGame {
       case 'round':
         this.round = ev.r; this.betweenRounds = false;
         this.hud.zRound(ev.r, true); this.sound.zRoundStart();
+        if (AREAS[this.statue.room]) this.hud.banner(`ROUND ${ev.r}`, `Defend the Golden Tung Tung in the ${AREAS[this.statue.room].name}!`, 'T', 3.5);
         break;
       case 'rend':
         this.round = ev.r; this.betweenRounds = true;
         this.sound.zRoundEnd(); this.hud.zRound(ev.r, true);
         this.syncUnlocks(ev.r);
-        this.roundBanner(ev.r);
+        this.roundBanner(ev.r, ev.st);
         break;
       case 'door': {
         const d = this.map.doors.find((x) => x.id === ev.id);
@@ -264,7 +276,9 @@ export class ZombiesClient extends ZombiesGame {
       if (q) Object.assign(q, { kills, headshots, points, downs });
     }
     for (const q of this.players) { if (q.isAvatar && q.alive) q.onDeath(); q.alive = false; q.downed = false; q.scoped = false; q.health = 0; }
-    this.hud.center('GAME OVER', 3.5);
+    this.overWhy = ev.w === 'statue' ? 'statue' : null;
+    if (this.overWhy) this.statueBreakFx();
+    this.overMessage();
     this.sound.roundEnd(false);
   }
 

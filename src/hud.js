@@ -11,6 +11,11 @@ const MINI_RANGE = 32;   // Zombies minimap: meters from the middle to the edge
 const MINI_K = 8;        // ...and its picture of the village: pixels a meter
 
 const $ = (id) => document.getElementById(id);
+// a map marker for the Golden Tung Tung
+function diamond(ctx, x, y, r, color) {
+  ctx.beginPath(); ctx.moveTo(x, y - r); ctx.lineTo(x + r * 0.75, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r * 0.75, y); ctx.closePath();
+  ctx.fillStyle = color; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(0,0,0,0.85)'; ctx.stroke();
+}
 // player names come from other people online: never put them in HTML unescaped
 export const esc = (t) => String(t).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 
@@ -187,6 +192,7 @@ export class Hud {
     const bz = g.phase !== 'over' && g.zombies.find((z) => z.active && z.alive && z.kind === 'boss');
     this.zBoss(bz ? { name: bz.bossName || 'BOSS', color: bz.bossColor || '#ff5a1a',
       frac: Math.max(0, Math.min(1, bz.puppet ? bz.hpFrac ?? 1 : bz.health / bz.maxHealth)) } : null);
+    this.zStatue(g);
     const spec = !p.alive && g.phase !== 'over' && g.spectating;
     this.spectate(spec ? `Spectating <b>${esc(spec.name)}</b><small>You'll be back next round &middot; click to switch player</small>` : null);
     this.toggle('buymenu', false);   // (no B menu in Zombies: the Gun Shop and inventory are their own menus, see zui.js)
@@ -256,6 +262,15 @@ export class Hud {
       ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.85)'; ctx.fillStyle = color;
       ctx.strokeText(q.name, x, y + 8); ctx.fillText(q.name, x, y + 8);
     });
+    // the Golden Tung Tung: a gold diamond (on the rim when it's further away)
+    const st = g.statue;
+    if (st && st.alive) {
+      let [x, y] = toMini(st.body.pos.x, st.body.pos.z);
+      const dx = x - R, dy = y - R, d = Math.hypot(dx, dy), edge = R - 9;
+      if (d > edge) { x = R + dx / d * edge; y = R + dy / d * edge; }
+      const pulse = 1 + Math.sin(performance.now() / 180) * 0.12;
+      diamond(ctx, x, y, 7 * pulse, st.hp / st.maxHp < 0.3 && !g.betweenRounds ? '#ff6a3a' : '#ffd23a');
+    }
     // you, in the middle, pointing up
     arrow(R, R, 0, me === p ? MAP_COLORS[Math.max(0, g.players.indexOf(p)) % MAP_COLORS.length] : '#ffffff', 1.15);
     ctx.restore();
@@ -314,6 +329,35 @@ export class Hud {
     return c;
   }
 
+  // The Golden Tung Tung panel (top middle): which room it's in, how far away, and its health.
+  // Between rounds it says where the next round will be.
+  zStatue(g) {
+    const st = g.statue, show = !!(st && st.alive && AREAS[st.room] && g.phase !== 'over');
+    let e = this.statueEl;
+    if (!e) {
+      if (!show) return;
+      e = this.statueEl = document.createElement('div');
+      e.id = 'z-statue'; e.innerHTML = '<div class="t"><b></b><span></span></div><div class="bar"><i></i></div>';
+      this.el.appendChild(e);
+    }
+    e.style.display = show ? '' : 'none';
+    if (!show) return;
+    const p = g.player, me = (!p.alive && g.spectating) || p;
+    const d = Math.round(Math.hypot(me.body.pos.x - st.body.pos.x, me.body.pos.z - st.body.pos.z));
+    const room = AREAS[st.room].name + (st.body.pos.y > FL - 1 ? ' (upstairs)' : '');
+    const title = g.betweenRounds ? 'NEXT ROUND · GOLDEN TUNG TUNG' : 'DEFEND THE GOLDEN TUNG TUNG';
+    const sub = d > 6 ? `${room} · ${d}m` : room;
+    const frac = Math.max(0, Math.min(1, st.hp / st.maxHp));
+    const key = `${title}|${sub}`;
+    if (this.cache.stKey !== key) { this.cache.stKey = key; e.querySelector('b').textContent = title; e.querySelector('span').textContent = sub; }
+    const w = (frac * 100).toFixed(1) + '%';
+    if (this.cache.stW !== w) { this.cache.stW = w; e.querySelector('i').style.width = w; }
+    const low = !g.betweenRounds && frac < 0.3;
+    if (this.cache.stLow !== low) { this.cache.stLow = low; e.classList.toggle('low', low); }
+    const hit = st.flashT > 0;
+    if (this.cache.stHit !== hit) { this.cache.stHit = hit; e.classList.toggle('hit', hit); }
+  }
+
   // b: { name, color, frac } or null (hidden)
   zBoss(b) {
     let e = this.bossEl;
@@ -348,8 +392,21 @@ export class Hud {
     ctx.drawImage(this.zmapBase, 0, 0);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const k = W / ZW;
-    // everyone still in the game: an arrow the way they face, or a red cross when they're down
+    // the Golden Tung Tung
     const list = [];
+    const st = g.statue;
+    if (st && st.alive && AREAS[st.room]) {
+      const x = st.body.pos.x * k, z = st.body.pos.z * k, t = (performance.now() / 1100) % 1;
+      ctx.strokeStyle = `rgba(255,210,58,${(1 - t) * 0.9})`; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(x, z, 9 + t * 16, 0, 7); ctx.stroke();
+      diamond(ctx, x, z, 9, '#ffd23a');
+      ctx.font = '700 13px Rajdhani, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.85)'; ctx.fillStyle = '#ffd23a';
+      ctx.strokeText('GOLDEN TUNG TUNG', x, z - 12); ctx.fillText('GOLDEN TUNG TUNG', x, z - 12);
+      list.push(`<span class="zm-p"><i style="background:#ffd23a"></i>Golden Tung Tung<small>${esc(AREAS[st.room].name)}`
+        + `${g.betweenRounds ? ' · next round' : ` · ${Math.max(0, Math.ceil(st.hp))} HP`}</small></span>`);
+    }
+    // everyone still in the game: an arrow the way they face, or a red cross when they're down
     g.players.forEach((q, i) => {
       const color = MAP_COLORS[i % MAP_COLORS.length], me = q === g.player;
       const where = !q.alive ? 'out until next round' : (g.map.areaAt(q.body.pos) || 'on the path') + (q.body.pos.y > FL - 1 ? ' (upstairs)' : '');

@@ -150,10 +150,11 @@ function buildZombiesWorld() {
   const solo = new ZombiesGame(ctx), client = new ZombiesClient(ctx);
   const onGameOver = (s) => {
     const rounds = `${s.round} round${s.round === 1 ? '' : 's'}`;
-    if (!s.coop) { showEnd('GAME OVER', `You survived ${rounds} · ${s.kills} kills · ${s.headshots} headshots`); return; }
+    const why = s.why === 'statue' ? `The Golden Tung Tung was smashed in the ${s.room} · ` : '';
+    if (!s.coop) { showEnd('GAME OVER', `${why}You reached round ${s.round} · ${s.kills} kills · ${s.headshots} headshots`); return; }
     const rows = s.players.slice().sort((a, b) => b.points - a.points).map((q) => `<tr class="${q.me ? 'me' : ''}"><td>${esc(q.name)}</td>`
       + `<td class="num">${q.kills}</td><td class="num">${q.headshots}</td><td class="num">${q.downs}</td><td class="num">${q.points}</td></tr>`).join('');
-    showEnd('GAME OVER', `Your team survived ${rounds}`,
+    showEnd('GAME OVER', `${why}Your team survived ${rounds}`,
       `<table><tr><th>Player</th><th class="num">Kills</th><th class="num">HS</th><th class="num">Downs</th><th class="num">Points</th></tr>${rows}</table>`);
   };
   solo.onGameOver = client.onGameOver = onGameOver;

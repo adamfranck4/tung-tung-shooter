@@ -475,6 +475,7 @@ export class ZMap {
     this.buildNav();
     this.buildCeilings();
     this.dist = new Float32Array(GW * GH).fill(Infinity);
+    this.statueDist = new Float32Array(GW * GH).fill(Infinity);   // paths to the Golden Tung Tung
     this.groundSpawns = GROUND_SPAWNS.map((s) => ({ pos: new THREE.Vector3(s.pos[0], this.surfaceAt(s.pos[0], s.pos[2]), s.pos[2]), area: s.area, fly: !!s.fly }));
   }
 
@@ -1528,8 +1529,9 @@ export class ZMap {
 
   // Distance field spreading out from the target(s): one position, or a list (co-op), in which
   // case each zombie ends up heading for whichever player is closest along the paths.
-  computeFlow(targets) {
-    const dist = this.dist; dist.fill(Infinity);
+  // (dist: which field to fill; the Golden Tung Tung statue has its own, see zstatue.js)
+  computeFlow(targets, dist = this.dist) {
+    dist.fill(Infinity);
     const heap = new Heap();
     for (const target of Array.isArray(targets) ? targets : [targets]) {
       const s = this.nearestWalkable(Math.floor(target.x / C), Math.floor(target.z / C));
@@ -1554,22 +1556,22 @@ export class ZMap {
 
   // Next point to walk to from `pos` following the flow field (or null if lost). rad: how wide the
   // walker is, for cutting corners.
-  flowTarget(pos, out, rad = 0.35) {
+  flowTarget(pos, out, rad = 0.35, dist = this.dist) {
     const cx = Math.floor(pos.x / C), cz = Math.floor(pos.z / C);
     if (!this.walkable(cx, cz)) {
       const n = this.nearestWalkable(cx, cz);
       if (!n) return null;
       // right next to the target (you're hugging a pillar, a perk machine...): no path step, head
       // straight for you instead of dithering back and forth at the edge of the blocked cell
-      if (this.dist[n[1] * GW + n[0]] === 0) return null;
+      if (dist[n[1] * GW + n[0]] === 0) return null;
       return out.set(n[0] * C + 1, 0, n[1] * C + 1);
     }
     const step = (x, z) => {
-      let best = null, bd = this.dist[z * GW + x];
+      let best = null, bd = dist[z * GW + x];
       for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
         if (!dx && !dz) continue;
         if (!this.canStep(x, z, dx, dz)) continue;
-        const d = this.dist[(z + dz) * GW + x + dx];
+        const d = dist[(z + dz) * GW + x + dx];
         if (d < bd) { bd = d; best = [x + dx, z + dz]; }
       }
       return best;
