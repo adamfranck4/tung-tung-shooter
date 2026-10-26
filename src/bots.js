@@ -26,38 +26,43 @@ function part(parent, w, h, d, color, x, y, z) {
 }
 let flashTex = null;
 
-// stick limb between two points
+// round wooden limb between two points: a capsule, so elbows and knees come out rounded
+const capsules = new Map();
+function capsuleGeo(thick, len) {
+  const key = `${thick.toFixed(3)}:${len.toFixed(3)}`;
+  if (!capsules.has(key)) capsules.set(key, new THREE.CapsuleGeometry(thick / 2, Math.max(0.001, len - thick * 0.6), 3, 8).rotateX(Math.PI / 2));
+  return capsules.get(key);
+}
 function stick(parent, from, to, thick, color) {
   const a = new THREE.Vector3(...from), b = new THREE.Vector3(...to);
-  const m = new THREE.Mesh(boxGeo, mat(color));
+  const m = new THREE.Mesh(capsuleGeo(thick, a.distanceTo(b)), mat(color));
   m.position.copy(a).add(b).multiplyScalar(0.5);
-  m.scale.set(thick, thick, a.distanceTo(b));
   m.lookAt(b);
   m.castShadow = true;
   parent.add(m);
   return m;
 }
 
-// Colors by side. 5v5: your teammates are green, enemies red. Zombies are a darker red, and the
-// other zombie types each have their own color. pale: tint a pale wood instead of the tan one, so
-// strong colors show. legs / arms: one color per limb (the rainbow giant).
+// Colors by side: every Tung Tung is natural wood, tinted softly so you can still tell them apart.
+// 5v5: your teammates are greenish wood, enemies reddish. Zombies are a darker red wood, and the
+// other zombie types each have their own tint. legs / arms: one color per limb (the rainbow giant).
 export const LOOKS = {
-  default: { body: 0xffd27a, limb: 0xb0682c, hand: 0xd08a48 },
-  friend:  { body: 0x9ee072, limb: 0x5d9236, hand: 0x8cc45a },
-  enemy:   { body: 0xff7354, limb: 0xb0412a, hand: 0xd8664a },
-  zombie:  { body: 0xc8503e, limb: 0x7a2a20, hand: 0x9a3a2c },
-  zfast:   { body: 0xffd81a, limb: 0x9a7c08, hand: 0xd2aa10, pale: true },
-  zcrawl:  { body: 0x8a5530, limb: 0x4a2c16, hand: 0x6a4224, pale: true },
-  zfly:    { body: 0x7446f0, limb: 0x3e1a80, hand: 0x5c30b8, pale: true },
-  zthrow:  { body: 0xff82c8, limb: 0xb4447e, hand: 0xe062a6, pale: true },
+  default: { body: 0xf2d2a4, limb: 0xb88a58, hand: 0xd2a874 },
+  friend:  { body: 0xbde48a, limb: 0x84a64e, hand: 0xa6c472 },
+  enemy:   { body: 0xff9878, limb: 0xb85a40, hand: 0xd8806a },
+  zombie:  { body: 0xd88a78, limb: 0x8a4636, hand: 0xa45a48 },
+  zfast:   { body: 0xfff080, limb: 0xc4a43c, hand: 0xdcc25c },
+  zcrawl:  { body: 0xb48660, limb: 0x6c4a2e, hand: 0x8a6440 },
+  zfly:    { body: 0xb8a4ff, limb: 0x6a52b0, hand: 0x8a72cc },
+  zthrow:  { body: 0xffbae0, limb: 0xc47aa2, hand: 0xdc98bc },
   zgiant:  { body: 0xffffff, limb: 0xffffff, hand: 0xffd23a, rainbow: true, legs: [0xff4a3a, 0x3a86ff], arms: [0x3ad06a, 0xb05ae6] },
   // the boss: repainted for each visit (see BOSS_LOOKS in zombies.js)
-  zboss:   { body: 0x2a1410, limb: 0xff5a1a, hand: 0xffb02a, pale: true },
+  zboss:   { body: 0x2a1410, limb: 0xff5a1a, hand: 0xffb02a },
 };
 // which look each zombie type uses (see VARIANTS in zombies.js)
 const ZOMBIE_LOOK = { normal: 'zombie', big: 'zombie', fast: 'zfast', crawler: 'zcrawl', flyer: 'zfly', thrower: 'zthrow', giant: 'zgiant', boss: 'zboss' };
 const bodyMats = {}, faceMats = {};
-let skinTex = null, paleTex = null, faceTex = null, rainbow = null, rainbowAt = 0;
+let skinTex = null, faceTex = null, rainbow = null, rainbowAt = 0;
 function getBodyMat(look) {
   if (!bodyMats[look]) {
     const L = LOOKS[look];
@@ -65,9 +70,8 @@ function getBodyMat(look) {
       rainbow = rainbow || rainbowSkin(logHeightAt);
       bodyMats[look] = matte({ map: rainbow.tex });
     } else {
-      if (L.pale) paleTex = paleTex || tungSkinTexture('#f6eee2');
-      else skinTex = skinTex || tungSkinTexture();
-      bodyMats[look] = matte({ map: L.pale ? paleTex : skinTex, color: L.body });
+      skinTex = skinTex || tungSkinTexture();
+      bodyMats[look] = matte({ map: skinTex, color: L.body }, { roughness: 0.72 });   // polished wood
     }
   }
   return bodyMats[look];
@@ -105,8 +109,9 @@ const faceGeo = new THREE.CylinderGeometry(0.2425, 0.258, 0.46, 20, 1, true, Mat
 const sphereGeo = new THREE.SphereGeometry(1, 18, 14);
 const noseGeo = new THREE.CapsuleGeometry(0.036, 0.15, 6, 12);
 const browGeo = new THREE.CapsuleGeometry(0.018, 0.1, 4, 8);
-const batGeo = new THREE.CylinderGeometry(0.03, 0.075, 0.9, 14);     // thick end at the bottom, like the reference
-const knobGeo = new THREE.CylinderGeometry(0.034, 0.034, 0.03, 12);
+const batGeo = new THREE.CylinderGeometry(0.032, 0.082, 0.95, 16);    // thick end at the bottom, like the meme
+const gripGeo = new THREE.CylinderGeometry(0.036, 0.038, 0.2, 12);
+const knobGeo = new THREE.CylinderGeometry(0.045, 0.04, 0.035, 14);
 
 function sphere(parent, color, sx, sy, sz, x, y, z) {
   const m = new THREE.Mesh(sphereGeo, mat(color));
@@ -115,20 +120,22 @@ function sphere(parent, color, sx, sy, sz, x, y, z) {
   return m;
 }
 
-// dark wooden baseball bat, held by the thin end (grip at the group origin, barrel along -y)
+// wooden baseball bat with a taped grip, held by the thin end (grip at the group origin, barrel along -y)
 function makeBat() {
   const g = new THREE.Group();
-  const barrel = new THREE.Mesh(batGeo, mat(0x7a4526));
-  barrel.position.y = -0.38; barrel.castShadow = true; g.add(barrel);
-  const cap = new THREE.Mesh(sphereGeo, mat(0x8a5230)); cap.scale.set(0.075, 0.03, 0.075); cap.position.y = -0.83; g.add(cap);
-  const knob = new THREE.Mesh(knobGeo, mat(0x5a3218)); knob.position.y = 0.08; g.add(knob);
+  const barrel = new THREE.Mesh(batGeo, mat(0xb07a46));
+  barrel.position.y = -0.4; barrel.castShadow = true; g.add(barrel);
+  const cap = new THREE.Mesh(sphereGeo, mat(0xa06c3c)); cap.scale.set(0.082, 0.03, 0.082); cap.position.y = -0.875; g.add(cap);
+  const grip = new THREE.Mesh(gripGeo, mat(0x2b2724)); grip.position.y = -0.02; g.add(grip);
+  const knob = new THREE.Mesh(knobGeo, mat(0x8a5a30)); knob.position.y = 0.1; g.add(knob);
   return g;
 }
 
+// rounded mitten hand with a thumb
 function hand(parent, x, y, z, color) {
   const h = new THREE.Group(); h.position.set(x, y, z); parent.add(h);
-  part(h, 0.07, 0.065, 0.08, color, 0, 0, 0);
-  part(h, 0.028, 0.028, 0.05, color, -0.038, 0.022, -0.02);
+  sphere(h, color, 0.042, 0.038, 0.048, 0, 0, 0);
+  sphere(h, color, 0.016, 0.016, 0.028, -0.036, 0.02, -0.022);
   return h;
 }
 
@@ -140,12 +147,13 @@ function sideFace(torso, look, bodyMat, z) {
   const pupils = [];
   for (const sx of [-1, 1]) {
     const eye = new THREE.Group(); eye.position.set(sx * 0.095, 0.99, -0.226); torso.add(eye);
-    sphere(eye, z ? 0xe2d7a0 : 0xf8f6f0, 0.078, 0.088, 0.058, 0, 0, 0);
+    // wide, staring eyes: big whites and small pupils, like the meme
+    sphere(eye, z ? 0xe2d7a0 : 0xf8f6f0, 0.084, 0.096, 0.06, 0, 0, 0);
     const lookAt = new THREE.Group(); eye.add(lookAt);
-    const iris = sphere(lookAt, 0x2a1a10, 0.042, 0.045, 0.022, sx * -0.008, 0.004, -0.046);
+    const iris = sphere(lookAt, 0x2a1a10, 0.032, 0.034, 0.02, sx * -0.006, 0.004, -0.05);
     if (z) iris.material = glowRed;     // glowing red zombie eyes
-    sphere(lookAt, 0x050505, 0.026, 0.028, 0.014, sx * -0.008, 0.004, -0.06);
-    if (!z) sphere(lookAt, 0xffffff, 0.009, 0.009, 0.006, sx * -0.008 + 0.012, 0.018, -0.068);
+    sphere(lookAt, 0x050505, 0.02, 0.021, 0.012, sx * -0.006, 0.004, -0.062);
+    if (!z) sphere(lookAt, 0xffffff, 0.007, 0.007, 0.005, sx * -0.006 + 0.01, 0.016, -0.07);
     pupils.push(lookAt);
     // carved brow ridge following the curve of the log
     const brow = new THREE.Mesh(browGeo, bodyMat);
@@ -249,7 +257,7 @@ function buildModel(team, opts = {}) {
   const legR = new THREE.Group(); legR.position.set(0.11, 0.64, 0); root.add(legR);
   [legL, legR].forEach((leg, i) => {
     stick(leg, [0, 0.03, 0], [0, -0.58, 0], 0.065, L.legs?.[i] ?? L.limb);
-    part(leg, 0.1, 0.05, 0.18, L.hand, 0, -0.615, -0.04);   // foot
+    sphere(leg, L.hand, 0.055, 0.032, 0.1, 0, -0.62, -0.04);   // rounded foot
   });
 
   const torso = new THREE.Group(); torso.position.set(0, 0.6, 0); root.add(torso);

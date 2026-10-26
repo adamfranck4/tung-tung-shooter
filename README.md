@@ -15,8 +15,9 @@ No build step, no server code, no assets to download — every texture, model an
   slow defaults that take map control and then call the weaker site, and fakes. They use every route
   (long, short / catwalk, tunnels, mid to B), sometimes leave a lurker, and avoid repeating recent plans.
   CTs vary their setup (2-1-2 or stacking a site) and can rotate back after falling for a fake
-- Every fighter is a "Tung Tung Tung Sahur" kentongan log: dome top, bulging eyes, toothy grin, bare feet,
-  and a baseball bat (slung on the back, swung in melee). Team color is the hanging rope: orange = T, blue = CT.
+- Every fighter is a "Tung Tung Tung Sahur" wooden log, like the meme: rounded top, wide staring eyes, a big grin,
+  thin round arms and legs, and a baseball bat (slung on the back, swung in melee). Everyone is natural wood with a
+  soft tint: your teammates greenish, enemies red-orange, and each zombie type its own color.
 - Knife skins picked in the menu: Knife, Karambit, Flip, Butterfly (with flips), Sword, Katana, Kuronami no Yaiba.
   Skins are cosmetic. Every knife has its own CS2-style draw and inspect (**F**) animation, held in a jointed hand
   that lets go for spins and tosses. Attacks alternate forehand and backhand slashes with a glowing trail. The Katana

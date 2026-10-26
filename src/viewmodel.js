@@ -53,10 +53,11 @@ function cyl(parent, r, len, color, x, y, z) {
   const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 12), mat(color));
   m.rotation.x = Math.PI / 2; m.position.set(x, y, z); parent.add(m); return m;
 }
-// a box stretched between two points (used for the stick arms)
+// a round arm stretched between two points (a cylinder along z, so stretching it keeps it round)
+const armGeo = new THREE.CylinderGeometry(0.5, 0.5, 1, 12).rotateX(Math.PI / 2);
 function limb(parent, from, to, thick, color) {
   const a = new THREE.Vector3(...from), c = new THREE.Vector3(...to);
-  const m = new THREE.Mesh(box, mat(color));
+  const m = new THREE.Mesh(armGeo, mat(color));
   m.position.copy(a).add(c).multiplyScalar(0.5);
   m.scale.set(thick, thick, a.distanceTo(c));
   m.lookAt(c);
@@ -64,8 +65,9 @@ function limb(parent, from, to, thick, color) {
   return m;
 }
 
-// Your arms: thin Tung Tung arms in the friendly (green) team color, with a wristband.
-const WOOD = 0x5d9236, KNOB = 0x8cc45a;
+// Your arms: thin round Tung Tung arms in the friendly team's greenish wood (see LOOKS.friend in
+// bots.js), with a wristband.
+const WOOD = 0x84a64e, KNOB = 0xa6c472;
 let bareGuns = false;   // displayGuns(): the guns on their own, no arms
 function arms(g, band, twoHands, leftZ = -0.26) {
   if (bareGuns) return;
@@ -85,7 +87,7 @@ function arms(g, band, twoHands, leftZ = -0.26) {
 // out of the top of the fist (thumb side) and the pommel out of the bottom (little finger side).
 // The fingers are jointed, so the hand can let go of the knife while it spins and catch it again.
 const GRIP = new THREE.Vector3(-0.025, 0, -0.052);
-const KNUCKLE = 0x7fb64e;
+const KNUCKLE = 0x94b062;
 const FIST = [1.32, 1.55, 0.3];    // finger joint angles when gripping
 const SPLAY = [0.2, 0.25, 0.12];   // ...and with the hand open
 function buildHand(band) {
@@ -657,7 +659,7 @@ const REV = new THREE.Matrix4().makeBasis(new THREE.Vector3(0, -1, 0), new THREE
 
 // a forearm: a stick from the wrist back to an elbow below the screen edge
 function forearm(g) {
-  const m = new THREE.Mesh(box, mat(WOOD));
+  const m = new THREE.Mesh(armGeo, mat(WOOD));
   g.add(m);
   return m;
 }

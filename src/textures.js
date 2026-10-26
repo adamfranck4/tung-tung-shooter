@@ -332,23 +332,41 @@ export function treeRingsTexture() {
 // Smooth, polished wood for the Tung Tung body (light; tinted per team by the material color).
 // Darker toward the bottom like the reference character.
 // base: the wood color under the tint (a pale base lets strong tints like purple show through)
-export function tungSkinTexture(base = '#f4d08a') {
+// The Tung Tung's log: natural light wood with grain running up it and a few knots. Every look
+// (team, zombie type) tints this, so it always reads as wood.
+export function tungSkinTexture(base = '#ecd3a6') {
   const W = 256, H = 512, r = rng(131);
   const [c, ctx] = makeCanvas(W, H);
   ctx.fillStyle = base; ctx.fillRect(0, 0, W, H);
   const g = ctx.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, 'rgba(255,245,215,0.25)');
-  g.addColorStop(0.45, 'rgba(255,240,200,0)');
-  g.addColorStop(1, 'rgba(90,45,10,0.55)');
+  g.addColorStop(0, 'rgba(255,248,225,0.3)');
+  g.addColorStop(0.5, 'rgba(255,240,200,0)');
+  g.addColorStop(1, 'rgba(110,60,20,0.35)');
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-  for (let i = 0; i < 40; i++) {   // faint grain
-    const x0 = r() * W, wob = 2 + r() * 5, ph = r() * 6;
-    ctx.strokeStyle = `rgba(140,85,30,${0.04 + r() * 0.07})`; ctx.lineWidth = 1 + r() * 2;
+  // knots, all below the face
+  const knots = [[0.3, 0.72, 9], [0.74, 0.62, 7], [0.08, 0.86, 6]].map(([x, y, s]) => [x * W, y * H, s]);
+  for (let i = 0; i < 70; i++) {   // grain, bending round the knots
+    const x0 = r() * W, wob = 1.5 + r() * 3, ph = r() * 6, dark = r() < 0.3;
+    ctx.strokeStyle = dark ? `rgba(120,70,28,${0.12 + r() * 0.12})` : `rgba(160,105,50,${0.06 + r() * 0.08})`;
+    ctx.lineWidth = dark ? 1 + r() * 1.5 : 1.5 + r() * 3;
     ctx.beginPath();
-    for (let y = 0; y <= H; y += 8) { const x = x0 + Math.sin(y / 70 + ph) * wob; if (y === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
+    for (let y = 0; y <= H; y += 6) {
+      let x = x0 + Math.sin(y / 60 + ph) * wob;
+      for (const [kx, ky, ks] of knots) {
+        const dy = (y - ky) / (ks * 4), dx = x - kx;
+        if (Math.abs(dx) < ks * 5) x += Math.sign(dx || 1) * ks * 1.6 * Math.exp(-dy * dy) * (1 - Math.abs(dx) / (ks * 5));
+      }
+      if (y === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
     ctx.stroke();
   }
-  blotches(ctx, W, H, 14, '150,90,30', 0.08, 70, r);
+  for (const [kx, ky, ks] of knots) {   // the knots: dark rings with a darker heart
+    for (let k = 3; k >= 1; k--) {
+      ctx.fillStyle = `rgba(${90 + k * 20},${50 + k * 12},${18 + k * 6},${0.25 + (3 - k) * 0.2})`;
+      ctx.beginPath(); ctx.ellipse(kx, ky, ks * k * 0.55, ks * k * 1.3, 0, 0, 7); ctx.fill();
+    }
+  }
+  blotches(ctx, W, H, 14, '150,95,40', 0.07, 70, r);
   noise(ctx, W, H, 8, r);
   const t = toTexture(c);
   t.wrapT = THREE.ClampToEdgeWrapping;
@@ -394,7 +412,7 @@ export function rainbowSkin(heightAt) {
 }
 
 // Painted details for the face (the eyes, brow ridges and nose are 3D on top of this):
-// soft eye sockets, a shadow under the nose and a small closed smile.
+// soft eye sockets, a shadow under the nose and a big grin.
 // Covers the front of the log from 0.62 m to 1.08 m above the hips.
 export function tungFaceTexture() {
   const W = 512, H = 384;
@@ -414,15 +432,17 @@ export function tungFaceTexture() {
     g.addColorStop(0, 'rgba(190,70,40,0.18)'); g.addColorStop(1, 'rgba(190,70,40,0)');
     ctx.fillStyle = g; ctx.fillRect(x - 60, 160, 120, 110);
   }
-  // small closed smile
-  ctx.lineCap = 'round';
-  ctx.strokeStyle = 'rgba(255,230,190,0.35)'; ctx.lineWidth = 10;   // lower lip highlight
-  ctx.beginPath(); ctx.moveTo(206, 292); ctx.quadraticCurveTo(256, 322, 306, 292); ctx.stroke();
-  ctx.strokeStyle = '#3a1806'; ctx.lineWidth = 7;
-  ctx.beginPath(); ctx.moveTo(200, 280); ctx.quadraticCurveTo(256, 314, 312, 280); ctx.stroke();
-  ctx.lineWidth = 5;                                                     // dimples
-  ctx.beginPath(); ctx.moveTo(194, 272); ctx.quadraticCurveTo(190, 282, 198, 290); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(318, 272); ctx.quadraticCurveTo(322, 282, 314, 290); ctx.stroke();
+  // the big grin: a dark open crescent from cheek to cheek, a lighter lower lip, deep corners
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.fillStyle = 'rgba(255,232,195,0.35)';                              // lower lip highlight
+  ctx.beginPath(); ctx.moveTo(176, 288); ctx.quadraticCurveTo(256, 352, 336, 288); ctx.quadraticCurveTo(256, 362, 176, 288); ctx.fill();
+  ctx.fillStyle = '#2a1004';
+  ctx.beginPath(); ctx.moveTo(170, 270); ctx.quadraticCurveTo(256, 300, 342, 270); ctx.quadraticCurveTo(256, 352, 170, 270); ctx.fill();
+  ctx.fillStyle = 'rgba(150,50,40,0.55)';                                // a hint of tongue
+  ctx.beginPath(); ctx.ellipse(256, 316, 34, 10, 0, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#2a1004'; ctx.lineWidth = 6;                        // corners
+  ctx.beginPath(); ctx.moveTo(166, 258); ctx.quadraticCurveTo(162, 272, 174, 280); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(346, 258); ctx.quadraticCurveTo(350, 272, 338, 280); ctx.stroke();
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 8;
