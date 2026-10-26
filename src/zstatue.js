@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { buildTungModel } from './bots.js';
 import { AREAS, GUN_SHOP } from './zmap.js';
+import { matte, glossy, beamColor, BEAM_OPACITY } from './gfx.js';
 
 export const STATUE_R = 0.6;          // half the plinth's width: what zombies bump into and hit
 const PLINTH_H = 0.5, SCALE = 1.35;
@@ -29,9 +30,11 @@ export const statueMaxHp = (r, players = 1) => Math.round((2000 + 220 * (Math.ma
 export const hunterChance = (r, players = 1) => Math.min(0.5, 0.3 + 0.015 * r) + team(players).hunters;
 
 const GOLD = { color: 0xc8901c, emissive: 0x1c1000, specular: 0xffe7a0, shininess: 45 };
-const gold = new THREE.MeshPhongMaterial(GOLD);
-const stone = new THREE.MeshLambertMaterial({ color: 0x8a8278 });
-const trim = new THREE.MeshPhongMaterial({ color: 0xd9a52a, emissive: 0x2a1a00, specular: 0xffe8a0, shininess: 50 });
+// on High: polished gold that picks up the sky and lights around it
+const GOLD_PBR = { metalness: 0.15, roughness: 0.3 };   // (more metal looks dull: it mirrors the night sky)
+const gold = glossy(GOLD, GOLD_PBR);
+const stone = matte({ color: 0x8a8278 });
+const trim = glossy({ color: 0xd9a52a, emissive: 0x2a1a00, specular: 0xffe8a0, shininess: 50 }, GOLD_PBR);
 
 function markerTexture() {
   const c = document.createElement('canvas'); c.width = 128; c.height = 160;
@@ -78,7 +81,7 @@ export class Statue {
         o.material = o.material.clone(); o.material.color.setHex(0xe0b050);
         this.mats.push(o.material);
       } else {
-        o.material = o.material.map ? new THREE.MeshPhongMaterial({ ...GOLD, map: o.material.map }) : gold;
+        o.material = o.material.map ? glossy({ ...GOLD, map: o.material.map }, GOLD_PBR) : gold;
         if (o.material !== gold) this.mats.push(o.material);
       }
       o.castShadow = true;
@@ -92,7 +95,7 @@ export class Statue {
     this.halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTexture(), color: 0xffc040, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false }));
     this.halo.scale.set(3, 3.6, 1); this.halo.position.y = PLINTH_H + 1.3; root.add(this.halo);
     this.beam = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.7, 1, 16, 1, true),
-      new THREE.MeshBasicMaterial({ color: 0xffc83a, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+      new THREE.MeshBasicMaterial({ color: beamColor(0xffc83a), transparent: true, opacity: 0.16 * BEAM_OPACITY, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
     root.add(this.beam);
     // a "DEFEND" marker you can see through walls
     this.marker = new THREE.Sprite(new THREE.SpriteMaterial({ map: markerTexture(), depthTest: false, depthWrite: false, transparent: true, sizeAttenuation: false }));
@@ -131,7 +134,7 @@ export class Statue {
     const low = this.hp / this.maxHp < 0.3;
     this.halo.material.opacity = (low ? 0.4 : 0.22) + Math.sin(time * (low ? 9 : 2.5)) * 0.08;
     this.halo.material.color.setHex(low ? 0xff5030 : 0xffc040);
-    this.beam.material.opacity = 0.13 + Math.sin(time * 2) * 0.04;
+    this.beam.material.opacity = (0.13 + Math.sin(time * 2) * 0.04) * BEAM_OPACITY;
     if (this.flashT > 0) { this.flashT -= dt; this.setFlash(Math.max(0, this.flashT / 0.18)); }
     this.marker.visible = !camPos || camPos.distanceTo(this.body.pos) > 9;
   }

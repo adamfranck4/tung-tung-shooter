@@ -1,11 +1,12 @@
 // First-person weapon + arms, rendered in its own scene so it never clips into walls.
 import * as THREE from 'three';
 import { flashTexture } from './textures.js';
+import { matte, glossy } from './gfx.js';
 
 const M = {};
-function mat(c) { return M[c] || (M[c] = new THREE.MeshLambertMaterial({ color: c })); }
+function mat(c) { return M[c] || (M[c] = matte({ color: c })); }
 const SHINY = {};
-function shiny(c) { return SHINY[c] || (SHINY[c] = new THREE.MeshPhongMaterial({ color: c, shininess: 90, specular: 0x9a9a9a })); }
+function shiny(c) { return SHINY[c] || (SHINY[c] = glossy({ color: c, shininess: 90, specular: 0x9a9a9a }, { roughness: 0.32, metalness: 0.2 })); }
 // polished steel: a bright "studio" reflection map so blades flash as they turn
 let ENV = null;
 function studioEnv() {
@@ -27,20 +28,20 @@ function studioEnv() {
 }
 const STEEL = {};
 function steel(c) {
-  return STEEL[c] || (STEEL[c] = new THREE.MeshPhongMaterial({
+  return STEEL[c] || (STEEL[c] = glossy({
     color: c, shininess: 160, specular: 0xf0f4fa, envMap: studioEnv(), reflectivity: 0.55, combine: THREE.MixOperation,
-  }));
+  }, { metalness: 0.9, roughness: 0.2 }));
 }
 // katana steel: a dark mirror body with a frosted white hamon along the edge
 function darkSteel(c) {
-  return STEEL['d' + c] || (STEEL['d' + c] = new THREE.MeshPhongMaterial({
+  return STEEL['d' + c] || (STEEL['d' + c] = glossy({
     color: c, shininess: 180, specular: 0xffffff, envMap: studioEnv(), reflectivity: 0.42, combine: THREE.MixOperation,
-  }));
+  }, { metalness: 0.95, roughness: 0.12 }));
 }
 function frost(c) {
-  return STEEL['f' + c] || (STEEL['f' + c] = new THREE.MeshPhongMaterial({
+  return STEEL['f' + c] || (STEEL['f' + c] = glossy({
     color: c, shininess: 50, specular: 0x9aa4b0, envMap: studioEnv(), reflectivity: 0.12, combine: THREE.MixOperation,
-  }));
+  }, { metalness: 0.5, roughness: 0.5 }));
 }
 const box = new THREE.BoxGeometry(1, 1, 1);
 function b(parent, w, h, d, color, x, y, z, rx = 0, ry = 0, rz = 0, material = null) {
@@ -256,7 +257,7 @@ function buildSaya(parent) {
   for (let i = 0; i <= N; i++) pts.push([L * i / N, 0.019]);
   pts.push([L + 0.014, 0.013], [L + 0.02, -0.003], [L + 0.014, -0.021]);
   for (let i = N; i >= 0; i--) pts.push([L * i / N, -0.027]);
-  const lacquer = new THREE.MeshPhongMaterial({ color: 0x18161d, shininess: 70, specular: 0x3c3c46 });
+  const lacquer = glossy({ color: 0x18161d, shininess: 70, specular: 0x3c3c46 }, { roughness: 0.28 });
   const body = bladeMesh(arcShape(pts), 0.019, 0, () => lacquer);
   parent.add(body);
   const ring = (x0, x1, color, extra) => {
@@ -280,9 +281,9 @@ const GLOW = {};
 function glow(c) { return GLOW[c] || (GLOW[c] = new THREE.MeshBasicMaterial({ color: c })); }
 const glowMat = (c) => glow(c);   // (inside buildModels, `glow` is the ray gun's material)
 function gunmetal(c) {
-  return STEEL['g' + c] || (STEEL['g' + c] = new THREE.MeshPhongMaterial({
+  return STEEL['g' + c] || (STEEL['g' + c] = glossy({
     color: c, shininess: 120, specular: 0xb4c4dc, envMap: studioEnv(), reflectivity: 0.22, combine: THREE.MixOperation,
-  }));
+  }, { metalness: 0.75, roughness: 0.36 }));
 }
 function knifeKunai(k, parts) {
   const D = 0.0055;
@@ -976,7 +977,7 @@ function buildModels(team, gunsOnly = false) {
   g = new THREE.Group(); // Hornet PDW: a bullpup with a see-through mag on top, yellow and black
   b(g, 0.06, 0.09, 0.44, 0x26272a, 0, -0.005, 0.02);                       // body
   for (const z of [-0.12, -0.02, 0.12]) b(g, 0.062, 0.022, 0.035, 0xf2c230, 0, -0.012, z);   // hornet stripes
-  b(g, 0.044, 0.03, 0.3, 0, 0, 0.055, 0.02, 0, 0, 0, new THREE.MeshLambertMaterial({ color: 0xe0a830, transparent: true, opacity: 0.75 }));
+  b(g, 0.044, 0.03, 0.3, 0, 0, 0.055, 0.02, 0, 0, 0, matte({ color: 0xe0a830, transparent: true, opacity: 0.75 }));
   b(g, 0.022, 0.022, 0.08, 0x161616, 0, 0.0, -0.23);                       // barrel
   b(g, 0.036, 0.09, 0.045, 0x1c1d20, 0, -0.08, 0.06, -0.2);                // grip
   b(g, 0.034, 0.06, 0.04, 0x1c1d20, 0, -0.07, -0.14);                      // thumb hole front

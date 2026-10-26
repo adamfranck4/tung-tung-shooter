@@ -39,7 +39,8 @@ No build step, no server code, no assets to download — every texture, model an
   at 30, 60, 144 or 240 fps and stays smooth on high-refresh screens.
 - Raw mouse input (no OS pointer acceleration) and CS2's sensitivity scale (0.022° × sensitivity per count),
   so you can type in your CS2 sensitivity.
-- Graphics: **High quality** (detailed surfaces + soft sky lighting) or **Performance** for slower computers.
+- Graphics: **High quality** (realistic materials, soft sky lighting, ambient occlusion in corners and a glow on fire,
+  lamps and neon) or **Performance** for slower computers.
 
 ## Online play
 
@@ -304,7 +305,8 @@ python -m http.server 8000
 
 Then open http://localhost:8000.
 
-Add `?low` to the URL for lower-quality shadows on slow machines.
+Add `?low` to the URL for Performance graphics on slow machines (simpler materials and shadows, no ambient
+occlusion or glow).
 
 ## Deploy to Vercel (Hobby plan)
 
@@ -326,6 +328,8 @@ vercel --prod
 
 - `index.html`, `style.css` — page, menus, HUD layout
 - `src/main.js` — renderer, lighting, sky, menu, game loop
+- `src/gfx.js` — the graphics setting and the materials that depend on it
+- `src/postfx.js` — High graphics screen effects: ambient occlusion and glow
 - `src/map.js` — map layout, geometry, collision boxes, A* pathfinding, attack routes for the bots
 - `src/game.js` — rounds, economy, bomb, bullets, damage, spectating
 - `src/combatant.js` — shared movement, weapons, recoil, hitboxes

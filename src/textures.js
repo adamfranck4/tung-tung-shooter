@@ -421,10 +421,11 @@ export function makeTextures(quality = 'high') {
 // Performance: cheap matte shading.
 export function surfaceMaterial(tex, name, extra = {}) {
   if (tex.quality !== 'high' || !tex[name + 'N']) {
-    return new THREE.MeshLambertMaterial({ map: tex[name], vertexColors: true, ...extra });
+    const { roughness, metalness, ...lambert } = extra;   // (physically based options only)
+    return new THREE.MeshLambertMaterial({ map: tex[name], vertexColors: true, ...lambert });
   }
   return new THREE.MeshStandardMaterial({
     map: tex[name], normalMap: tex[name + 'N'], normalScale: new THREE.Vector2(0.9, 0.9),
-    roughness: 0.95, metalness: 0, envMapIntensity: 0.45, vertexColors: true, ...extra,
+    roughness: 0.95, metalness: 0, vertexColors: true, ...extra,
   });
 }

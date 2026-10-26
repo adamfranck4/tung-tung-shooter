@@ -13,6 +13,7 @@ import { dirFrom, chaseCamera } from './combatant.js';
 import { knifeName } from './viewmodel.js';
 import { Avatar, F, r2, r3, packSlots, showShot } from './avatar.js';
 import { BOT_NAMES } from './net.js';
+import { matte } from './gfx.js';
 
 const FREEZE_TIME = 5;
 const ROUND_TIME = 115;
@@ -53,9 +54,9 @@ export class Game {
 
   makeBombMesh() {
     const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.12, 0.24), new THREE.MeshLambertMaterial({ color: 0x3b3a30 }));
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.12, 0.24), matte({ color: 0x3b3a30 }));
     body.position.y = 0.06; body.castShadow = true; g.add(body);
-    const pad = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.02, 0.1), new THREE.MeshLambertMaterial({ color: 0x1a1a1a }));
+    const pad = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.02, 0.1), matte({ color: 0x1a1a1a }));
     pad.position.set(-0.05, 0.13, 0); g.add(pad);
     this.bombLed = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.03, 0.04), new THREE.MeshBasicMaterial({ color: 0xff2010 }));
     this.bombLed.position.set(0.1, 0.135, 0.05); g.add(this.bombLed);

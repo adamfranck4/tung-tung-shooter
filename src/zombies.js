@@ -13,6 +13,7 @@ import { knifeName } from './viewmodel.js';
 import { Avatar, Interp, F, r1, r2, r3, packSlots, showShot } from './avatar.js';
 import { Statue, STATUE_R, statueMaxHp, hunterChance, chooseRoom, statueSpot } from './zstatue.js';
 import { NET_SOUNDS } from './game.js';
+import { BEAM_OPACITY } from './gfx.js';
 
 const MAX_ALIVE = 24;
 // the Mystery Box label: the gun's name in its rarity's color
@@ -1627,7 +1628,7 @@ export class ZombiesGame {
     const target = b.state === 'idle' ? 0 : 1;
     b.open += (target - b.open) * Math.min(1, dt * 6);
     b.lid.rotation.x = -b.open * 1.7;
-    b.beam.material.opacity = 0.12 + Math.sin(this.time * 3) * 0.05;
+    b.beam.material.opacity = (0.12 + Math.sin(this.time * 3) * 0.05) * BEAM_OPACITY;
     if (b.state === 'rolling') {
       b.t += dt;
       b.label.position.y = 1.0 + Math.min(1, b.t / 1.5) * 0.9;

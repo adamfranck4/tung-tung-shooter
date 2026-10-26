@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { letterTexture, surfaceMaterial } from './textures.js';
 import { solidDistance, mergeBands, blockHash, addEdgeTrims, buildContactShadows } from './mapkit.js';
+import { matte } from './gfx.js';
 
 export const CELL = 2;
 export const GW = 60, GH = 60;
@@ -271,7 +272,7 @@ export class GameMap {
 
     for (const [k, s] of Object.entries(SITES)) {
       const m = new THREE.Mesh(new THREE.PlaneGeometry(7, 7),
-        new THREE.MeshLambertMaterial({ map: letterTexture(k), transparent: true, depthWrite: false }));
+        matte({ map: letterTexture(k), transparent: true, depthWrite: false }));
       m.rotation.x = -Math.PI / 2;
       m.position.set(s.center.x, 0.04, s.center.z);
       m.receiveShadow = true;

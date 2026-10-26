@@ -12,6 +12,7 @@ import { solidDistance, mergeBands, blockHash, addEdgeTrims, buildContactShadows
 import { WEAPONS, ZOMBIE_SHOP, ZOMBIE_PRICES, RARITIES, rarityOf } from './weapons.js';
 import { displayGuns } from './viewmodel.js';
 import { buildMound, buildTrees, buildLogs, buildStalls, buildBunting, buildWallDecor } from './zdecor.js';
+import { matte, beamColor, glowColor, MIST_OPACITY } from './gfx.js';
 
 const C = 2;                 // cell size in meters
 const GW = 60, GH = 54;
@@ -379,7 +380,7 @@ function mesh(geo, material, x, y, z, sx = 1, sy = 1, sz = 1, parent = null) {
   if (parent) parent.add(m);
   return m;
 }
-const lambert = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, ...extra });
+const lambert = (color, extra = {}) => matte({ color, ...extra });
 
 export class ZMap {
   constructor(scene, tex) {
@@ -843,7 +844,7 @@ export class ZMap {
         if (spanX) mesh(box, brace, 0, y, 0.1, span, 0.18, 0.06, g).rotation.z = 0.12;
         else mesh(box, brace, 0.1, y, 0, 0.06, 0.18, span, g).rotation.x = 0.12;
       }
-      const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.55), new THREE.MeshLambertMaterial({ map: signTex(['LOCKED', `AFTER ROUND ${def.after}`], '#2a1b10', '#f4e2b0') }));
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.55), matte({ map: signTex(['LOCKED', `AFTER ROUND ${def.after}`], '#2a1b10', '#f4e2b0') }));
       const sign2 = sign.clone();
       if (spanX) { sign.position.set(0, 1.6, 0.14); sign2.position.set(0, 1.6, -0.14); sign2.rotation.y = Math.PI; }
       else { sign.position.set(0.14, 1.6, 0); sign.rotation.y = Math.PI / 2; sign2.position.set(-0.14, 1.6, 0); sign2.rotation.y = -Math.PI / 2; }
@@ -1013,9 +1014,7 @@ export class ZMap {
     };
     mk(S.walls, surfaceMaterial(tex, 'wall'), { uvScale: 4, tint: [0.97, 0.94, 0.88], ao: true });
     mk(S.stone, surfaceMaterial(tex, 'wall'), { uvScale: 3, tint: [0.72, 0.7, 0.68], ao: true });
-    const plain = (color) => (tex.quality === 'high'
-      ? new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0, envMapIntensity: 0.45, vertexColors: true })
-      : new THREE.MeshLambertMaterial({ color, vertexColors: true }));
+    const plain = (color) => matte({ color, vertexColors: true }, { roughness: 0.9 });
     mk(S.wood, plain(0x7a5434), { uvScale: 2 });
     mk(S.roofs, plain(0x4e3627), { uvScale: 2 });
     if (S.hutRoofs.length) {   // tiered hut roofs, each tier its own shade
@@ -1038,7 +1037,7 @@ export class ZMap {
     mk(S.parapet, surfaceMaterial(tex, 'wall'), { uvScale: 2, tint: [0.7, 0.6, 0.44] });
     if (S.braziers) {
       const bowl = new THREE.CylinderGeometry(0.42, 0.26, 0.4, 10), flameGeo = new THREE.ConeGeometry(0.3, 0.75, 8);
-      const iron = lambert(0x2a2420), fire = new THREE.MeshBasicMaterial({ color: 0xff8a2a }), core = new THREE.MeshBasicMaterial({ color: 0xffe08a });
+      const iron = lambert(0x2a2420), fire = new THREE.MeshBasicMaterial({ color: glowColor(0xff8a2a, 2.4) }), core = new THREE.MeshBasicMaterial({ color: glowColor(0xffe08a, 2) });
       for (const [bx, by, bz] of S.braziers) {
         const m = new THREE.Mesh(bowl, iron); m.position.set(bx, by + 0.2, bz); m.castShadow = true; this.scene.add(m);
         const f = new THREE.Mesh(flameGeo, fire); f.position.set(bx, by + 0.75, bz); this.scene.add(f);
@@ -1141,7 +1140,7 @@ export class ZMap {
     this.mist = [];
     for (let i = 0; i < 22; i++) {
       const r = (k) => blockHash(i * 7 + k, i * 13 + k * 3, 1);
-      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: i % 3 ? 0xb8d8c8 : 0x9ad8b8, transparent: true, opacity: 0.32, depthWrite: false }));
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: i % 3 ? 0xb8d8c8 : 0x9ad8b8, transparent: true, opacity: 0.32 * MIST_OPACITY, depthWrite: false }));
       const w = 6 + r(1) * 6;
       s.scale.set(w, w * 0.32, 1);
       s.position.set(x0 + 2 + r(2) * (x1 - x0 - 4), 0.5 + r(3) * 0.6, z0 + 2 + r(4) * (z1 - z0 - 4));
@@ -1262,12 +1261,12 @@ export class ZMap {
     // Mystery box with a light beam
     {
       const g = new THREE.Group(); g.position.set(...BOX.pos);
-      const wood = new THREE.MeshLambertMaterial({ map: signTex(['?', ''], '#5a3b20', '#ffe08a', 128, 96) });
+      const wood = matte({ map: signTex(['?', ''], '#5a3b20', '#ffe08a', 128, 96) });
       mesh(box, wood, 0, 0.35, 0, 1.8, 0.7, 0.8, g);
       const lid = new THREE.Group(); lid.position.set(0, 0.7, -0.4); g.add(lid);
       mesh(box, lambert(0x4a2f18), 0, 0.08, 0.4, 1.84, 0.16, 0.84, lid);
       const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.7, 14, 16, 1, true),
-        new THREE.MeshBasicMaterial({ color: 0x66b8ff, transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+        new THREE.MeshBasicMaterial({ color: beamColor(0x66b8ff), transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
       beam.position.y = 7; g.add(beam);
       this.scene.add(g);
       // floating label that shows the cycling weapon

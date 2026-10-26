@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { BoxBuilder } from './map.js';
 import { surfaceMaterial, rng } from './textures.js';
+import { matte } from './gfx.js';
 
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _p = new THREE.Vector3(), _d = new THREE.Vector3(),
   _s = new THREE.Vector3(1, 1, 1), _up = new THREE.Vector3(0, 1, 0), _c = new THREE.Color(), _e = new THREE.Euler(0, 0, 0, 'YXZ');
@@ -93,10 +94,10 @@ export function buildMound(scene, tex, map, [mx, mz, rTop, rFoot, height]) {
   stone.add(collar, _m.compose(_p.set(mx, top + 0.09, mz), _q.identity(), _s.set(1, 1, 1)), 0xbdb6aa);
   const bowl = new THREE.CylinderGeometry(1.15, 0.55, 0.4, 20);
   stone.add(bowl, _m.compose(_p.set(mx, 3.4, mz), _q.identity(), _s.set(1, 1, 1)), 0xe8e2d6);
-  scene.add(stone.mesh(new THREE.MeshLambertMaterial({ vertexColors: true })));
+  scene.add(stone.mesh(matte({ vertexColors: true })));
   for (const geo of [rim, pillar, collar, bowl]) geo.dispose();
   // the water: the "blue circle" round the pillar, and a little in the bowl
-  const waterMat = new THREE.MeshLambertMaterial({ color: 0x2a6a8c, emissive: 0x0c2a3c, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  const waterMat = matte({ color: 0x2a6a8c, emissive: 0x0c2a3c, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }, { roughness: 0.12 });
   const pool = new THREE.Mesh(new THREE.RingGeometry(1.0, rTop - 0.22, 56), waterMat);
   pool.rotation.x = -Math.PI / 2; pool.position.set(mx, top + 0.02, mz);
   const bowlWater = new THREE.Mesh(new THREE.CircleGeometry(1.05, 20), waterMat);
@@ -154,7 +155,7 @@ export function buildTrees(scene, trees) {
     }
   }
   leafGeo.dispose();
-  scene.add(mg.mesh(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true })));
+  scene.add(mg.mesh(matte({ vertexColors: true, flatShading: true })));
 }
 
 // ---------------------------------------------------------------- logs
@@ -180,7 +181,7 @@ export function buildLogs(scene, logs, piles = []) {
     for (let i = 0; i < n; i++) put(x0 + rad + 2 * rad * i, 0, zc + (r() - 0.5) * 0.15, len, rad, 'z', r, false);
     for (let i = 0; i < n - 1; i++) put(x0 + 2 * rad + 2 * rad * i, rad * 0.73, zc + (r() - 0.5) * 0.15, len, rad, 'z', r, false);
   }
-  scene.add(mg.mesh(new THREE.MeshLambertMaterial({ vertexColors: true })));
+  scene.add(mg.mesh(matte({ vertexColors: true })));
 }
 
 // ---------------------------------------------------------------- Night Market stalls
@@ -217,9 +218,9 @@ export function buildStalls(scene, stalls) {
       }
     }
   }
-  const m = new THREE.Mesh(b.geometry(), new THREE.MeshLambertMaterial({ vertexColors: true }));
+  const m = new THREE.Mesh(b.geometry(), matte({ vertexColors: true }));
   m.castShadow = m.receiveShadow = true;
-  scene.add(m, goods.mesh(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), false));
+  scene.add(m, goods.mesh(matte({ vertexColors: true, flatShading: true }), false));
   fruitGeo.dispose();
 }
 
@@ -251,8 +252,8 @@ export function buildBunting(scene, strings) {
       }
     }
   }
-  scene.add(flags.mesh(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), false));
-  scene.add(rope.mesh(new THREE.MeshLambertMaterial({ vertexColors: true }), false));
+  scene.add(flags.mesh(matte({ vertexColors: true, side: THREE.DoubleSide }), false));
+  scene.add(rope.mesh(matte({ vertexColors: true }), false));
   if (glow.pos.length) scene.add(glow.mesh(new THREE.MeshBasicMaterial({ vertexColors: true }), false));
   flagGeo.dispose(); lanternGeo.dispose();
 }
@@ -298,7 +299,7 @@ export function buildWallDecor(scene, faces) {
       put(solid, -0.8, 0.8, 0.75, 0.95, 0.05, 0.1, [0.56, 0.42, 0.28]); put(solid, -0.8, 0.8, 1.5, 1.7, 0.05, 0.1, [0.5, 0.37, 0.24]);
     }
   }
-  const m = new THREE.Mesh(solid.geometry(), new THREE.MeshLambertMaterial({ vertexColors: true }));
+  const m = new THREE.Mesh(solid.geometry(), matte({ vertexColors: true }));
   m.receiveShadow = true;
   scene.add(m);
   if (lit.p.length) scene.add(new THREE.Mesh(lit.geometry(), new THREE.MeshBasicMaterial({ vertexColors: true })));

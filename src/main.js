@@ -15,13 +15,15 @@ import { Session, NetLink, MAX_PLAYERS, TEAM_SIZE, cleanName, normalizeCode } fr
 import { CROSSHAIRS, getCrosshair, drawCrosshair } from './crosshair.js';
 import { CS_DEG_PER_COUNT } from './player.js';
 import { ZMenu } from './zui.js';
+import { QUALITY } from './gfx.js';
+import { PostFX } from './postfx.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 const load = (k) => { try { return localStorage.getItem(k); } catch (_) { return null; } };
 const save = (k, v) => { try { localStorage.setItem(k, v); } catch (_) { /* storage unavailable */ } };
-// Graphics: 'high' = detailed surfaces + soft environment light; 'low' = performance mode
-const quality = params.has('low') || load('defuse.quality') === 'low' ? 'low' : 'high';
+// Graphics: 'high' = detailed surfaces, soft environment light, glow and ambient occlusion; 'low' = performance mode
+const quality = QUALITY;
 const lowShadows = quality === 'low';
 const TICK = 1 / 128; // physics rate (CS2 runs 64 tick + sub-tick input; 128 keeps input tight)
 
@@ -33,11 +35,13 @@ renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;   // soft since three r182
 renderer.autoClear = false;
 
 const camera = new THREE.PerspectiveCamera(74, innerWidth / innerHeight, 0.05, 800);
 camera.rotation.order = 'YXZ';
+// High graphics: ambient occlusion + glow, drawn through an effects chain (see postfx.js)
+const post = quality === 'high' ? new PostFX(renderer, camera) : null;
 
 // gradient sky dome that follows the camera
 function makeSky(top, horizon) {
@@ -87,7 +91,7 @@ function buildClassicWorld() {
   scene.fog = new THREE.Fog(0xe6d2ad, 70, 280);
   const sky = makeSky(0x4d8fd6, 0xf0dcb6);
   scene.add(sky);
-  if (quality === 'high') scene.environment = makeEnvironment(0x5b8fcf, 0xe9d6b3, 0x9a8160);
+  if (quality === 'high') { scene.environment = makeEnvironment(0x5b8fcf, 0xe9d6b3, 0x9a8160); scene.environmentIntensity = 0.45; }
   scene.add(new THREE.HemisphereLight(0xd8e8ff, 0xb08a5c, quality === 'high' ? 0.6 : 1.5));
   const sun = new THREE.DirectionalLight(0xfff0d0, 3.2);
   sun.position.set(WORLD / 2 + 55, 95, WORLD / 2 + 35);
@@ -106,7 +110,9 @@ function buildClassicWorld() {
     game.onMatchOver = (winner) => showEnd(winner === game.player.team ? 'VICTORY' : 'DEFEAT',
       `Counter-Terrorists ${game.score.CT} — ${game.score.T} Terrorists`);
   }
-  return { scene, sky, fx, game: solo, solo, client, map, exposure: 1.05, orbit: { cx: WORLD / 2, cz: WORLD / 2, r: 75, h: 38 } };
+  // bright desert: only the hottest highlights and muzzle flashes glow
+  const look = { ao: 0.85, bloom: { strength: 0.3, radius: 0.4, threshold: 2.2 } };
+  return { scene, sky, fx, game: solo, solo, client, map, exposure: 1.05, look, orbit: { cx: WORLD / 2, cz: WORLD / 2, r: 75, h: 38 } };
 }
 
 // ---------- world 2: Sahur Village (Zombies), night ----------
@@ -133,7 +139,7 @@ function buildZombiesWorld() {
   moon.position.set(-40, 90, -30).normalize().multiplyScalar(440); moon.scale.set(70, 70, 1);
   sky.add(moon);
 
-  if (quality === 'high') scene.environment = makeEnvironment(0x0a1020, 0x26324f, 0x1a1510);
+  if (quality === 'high') { scene.environment = makeEnvironment(0x0a1020, 0x26324f, 0x1a1510); scene.environmentIntensity = 0.45; }
   scene.add(new THREE.HemisphereLight(0x6a7cae, 0x2a1e14, quality === 'high' ? 0.75 : 1.15));
   const moonLight = new THREE.DirectionalLight(0xa8bcff, 1.4);
   moonLight.position.set(ZW / 2 - 40, 90, ZH / 2 - 30);
@@ -162,7 +168,9 @@ function buildZombiesWorld() {
     game.onMenu = (tab) => openZMenu(game, tab);
     game.onCaseResult = (ev) => zmenu.caseResult(ev);
   }
-  return { scene, sky, fx, game: solo, solo, client, map, exposure: 1.3, orbit: { cx: ZW / 2, cz: ZH / 2, r: 58, h: 34 } };
+  // night: fires, lanterns, neon and the Golden Tung Tung glow
+  const look = { ao: 0.9, bloom: { strength: 0.4, radius: 0.35, threshold: 0.55 } };
+  return { scene, sky, fx, game: solo, solo, client, map, exposure: 1.3, look, orbit: { cx: ZW / 2, cz: ZH / 2, r: 58, h: 34 } };
 }
 
 // compile every shader up front so the first shot / first zombie doesn't cause a hitch
@@ -496,6 +504,7 @@ $('copy-link').addEventListener('click', () => {
 
 addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
+  post?.setSize(innerWidth, innerHeight);
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
   vm.resize();
 });
@@ -505,8 +514,8 @@ function render() {
   const g = world.game, p = g.player;
   world.sky.position.copy(camera.position);
   renderer.toneMappingExposure = world.exposure;
-  renderer.clear();
-  renderer.render(world.scene, camera);
+  if (post?.enabled) post.render(world.scene, world.look);
+  else { renderer.clear(); renderer.render(world.scene, camera); }
   if ((state === 'playing' || state === 'paused' || state === 'zmenu' || state === 'test') && p?.alive && !p.scoped) {
     renderer.clearDepth();
     renderer.render(vm.scene, vm.camera);
@@ -601,6 +610,7 @@ window.__sim = (seconds = 1, fps = 60) => {
 };
 
 window.__renderer = renderer; // debug: lets test scripts render frames to a contact sheet
+window.__post = post;         // debug: the High graphics effects (null on Low)
 // debug helper: average milliseconds per frame (simulation + rendering, waiting for the GPU)
 window.__bench = (frames = 120) => {
   const gl = renderer.getContext();

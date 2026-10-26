@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { Combatant } from './combatant.js';
 import { wrapAngle } from './physics.js';
 import { flashTexture, markerTexture, tungSkinTexture, tungFaceTexture, rainbowSkin } from './textures.js';
+import { matte } from './gfx.js';
 
 export const DIFF = {
   easy:   { reaction: 0.7,  turn: 3.0, aimErr: 0.09,  settle: 1.4, head: 0.12, comp: 0.3,  spray: 4,  fov: 2.0, jitter: 0.016 },
@@ -12,7 +13,7 @@ export const DIFF = {
 
 const matCache = new Map();
 function mat(color) {
-  if (!matCache.has(color)) matCache.set(color, new THREE.MeshLambertMaterial({ color }));
+  if (!matCache.has(color)) matCache.set(color, matte({ color }));
   return matCache.get(color);
 }
 const boxGeo = new THREE.BoxGeometry(1, 1, 1);
@@ -62,11 +63,11 @@ function getBodyMat(look) {
     const L = LOOKS[look];
     if (L.rainbow) {
       rainbow = rainbow || rainbowSkin(logHeightAt);
-      bodyMats[look] = new THREE.MeshLambertMaterial({ map: rainbow.tex });
+      bodyMats[look] = matte({ map: rainbow.tex });
     } else {
       if (L.pale) paleTex = paleTex || tungSkinTexture('#f6eee2');
       else skinTex = skinTex || tungSkinTexture();
-      bodyMats[look] = new THREE.MeshLambertMaterial({ map: L.pale ? paleTex : skinTex, color: L.body });
+      bodyMats[look] = matte({ map: L.pale ? paleTex : skinTex, color: L.body });
     }
   }
   return bodyMats[look];
@@ -82,7 +83,7 @@ export function tickRainbow() {
 function getFaceMat(look) {
   if (!faceMats[look]) {
     faceTex = faceTex || tungFaceTexture();
-    faceMats[look] = new THREE.MeshLambertMaterial({ map: faceTex, transparent: true, depthWrite: false, color: LOOKS[look].body,
+    faceMats[look] = matte({ map: faceTex, transparent: true, depthWrite: false, color: LOOKS[look].body,
       polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
   }
   return faceMats[look];
@@ -205,7 +206,7 @@ const wingGeo = (() => {
   s.lineTo(0, 0);
   return new THREE.ShapeGeometry(s, 6);
 })();
-const wingMat = new THREE.MeshLambertMaterial({ color: 0x4a1c8c, side: THREE.DoubleSide });
+const wingMat = matte({ color: 0x4a1c8c, side: THREE.DoubleSide });
 const WING_TILT = Math.PI - 0.62;   // the membrane hangs down and back from the arm bone
 function wing(torso, sx, L) {
   const pivot = new THREE.Group(); pivot.position.set(sx * 0.13, 1.05, 0.2); torso.add(pivot);
@@ -223,7 +224,7 @@ function wing(torso, sx, L) {
 
 // coconut, thrown by the pink zombies
 const cocoGeo = new THREE.IcosahedronGeometry(0.12, 1);
-const cocoMat = new THREE.MeshLambertMaterial({ color: 0x5e3b1e, flatShading: true });
+const cocoMat = matte({ color: 0x5e3b1e, flatShading: true });
 export function makeCoconut() {
   const m = new THREE.Mesh(cocoGeo, cocoMat);
   m.castShadow = true;
@@ -307,7 +308,7 @@ export function buildTungModel(team, opts) { return buildModel(team, opts); }
 const spikeGeo = new THREE.ConeGeometry(0.035, 0.13, 6);
 let haloTex = null;
 function bossDress(root, torso, bodyMat, L) {
-  const gold = new THREE.MeshLambertMaterial({ color: 0xffd23a, emissive: 0x5a3c00 });
+  const gold = matte({ color: 0xffd23a, emissive: 0x5a3c00 }, { metalness: 0.2, roughness: 0.32 });
   const band = new THREE.Mesh(new THREE.CylinderGeometry(0.205, 0.215, 0.07, 18, 1, true), gold);
   band.position.y = 1.19; torso.add(band);
   for (let i = 0; i < 7; i++) {
