@@ -39,8 +39,8 @@ No build step, no server code, no assets to download — every texture, model an
   at 30, 60, 144 or 240 fps and stays smooth on high-refresh screens.
 - Raw mouse input (no OS pointer acceleration) and CS2's sensitivity scale (0.022° × sensitivity per count),
   so you can type in your CS2 sensitivity.
-- Graphics: **High quality** (realistic materials, soft sky lighting, ambient occlusion in corners and a glow on fire,
-  lamps and neon) or **Performance** for slower computers.
+- Graphics: **High quality** (photo textures, realistic materials, soft sky lighting, ambient occlusion in corners and
+  a glow on fire, lamps and neon) or **Performance** for slower computers (drawn textures, nothing extra to download).
 
 ## Online play
 
@@ -330,6 +330,8 @@ vercel --prod
 - `src/main.js` — renderer, lighting, sky, menu, game loop
 - `src/gfx.js` — the graphics setting and the materials that depend on it
 - `src/postfx.js` — High graphics screen effects: ambient occlusion and glow
+- `assets/textures/` — photo textures for High graphics (walls, ground, floor tiles, wood; 1.5 MB). `src/textures.js`
+  draws the Performance ones and loads these, starting with the drawn ones until the photos arrive
 - `src/map.js` — map layout, geometry, collision boxes, A* pathfinding, attack routes for the bots
 - `src/game.js` — rounds, economy, bomb, bullets, damage, spectating
 - `src/combatant.js` — shared movement, weapons, recoil, hitboxes
@@ -342,3 +344,8 @@ vercel --prod
 - `src/netclassic.js`, `src/netzombies.js` — 5v5 and Zombies on a joining player's browser (the host runs
   `game.js` / `zombies.js` for everyone)
 - `src/viewmodel.js`, `src/effects.js`, `src/audio.js`, `src/hud.js`, `src/textures.js`
+
+## Credits
+
+Photo textures from [Poly Haven](https://polyhaven.com) (CC0, free for any use): Sandstone Blocks 08, Coast Sand 01,
+Floor Tiles 04 and Raw Plank Wall.

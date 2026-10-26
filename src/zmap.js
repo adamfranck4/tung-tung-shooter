@@ -922,7 +922,7 @@ export class ZMap {
     }
     const roofs = new BoxBuilder();
     for (const r of this.roofs) roofs.box(r.x0, r.y0, r.z0, r.x1, r.y1, r.z1, { uvScale: 3, tint: [0.42, 0.32, 0.26] });
-    const roofMesh = new THREE.Mesh(roofs.geometry(), surfaceMaterial(tex, 'crate'));
+    const roofMesh = new THREE.Mesh(roofs.geometry(), surfaceMaterial(tex, 'wood'));
     roofMesh.castShadow = roofMesh.receiveShadow = true;
     this.scene.add(roofMesh);
 
@@ -965,7 +965,7 @@ export class ZMap {
     cm.castShadow = cm.receiveShadow = true; this.scene.add(cm);
     const sm = new THREE.Mesh(stone.geometry(), wallMat);
     sm.castShadow = sm.receiveShadow = true; this.scene.add(sm);
-    const pm = new THREE.Mesh(planks.geometry(), surfaceMaterial(tex, 'crate', { roughness: 0.9 }));
+    const pm = new THREE.Mesh(planks.geometry(), surfaceMaterial(tex, 'wood', { roughness: 0.9 }));
     pm.castShadow = pm.receiveShadow = true; this.scene.add(pm);
     // the fountain on its ramped mound, then all the props (see zdecor.js)
     for (const m of MOUNDS) buildMound(this.scene, tex, this, m);
@@ -1027,8 +1027,8 @@ export class ZMap {
     mk(S.tiles, surfaceMaterial(tex, 'tile', { roughness: 0.9 }), { uvScale: 4, noBottom: true });
     // upstairs: a wooden storey on the plaster ground floor: plank walls and floor, wooden
     // railings and timber trim, furniture
-    mk(S.upWalls, surfaceMaterial(tex, 'crate', { roughness: 0.9 }), { uvScale: 2.5, tint: [1, 0.82, 0.62] });
-    mk(S.planks, surfaceMaterial(tex, 'crate', { roughness: 0.9 }), { uvScale: 2, tint: [0.66, 0.5, 0.36], noBottom: true });
+    mk(S.upWalls, surfaceMaterial(tex, 'wood', { roughness: 0.9 }), { uvScale: 2.5, tint: [1, 0.82, 0.62] });
+    mk(S.planks, surfaceMaterial(tex, 'wood', { roughness: 0.9 }), { uvScale: 2, tint: [0.66, 0.5, 0.36], noBottom: true });
     mk(S.rails, plain(0x8a5e38), { uvScale: 2 });
     mk(S.upTrim, plain(0x5a3c24), { uvScale: 2 });
     this.buildUpstairsProps(plain);

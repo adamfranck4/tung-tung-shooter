@@ -200,6 +200,30 @@ function crateTexture(withNormal) {
   return { map: toTexture(c, false), normal };
 }
 
+// High graphics, once the plank photo is in: repaint the crate face from it (same frame, cross
+// brace and nails as above, at twice the resolution). The bump map stays the drawn one.
+function paintCratePhoto(c, photo) {
+  const S = 512, b = 48, r = rng(52);
+  c.width = c.height = S;
+  const ctx = c.getContext('2d');
+  // a crate face is about 1.2 m, the photo about 1.9 m: use a crop so the planks keep their size
+  const crop = (x0, y0) => ctx.drawImage(photo, photo.width * x0, photo.height * y0, photo.width * 0.63, photo.height * 0.63, 0, 0, S, S);
+  const tint = (color) => { ctx.globalCompositeOperation = 'multiply'; ctx.fillStyle = color; ctx.fillRect(0, 0, S, S); ctx.globalCompositeOperation = 'source-over'; };
+  crop(0, 0); tint('rgb(228,204,176)');                     // the boards, toward the old crate color
+  ctx.save();                                              // the frame and brace: other boards, darker
+  ctx.beginPath();
+  ctx.rect(0, 0, S, b); ctx.rect(0, S - b, S, b); ctx.rect(0, 0, b, S); ctx.rect(S - b, 0, b, S);
+  ctx.translate(S / 2, S / 2); ctx.rotate(Math.PI / 4); ctx.rect(-S * 0.68, -b / 2, S * 1.36, b);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clip(); crop(0.3, 0.37); tint('rgb(150,112,80)');
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(40,22,8,0.45)'; ctx.lineWidth = 3;   // a dark line where the frame meets the boards
+  ctx.strokeRect(b, b, S - 2 * b, S - 2 * b);
+  ctx.fillStyle = '#3b2a1a';
+  for (const [x, y] of [[24, 24], [S - 24, 24], [24, S - 24], [S - 24, S - 24]]) { ctx.beginPath(); ctx.arc(x, y, 8, 0, 7); ctx.fill(); }
+  noise(ctx, S, S, 12, r);
+}
+
 // Spray-painted site letter.
 export function letterTexture(letter) {
   const S = 256;
@@ -408,13 +432,68 @@ export function tungFaceTexture() {
 export function makeTextures(quality = 'high') {
   const hi = quality === 'high';
   const wall = wallTexture(hi), sand = sandTexture(hi), tile = tileTexture(hi), crate = crateTexture(hi);
-  return {
+  const tex = {
     quality,
     wall: wall.map, wallN: wall.normal,
     sand: sand.map, sandN: sand.normal,
     tile: tile.map, tileN: tile.normal,
     crate: crate.map, crateN: crate.normal,
+    // roofs and plank walls: the crate's wood (on High, plank photos replace it once they load)
+    wood: hi ? copyOf(crate.map) : crate.map, woodN: hi ? copyOf(crate.normal) : null,
+    photo: {}, mats: {},
   };
+  if (hi) loadPhotos(tex);
+  return tex;
+}
+
+// a texture of its own (so its picture can be swapped) showing the same canvas
+function copyOf(t) {
+  const c = new THREE.CanvasTexture(t.image);
+  c.colorSpace = t.colorSpace; c.anisotropy = t.anisotropy; c.wrapS = t.wrapS; c.wrapT = t.wrapT;
+  return c;
+}
+
+// ---------- photo textures (High graphics) ----------
+// Free CC0 textures from Poly Haven (polyhaven.com), in assets/textures (1.5 MB in all). Each
+// surface starts with its drawn texture and switches to the photo once it has loaded, so a slow
+// or failed download just leaves the drawn one.
+//  design: meters one repeat of the drawn texture covers (the maps' texture coordinates assume it)
+//  meters: the real size of one repeat of the photo, so it's repeated design / meters times
+//  gain:   matches the photo's brightness to the drawn texture's, which the lighting and each
+//          area's tint were tuned for
+//  bump:   strength of its bump map (the sandstone's mortar is shallow, so it gets more)
+const PHOTOS = {
+  wall: { design: 4, meters: 3, gain: 1.35, bump: 2 },     // Sandstone Blocks 08
+  sand: { design: 8, meters: 15, gain: 1.9, bump: 1 },     // Coast Sand 01
+  tile: { design: 4, meters: 4, gain: 1.05, bump: 3 },     // Floor Tiles 04 (its grout is shallow too)
+  wood: { design: 2, meters: 1.9, gain: 0.3, bump: 1 },    // Raw Plank Wall (roofs were the crate's dark frame color)
+};
+const usePhoto = (m, P) => { m.color.multiplyScalar(P.gain); m.normalScale.setScalar(P.bump); };
+
+// (onload rather than decode(): decode() waits while the tab is in the background)
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img); img.onerror = reject;
+    img.src = url;
+  });
+}
+
+function loadPhotos(tex) {
+  for (const [name, P] of Object.entries(PHOTOS)) {
+    const url = (kind) => new URL(`../assets/textures/${name}_${kind}.jpg`, import.meta.url).href;
+    const apply = ([color, normal]) => {
+      const k = P.design / P.meters;
+      for (const [t, img] of [[tex[name], color], [tex[name + 'N'], normal]]) {
+        t.image = img; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(k, k); t.needsUpdate = true;
+      }
+      tex.photo[name] = P;
+      for (const m of tex.mats[name] || []) usePhoto(m, P);
+      if (name === 'wood') { paintCratePhoto(tex.crate.image, color); tex.crate.needsUpdate = true; }
+    };
+    Promise.all([loadImage(url('color')), loadImage(url('normal'))])
+      .then(apply, () => { /* offline or missing: keep the drawn texture */ });
+  }
 }
 
 // Map surface material. High quality: physically based with surface detail (normal map).
@@ -424,8 +503,12 @@ export function surfaceMaterial(tex, name, extra = {}) {
     const { roughness, metalness, ...lambert } = extra;   // (physically based options only)
     return new THREE.MeshLambertMaterial({ map: tex[name], vertexColors: true, ...lambert });
   }
-  return new THREE.MeshStandardMaterial({
+  const m = new THREE.MeshStandardMaterial({
     map: tex[name], normalMap: tex[name + 'N'], normalScale: new THREE.Vector2(0.9, 0.9),
     roughness: 0.95, metalness: 0, vertexColors: true, ...extra,
   });
+  // the photo's brightness match: now if it's in, or when it arrives
+  if (tex.photo[name]) usePhoto(m, tex.photo[name]);
+  else (tex.mats[name] ||= []).push(m);
+  return m;
 }
