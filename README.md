@@ -40,8 +40,9 @@ No build step, no server code, no assets to download — every texture, model an
   at 30, 60, 144 or 240 fps and stays smooth on high-refresh screens.
 - Raw mouse input (no OS pointer acceleration) and CS2's sensitivity scale (0.022° × sensitivity per count),
   so you can type in your CS2 sensitivity.
-- Graphics: **High quality** (photo textures, realistic materials, soft sky lighting, ambient occlusion in corners and
-  a glow on fire, lamps and neon) or **Performance** for slower computers (drawn textures, nothing extra to download).
+- Graphics: **High quality** (3D gun models, photo textures, realistic materials, soft sky lighting, ambient occlusion
+  in corners and a glow on fire, lamps and neon) or **Performance** for slower computers (hand-built guns, drawn
+  textures, nothing extra to download).
 
 ## Online play
 
@@ -333,6 +334,9 @@ vercel --prod
 - `src/postfx.js` — High graphics screen effects: ambient occlusion and glow
 - `assets/textures/` — photo textures for High graphics (walls, ground, floor tiles, wood; 1.5 MB). `src/textures.js`
   draws the Performance ones and loads these, starting with the drawn ones until the photos arrive
+- `assets/models/` — 3D gun models for High graphics (15 guns, 1.4 MB). `src/viewmodel.js` builds every gun by hand
+  and swaps in its model once it loads (in your hands, on the Gun Shop wall and in the menu pictures); the minigun,
+  Petir Arc, Tung Lance, Sambal Torch, Drum LMG and M16 stay hand-built
 - `src/map.js` — map layout, geometry, collision boxes, A* pathfinding, attack routes for the bots
 - `src/game.js` — rounds, economy, bomb, bullets, damage, spectating
 - `src/combatant.js` — shared movement, weapons, recoil, hitboxes
@@ -350,3 +354,5 @@ vercel --prod
 
 Photo textures from [Poly Haven](https://polyhaven.com) (CC0, free for any use): Sandstone Blocks 08, Coast Sand 01,
 Floor Tiles 04 and Raw Plank Wall.
+
+Gun models by [Quaternius](https://quaternius.com) (CC0, free for any use), downloaded from [Poly Pizza](https://poly.pizza).

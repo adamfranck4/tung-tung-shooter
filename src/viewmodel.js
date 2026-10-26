@@ -1,7 +1,8 @@
 // First-person weapon + arms, rendered in its own scene so it never clips into walls.
 import * as THREE from 'three';
 import { flashTexture } from './textures.js';
-import { matte, glossy } from './gfx.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { matte, glossy, HIGH } from './gfx.js';
 
 const M = {};
 function mat(c) { return M[c] || (M[c] = matte({ color: c })); }
@@ -71,6 +72,7 @@ const WOOD = 0x84a64e, KNOB = 0xa6c472;
 let bareGuns = false;   // displayGuns(): the guns on their own, no arms
 function arms(g, band, twoHands, leftZ = -0.26) {
   if (bareGuns) return;
+  const n = g.children.length;
   b(g, 0.055, 0.07, 0.075, KNOB, 0.0, -0.075, 0.06);                      // right hand
   b(g, 0.05, 0.05, 0.03, band, 0.02, -0.1, 0.12);                          // wristband
   limb(g, [0.01, -0.09, 0.09], [0.13, -0.3, 0.42], 0.045, WOOD);           // right arm
@@ -79,6 +81,7 @@ function arms(g, band, twoHands, leftZ = -0.26) {
     b(g, 0.05, 0.05, 0.03, band, -0.05, -0.1, leftZ + 0.08);
     limb(g, [-0.02, -0.07, leftZ + 0.03], [-0.22, -0.32, leftZ + 0.36], 0.045, WOOD);
   }
+  for (const c of g.children.slice(n)) c.userData.arm = true;   // (a gun model replaces only the gun)
 }
 
 // ---------- knife hands ----------
@@ -1096,9 +1099,139 @@ function buildModels(team, gunsOnly = false) {
   arms(g, band, true, -0.28); muzzle(0, 0.03, -0.56);
   models.torch = g;
 
+  for (const [key, g] of Object.entries(models)) if (GUN_MODELS[key]) useGunModel(key, g, gunsOnly);
   if (gunsOnly) return models;
   for (const skin of KNIFE_SKINS) models['knife_' + skin.id] = buildKnife(skin, band);
   return models;
+}
+
+// ---------- gun models (High graphics) ----------
+// Free CC0 low-poly guns by Quaternius (via poly.pizza), in assets/models (1.4 MB). Each gun starts
+// as the hand-built one above and switches to its model once that has loaded, in your hands, on the
+// Gun Shop wall and in the menu pictures (a failed download keeps the hand-built one). The
+// animations move the whole gun, so a model only has to sit in the hands: it's turned barrel
+// forward, sized and placed like the hand-built gun, then nudged per gun:
+//   flip / upright: overrule the guess of which end is the barrel / which way is up
+//   s: size (x the hand-built gun's length)   at: [x, y, z]   adsZ: how far ahead it's held when aiming
+const GUN_MODELS = {
+  ak: {}, m4: { adsZ: -0.5 },
+  smg: { flip: true, at: [0, 0, 0.07] },
+  micro: { s: 1.1, at: [0, -0.04, 0.13] },
+  pdw: { flip: true, at: [0, -0.06, 0.07], adsZ: -0.52 },   // (front grips fool the barrel guess)
+  pistol: { at: [0, -0.012, 0.025] },
+  deagle: { at: [0, 0, 0.02] },
+  revolver: { at: [0, 0, 0.015] },
+  scout: {}, sniper: {}, autosniper: {}, shotgun: {}, autoshotgun: {},
+  raygun: { s: 0.75, at: [0, -0.01, 0.06] },
+  thumper: { s: 0.46, at: [0, -0.02, -0.1] },
+};
+const gunModels = {};                   // key -> the fitted model, once loaded
+const gunsWaiting = [];                 // [key, gun group, display copy] built before their model arrived
+const gunListeners = [];
+export function onGunModels(fn) { gunListeners.push(fn); }
+let refGuns = null, fitting = false;    // the hand-built guns, built once to fit the models to
+function referenceGun(key) {
+  if (!refGuns) { fitting = bareGuns = true; try { refGuns = buildModels(null, true); } finally { fitting = bareGuns = false; } }
+  return refGuns[key];
+}
+
+// the hand-built gun's parts (not the arms), and their box in the gun's own space
+function gunParts(g) { return g.children.filter((c) => c.isMesh && !c.userData.arm && !c.userData.model); }
+function partsBox(parts) {
+  const box = new THREE.Box3(), b = new THREE.Box3();
+  for (const m of parts) {
+    if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+    m.updateMatrix(); box.union(b.copy(m.geometry.boundingBox).applyMatrix4(m.matrix));
+  }
+  return box;
+}
+// all vertices of a loaded model in its own space
+function eachVertex(root, fn) {
+  const v = new THREE.Vector3();
+  root.updateMatrixWorld(true);
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    const pos = o.geometry.attributes.position;
+    for (let i = 0; i < pos.count; i++) fn(v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld));
+  });
+}
+
+// Turn, size and place a freshly loaded model like the hand-built gun g. Returns the fitted group,
+// where its muzzle is and the height of its sight line.
+function fitGunModel(key, scene, g) {
+  const opt = GUN_MODELS[key], target = partsBox(gunParts(g));
+  const turn = new THREE.Group(); turn.add(scene);
+  const raw = new THREE.Box3().setFromObject(scene), size = raw.getSize(new THREE.Vector3());
+  if (size.x > size.z) scene.rotation.y = Math.PI / 2;     // long side along z
+  // the barrel end is the slimmer one (the other end has the grip and stock)
+  turn.updateMatrixWorld(true);
+  const bb = new THREE.Box3().setFromObject(turn), L = bb.max.z - bb.min.z;
+  const ends = { front: [Infinity, -Infinity], back: [Infinity, -Infinity] };
+  eachVertex(turn, (v) => {
+    const e = v.z < bb.min.z + L * 0.15 ? ends.front : v.z > bb.max.z - L * 0.15 ? ends.back : null;
+    if (e) { e[0] = Math.min(e[0], v.y); e[1] = Math.max(e[1], v.y); }
+  });
+  const slimFront = ends.front[1] - ends.front[0] < ends.back[1] - ends.back[0];
+  if (slimFront === !!opt.flip) scene.rotation.y += Math.PI;   // muzzle toward -z
+  // the barrel sits in the top part of a gun (grip and mag hang below): if not, it's upside down
+  const muzzleEnd = slimFront === !!opt.flip ? ends.back : ends.front;
+  if ((muzzleEnd[0] + muzzleEnd[1]) / 2 < (bb.min.y + bb.max.y) / 2 !== !!opt.upright) turn.rotation.z = Math.PI;
+  turn.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(turn), c = box.getCenter(new THREE.Vector3());
+  const k = (target.max.z - target.min.z) / (box.max.z - box.min.z) * (opt.s || 1);
+  const out = new THREE.Group(); out.add(turn);
+  turn.scale.setScalar(k);
+  // centered on the hand-built gun's length, level with its top
+  const at = opt.at || [0, 0, 0];
+  turn.position.set(-c.x * k + at[0], target.max.y - box.max.y * k + at[1], (target.min.z + target.max.z) / 2 - c.z * k + at[2]);
+  out.updateMatrixWorld(true);
+  // muzzle: middle of the front end; sight line: top of the back half
+  const fit = new THREE.Box3().setFromObject(out);
+  let fy0 = Infinity, fy1 = -Infinity, top = -Infinity;
+  const fl = fit.max.z - fit.min.z;
+  eachVertex(out, (v) => {
+    if (v.z < fit.min.z + fl * 0.04) { fy0 = Math.min(fy0, v.y); fy1 = Math.max(fy1, v.y); }
+    if (v.z > fit.min.z + fl * 0.45 && v.z < fit.min.z + fl * 0.8) top = Math.max(top, v.y);
+  });
+  out.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.userData.model = true; } });
+  out.userData.model = true;
+  return { group: out, muzzle: new THREE.Vector3(0, (fy0 + fy1) / 2, fit.min.z), sightY: top };
+}
+
+// swap gun g over to its model (now, or when it arrives). display: a copy for the wall / menu,
+// with its own materials (the wall darkens locked guns by swapping them).
+function useGunModel(key, g, display) {
+  if (!HIGH || fitting) return;
+  const m = gunModels[key];
+  if (!m) { gunsWaiting.push([key, g, display]); return; }
+  const parts = gunParts(g);
+  const old = parts[0], dark = old && old.userData.lit && old.material !== old.userData.lit ? old.material : null;
+  const copy = m.group.clone();
+  copy.traverse((o) => {
+    if (!o.isMesh) return;
+    if (display) o.material = o.material.clone();
+    o.userData.lit = o.material;
+    if (dark) o.material = dark;
+  });
+  for (const p of parts) p.visible = false;
+  g.add(copy);
+  if (g.userData.muzzle) g.userData.muzzle.position.copy(m.muzzle);
+}
+
+function loadGunModels() {
+  if (!HIGH) return;
+  const loader = new GLTFLoader();
+  for (const key of Object.keys(GUN_MODELS)) {
+    loader.load(new URL(`../assets/models/${key}.glb`, import.meta.url).href, (gltf) => {
+      gunModels[key] = fitGunModel(key, gltf.scene, referenceGun(key));
+      if (SIGHTS[key]) SIGHTS[key] = { y: gunModels[key].sightY, z: GUN_MODELS[key].adsZ ?? SIGHTS[key].z };
+      for (let i = gunsWaiting.length - 1; i >= 0; i--) {
+        const [k, g, display] = gunsWaiting[i];
+        if (k === key) { gunsWaiting.splice(i, 1); useGunModel(k, g, display); }
+      }
+      for (const fn of gunListeners) fn(key);
+    }, undefined, () => { /* offline or missing: keep the hand-built gun */ });
+  }
 }
 
 // ---------- slash trail + glint ----------
@@ -1462,3 +1595,5 @@ export class ViewModel {
     } else this.glint.visible = false;
   }
 }
+
+loadGunModels();

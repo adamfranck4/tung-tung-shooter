@@ -4,7 +4,7 @@
 // game.invAct(), which the host checks.
 import * as THREE from 'three';
 import { WEAPONS, RARITIES, rarityOf, caseOdds, rollCase, ZOMBIE_SHOP, ZOMBIE_PRICES, ammoCost, STASH_SIZE, sellValue } from './weapons.js';
-import { displayGuns } from './viewmodel.js';
+import { displayGuns, onGunModels } from './viewmodel.js';
 import { stashDef } from './zombies.js';
 import { esc } from './hud.js';
 
@@ -39,6 +39,7 @@ function perkOf(def) {
 
 // ---------- pictures: each gun model rendered once, side on; a drawn case for each rarity ----------
 let ICONS = null;
+onGunModels(() => { ICONS = null; });   // redraw the pictures with the gun models once they're in
 function buildIcons() {
   ICONS = {};
   const W = 300, H = 130;
