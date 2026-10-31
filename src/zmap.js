@@ -10,7 +10,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { BoxBuilder } from './map.js';
 import { surfaceMaterial } from './textures.js';
 import { solidDistance, mergeBands, blockHash, addEdgeTrims, buildContactShadows } from './mapkit.js';
-import { RARITIES } from './weapons.js';
+import { RARITIES, CASE_PRICE, CASE_COLOR } from './weapons.js';
 import { buildMound, buildTrees, buildLogs, buildStalls, buildBunting, buildWallDecor } from './zdecor.js';
 import { matte, glowColor, MIST_OPACITY, LAMP_LIGHTS } from './gfx.js';
 
@@ -228,13 +228,10 @@ export const PAP_STATIONS = [
   { level: 3, pos: [8.7, 0, 31], face: [1, 0, 0], cost: 15000, area: 'E', color: 0xffc93a, ink: '#ffe49a' },
   { level: 4, pos: [101, 4, 31.2], face: [-1, 0, 0], cost: 25000, area: 'F', color: 0xff3b3b, ink: '#ffa0a0' },
 ];
-// Case vending machines: one per rarity, side by side against the Courtyard's north wall (just east
-// of the door to the Drum Tower). E buys that rarity's case; it goes into your inventory (I).
+// The gun case vending machine, against the Courtyard's north wall (just east of the door to the
+// Drum Tower). E buys a gun case; it goes into your inventory (I).
 export const CASE_MACHINES = [
-  { rarity: 'common', pos: [43.7, 0, 22.45], face: [0, 0, 1] },
-  { rarity: 'rare', pos: [45.3, 0, 22.45], face: [0, 0, 1] },
-  { rarity: 'epic', pos: [46.9, 0, 22.45], face: [0, 0, 1] },
-  { rarity: 'legendary', pos: [48.5, 0, 22.45], face: [0, 0, 1] },
+  { pos: [46.1, 0, 22.45], face: [0, 0, 1] },
 ];
 // The Gun Shop: the walk-in hut in the middle of the Courtyard (the middle of the village), where
 // everyone spawns and buys ammo (E at the counter; guns only come out of cases). The counter runs
@@ -1288,14 +1285,17 @@ export class ZMap {
     }
   }
 
-  // ---------- case vending machines: a dark cabinet in the rarity's color, cases on lit shelves ----------
+  // ---------- the gun case vending machine: a dark cabinet with a glowing frame, cases on lit shelves ----------
   buildCaseMachines() {
     const halo = this.haloTex();
+    // the little cases on its shelves, in their rarities' colors (mostly common, like the odds)
+    const shelf = ['common', 'common', 'rare', 'common', 'rare', 'common', 'epic', 'common', 'legendary']
+      .map((r) => new THREE.MeshBasicMaterial({ color: RARITIES[r].glow }));
     this.caseMachines = CASE_MACHINES.map((c) => {
-      const R = RARITIES[c.rarity], col = new THREE.Color(R.glow);
+      const col = new THREE.Color(CASE_COLOR);
       const g = new THREE.Group(); g.position.set(...c.pos);
       g.rotation.y = Math.atan2(c.face[0], c.face[2]);
-      // the cabinet, with a frame in the rarity's color round a window recessed into its front
+      // the cabinet, with a frame in the case color round a window recessed into its front
       mesh(box, lambert(0x2a2d36), 0, 1.05, -0.1, 1.1, 2.1, 0.7, g);
       const frame = lambert(col.clone().multiplyScalar(0.6).getHex());
       mesh(box, frame, 0, 0.3, 0.35, 1.1, 0.6, 0.2, g);                                                // below the window
@@ -1303,28 +1303,29 @@ export class ZMap {
       for (const x of [-0.5, 0.5]) mesh(box, frame, x, 1.12, 0.35, 0.1, 1.04, 0.2, g);                // either side
       // inside: a softly glowing back, three shelves of little cases; then a pane of glass
       mesh(box, new THREE.MeshBasicMaterial({ color: col.clone().multiplyScalar(0.35).getHex() }), 0, 1.12, 0.26, 0.9, 1.04, 0.02, g).castShadow = false;
-      const caseMat = new THREE.MeshBasicMaterial({ color: col.getHex() }), dark = lambert(0x2a2c32);
+      const dark = lambert(0x2a2c32);
+      let n = 0;
       for (const y of [0.78, 1.1, 1.42]) {
         mesh(box, dark, 0, y - 0.085, 0.35, 0.9, 0.025, 0.18, g).castShadow = false;
         for (const x of [-0.27, 0, 0.27]) {
-          mesh(box, caseMat, x, y, 0.35, 0.2, 0.13, 0.08, g).castShadow = false;
+          mesh(box, shelf[n++], x, y, 0.35, 0.2, 0.13, 0.08, g).castShadow = false;
           mesh(box, dark, x, y + 0.075, 0.35, 0.07, 0.02, 0.02, g).castShadow = false;   // handle
         }
       }
       mesh(box, new THREE.MeshBasicMaterial({ color: 0xa8d8ff, transparent: true, opacity: 0.1, depthWrite: false }), 0, 1.12, 0.44, 0.9, 1.04, 0.01, g).castShadow = false;
       mesh(box, lambert(0x0d0e11), 0, 0.33, 0.46, 0.6, 0.2, 0.03, g).castShadow = false;              // the tray it drops into
       const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.04, 0.38),
-        new THREE.MeshBasicMaterial({ map: signTex([`${R.name.toUpperCase()} CASE`, String(R.casePrice)], '#101116', R.color, 320, 118) }));
+        new THREE.MeshBasicMaterial({ map: signTex(['GUN CASE', String(CASE_PRICE)], '#101116', CASE_COLOR, 320, 118) }));
       sign.position.set(0, 1.87, 0.455); g.add(sign);
-      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: halo, color: R.glow, transparent: true, opacity: 0.45,
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: halo, color: col, transparent: true, opacity: 0.45,
         blending: THREE.AdditiveBlending, depthWrite: false }));
       glow.scale.set(2.0, 2.0, 1); glow.position.set(0, 2.3, 0.2); g.add(glow);
       this.scene.add(g);
       return { ...c, at: new THREE.Vector3(c.pos[0] + c.face[0] * 1.0, 0, c.pos[2] + c.face[2] * 1.0) };
     });
-    // a sign over the row
+    // a sign over it
     const [x0, x1] = [CASE_MACHINES[0].pos[0], CASE_MACHINES[CASE_MACHINES.length - 1].pos[0]];
-    const top = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 0.8), new THREE.MeshBasicMaterial({ map: neonTex('CASES', 'Open them in your inventory (I)') }));
+    const top = new THREE.Mesh(new THREE.PlaneGeometry(2.9, 0.75), new THREE.MeshBasicMaterial({ map: neonTex('GUN CASES', 'Open them in your inventory (I)') }));
     top.position.set((x0 + x1) / 2, 3.05, 22.02); this.scene.add(top);
   }
 

@@ -1,6 +1,6 @@
 // DOM-based heads-up display: vitals, ammo, radar, kill feed, menus.
 import { WORLD } from './map.js';
-import { BUY_ITEMS, WEAPONS, RARITIES } from './weapons.js';
+import { BUY_ITEMS, WEAPONS, CASE_COLOR } from './weapons.js';
 import { drawCrosshair, crosshairScale } from './crosshair.js';
 import { PERKS, AREAS, ZW, FL, GUN_SHOP } from './zmap.js';
 
@@ -324,7 +324,7 @@ export class Hud {
     { const [x0, z0, x1, z1] = GUN_SHOP.rect.map((v) => v * k); ctx.fillStyle = 'rgba(255,198,92,0.8)'; ctx.fillRect(x0 + 2, z0 + 2, x1 - x0 - 4, z1 - z0 - 4); }
     for (const pm of map.perkMachines) dot(pm.pos[0], pm.pos[2], 5, hex(pm.color));
     for (const st of map.papStations) dot(st.pos[0], st.pos[2], 5, hex(st.color));
-    for (const cm of map.caseMachines) dot(cm.pos[0], cm.pos[2] + 0.6, 3.5, RARITIES[cm.rarity].color);
+    for (const cm of map.caseMachines) dot(cm.pos[0], cm.pos[2] + 0.6, 4, CASE_COLOR);
     return c;
   }
 
@@ -547,11 +547,11 @@ export class Hud {
     };
     const hex = (c) => '#' + c.toString(16).padStart(6, '0');
     for (const pm of map.perkMachines) dot(pm.pos[0], pm.pos[2], 7.5, hex(pm.color), pm.short);
-    // the case vending machines: a little case in each rarity's color
+    // the gun case vending machine: a little case
     for (const cm of map.caseMachines) {
       const x = cm.pos[0] * k, z = cm.pos[2] * k + 4;
-      ctx.fillStyle = RARITIES[cm.rarity].color; ctx.fillRect(x - 3.5, z - 3, 7, 6);
-      ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(0,0,0,0.85)'; ctx.strokeRect(x - 3.5, z - 3, 7, 6);
+      ctx.fillStyle = CASE_COLOR; ctx.fillRect(x - 5, z - 3.5, 10, 7);
+      ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(0,0,0,0.85)'; ctx.strokeRect(x - 5, z - 3.5, 10, 7);
     }
     for (const st of map.papStations) {
       const x = st.pos[0] * k, z = st.pos[2] * k;

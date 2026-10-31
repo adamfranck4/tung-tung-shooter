@@ -143,38 +143,47 @@ Object.assign(WEAPONS, {
 });
 
 // ----- Zombies: gun rarities -----
-// Every Zombies gun (except the starting P-9) has a rarity. Guns come out of cases: every rarity
-// has its own case, sold at its own vending machine. A case holds the five guns of its rarity: `guns` are [key, weight] (the odds of each one when you open it).
+// Every Zombies gun (except the starting P-9) has a rarity. Guns only come out of the gun case
+// (see CASE_ODDS). `guns` are [key, weight]: once the case has picked a rarity, the weights pick
+// which of its five guns you get.
 export const RARITIES = {
   common: {
-    name: 'Common', color: '#b0c3d9', glow: 0xb0c3d9, casePrice: 1000, ammo: 0, sell: 250,
+    name: 'Common', color: '#b0c3d9', glow: 0xb0c3d9, ammo: 0, sell: 250,
     guns: [['revolver', 24], ['deagle', 20], ['smg', 20], ['micro', 20], ['shotgun', 16]],
   },
   rare: {
-    name: 'Rare', color: '#4b8bff', glow: 0x4b8bff, casePrice: 2500, ammo: 0, sell: 600,
+    name: 'Rare', color: '#4b8bff', glow: 0x4b8bff, ammo: 0, sell: 600,
     guns: [['m16', 24], ['pdw', 22], ['scout', 20], ['autoshotgun', 18], ['m4', 16]],
   },
   epic: {
-    name: 'Epic', color: '#a659ff', glow: 0xa659ff, casePrice: 6000, ammo: 1500, sell: 1500,
+    name: 'Epic', color: '#a659ff', glow: 0xa659ff, ammo: 1500, sell: 1500,
     guns: [['ak', 24], ['lmg', 20], ['sniper', 20], ['autosniper', 18], ['thumper', 18]],
   },
   legendary: {
-    name: 'Legendary', color: '#ffb02e', glow: 0xffb02e, casePrice: 15000, ammo: 2500, sell: 3750,
+    name: 'Legendary', color: '#ffb02e', glow: 0xffb02e, ammo: 2500, sell: 3750,
     guns: [['minigun', 22], ['petir', 22], ['rail', 21], ['torch', 21], ['raygun', 14]],
   },
 };
 export const RARITY_ORDER = ['common', 'rare', 'epic', 'legendary'];
 export const rarityOf = (key) => RARITY_ORDER.find((r) => RARITIES[r].guns.some(([k]) => k === key)) || null;
-// a case's odds, as percentages: [[key, %], ...]
-export const caseOdds = (rarity) => {
+// The gun case: one kind, from the vending machine in the Courtyard. Its odds go by rarity, like a
+// CS2 weapon case: Mil-Spec 79.92%, Restricted 15.98%, Classified 3.20%, Covert 0.64% and the rare
+// special item (knife or gloves) 0.26%. Here the last two together are legendary: 0.90%.
+export const CASE_PRICE = 2000;
+export const CASE_COLOR = '#ffb648';
+export const CASE_ODDS = { common: 79.92, rare: 15.98, epic: 3.2, legendary: 0.9 };
+// the case's odds, as percentages: [[rarity, [[key, %], ...]], ...], commonest first
+export const caseOdds = () => RARITY_ORDER.map((r) => {
+  const g = RARITIES[r].guns, total = g.reduce((a, [, w]) => a + w, 0);
+  return [r, g.map(([k, w]) => [k, CASE_ODDS[r] * w / total])];
+});
+// a random gun out of the case: first its rarity, then which gun of that rarity
+export function rollCase(rnd = Math.random) {
+  let r = rnd() * 100, rarity = RARITY_ORDER[RARITY_ORDER.length - 1];
+  for (const k of RARITY_ORDER) { r -= CASE_ODDS[k]; if (r < 0) { rarity = k; break; } }
   const g = RARITIES[rarity].guns, total = g.reduce((a, [, w]) => a + w, 0);
-  return g.map(([k, w]) => [k, Math.round(w / total * 1000) / 10]);
-};
-// a random gun out of a case of this rarity
-export function rollCase(rarity, rnd = Math.random) {
-  const g = RARITIES[rarity].guns, total = g.reduce((a, [, w]) => a + w, 0);
-  let r = rnd() * total;
-  for (const [k, w] of g) { r -= w; if (r < 0) return k; }
+  let x = rnd() * total;
+  for (const [k, w] of g) { x -= w; if (x < 0) return k; }
   return g[g.length - 1][0];
 }
 // the inventory (I): how many cases and guns it holds

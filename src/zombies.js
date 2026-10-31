@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { Combatant, RUN_SPEED, dirFrom, chaseCamera } from './combatant.js';
 import { Player } from './player.js';
 import { buildTungModel, makeCoconut, tickRainbow } from './bots.js';
-import { WEAPONS, papDef, MAX_PAP, ammoCost, RARITIES, rollCase, STASH_SIZE, sellValue } from './weapons.js';
+import { WEAPONS, papDef, MAX_PAP, ammoCost, RARITIES, rarityOf, rollCase, CASE_PRICE, STASH_SIZE, sellValue } from './weapons.js';
 import { raycast, raySphere, rayBox, moveBody, wrapAngle } from './physics.js';
 import { PLAYER_START, AREAS, START_AREA } from './zmap.js';
 import { knifeName } from './viewmodel.js';
@@ -17,10 +17,10 @@ import { NET_SOUNDS } from './game.js';
 const MAX_ALIVE = 24;
 
 // ----- inventory (I): the cases and guns a player has stored -----
-// items: { id, t: 'case', rarity } or { id, t: 'gun', key, pap, mag, reserve }
-// online: [id, 'c', rarity] / [id, 'g', key, pap, mag, reserve]
+// items: { id, t: 'case' } (a gun case) or { id, t: 'gun', key, pap, mag, reserve }
+// online: [id, 'c'] / [id, 'g', key, pap, mag, reserve]
 export function packStash(p) {
-  return p.stash.map((x) => (x.t === 'case' ? [x.id, 'c', x.rarity] : [x.id, 'g', x.key, x.pap, x.mag, x.reserve]));
+  return p.stash.map((x) => (x.t === 'case' ? [x.id, 'c'] : [x.id, 'g', x.key, x.pap, x.mag, x.reserve]));
 }
 export function unpackStash(arr) {
   if (!Array.isArray(arr)) return [];
@@ -28,7 +28,7 @@ export function unpackStash(arr) {
   for (const a of arr.slice(0, STASH_SIZE)) {
     if (!Array.isArray(a)) continue;
     const id = a[0] | 0;
-    if (a[1] === 'c' && RARITIES[a[2]]) out.push({ id, t: 'case', rarity: a[2] });
+    if (a[1] === 'c') out.push({ id, t: 'case' });
     else if (a[1] === 'g' && WEAPONS[a[2]] && !WEAPONS[a[2]].melee) {
       out.push({ id, t: 'gun', key: a[2], pap: Math.max(0, Math.min(MAX_PAP, a[3] | 0)), mag: Math.max(0, a[4] | 0), reserve: Math.max(0, a[5] | 0) });
     }
@@ -675,7 +675,7 @@ export class ZombiesGame {
 
   // ----- interface used by Player / Combatant / HUD -----
   // There's no B menu in Zombies: ammo is bought at the Gun Shop counter (E there opens the shop),
-  // guns come in cases from their vending machines, and the inventory (I) holds what you don't carry.
+  // guns come in gun cases from their vending machine, and the inventory (I) holds what you don't carry.
   canBuy() { return false; }
   // (a little extra reach once it's open, and for other players online: their position here lags)
   nearGunShop(p) { return this.map.atGunShop(p.body.pos, p.isAvatar ? 1.2 : 0.3); }
@@ -722,19 +722,17 @@ export class ZombiesGame {
     this.tell(p, { e: 'snd', n: 'purchase' });
   }
 
-  // a case from its vending machine (E there): it goes into your inventory
-  buyCase(p, rarity) {
-    const R = RARITIES[rarity];
-    if (!R) return;
+  // a gun case from the vending machine (E there): it goes into your inventory
+  buyCase(p) {
     if (p.stash.length >= STASH_SIZE) {
       this.tell(p, { e: 'snd', n: 'denied' }); this.tell(p, { e: 'msg', s: 'Your inventory is full (press I to make room)', d: 1.8 });
       return;
     }
-    if (!this.spend(p, R.casePrice)) return;
-    p.stash.push({ id: ++p.stashSeq, t: 'case', rarity });
+    if (!this.spend(p, CASE_PRICE)) return;
+    p.stash.push({ id: ++p.stashSeq, t: 'case' });
     this.syncStash(p);
     this.tell(p, { e: 'snd', n: 'purchase' });
-    this.tell(p, { e: 'msg', s: `${R.name} Case added to your inventory - press I to open it`, d: 2.5 });
+    this.tell(p, { e: 'msg', s: 'Gun Case added to your inventory - press I to open it', d: 2.5 });
   }
 
   // Open a case: the gun it gives takes the case's place in your inventory. The menu plays the
@@ -742,7 +740,7 @@ export class ZombiesGame {
   openCase(p, id) {
     const i = p.stash.findIndex((x) => x.id === id && x.t === 'case');
     if (i < 0) return;
-    const rarity = p.stash[i].rarity, key = rollCase(rarity), def = WEAPONS[key];
+    const key = rollCase(), rarity = rarityOf(key), def = WEAPONS[key];
     const gun = { id: ++p.stashSeq, t: 'gun', key, pap: 0, mag: def.mag, reserve: def.reserve };
     p.stash[i] = gun;
     this.syncStash(p);
@@ -842,7 +840,7 @@ export class ZombiesGame {
     this.hud.zRound(r, true);
     this.sound.zRoundStart();
     this.net?.emit({ e: 'round', r });
-    if (r === 1) this.announce(null, 'Ammo at the Gun Shop (E) · guns come in cases, by the north door · I opens your inventory');
+    if (r === 1) this.announce(null, 'Ammo at the Gun Shop (E) · guns come in gun cases, by the north door · I opens your inventory');
   }
 
   // Round won: the next one waits until everyone presses N (solo: until you do).
@@ -1431,11 +1429,9 @@ export class ZombiesGame {
         return `${a.name} opens after round ${it.d.after}`;
       }
       case 'shop': return 'Press E to buy ammo at the Gun Shop';
-      case 'case': {
-        const R = RARITIES[it.cm.rarity];
+      case 'case':
         if (p.stash.length >= STASH_SIZE) return 'Your inventory is full (press I to make room)';
-        return `Press E to buy ${R.name === 'Epic' ? 'an' : 'a'} ${R.name} Case [${R.casePrice}] · open it in your inventory (I)`;
-      }
+        return `Press E to buy a Gun Case [${CASE_PRICE}] · open it in your inventory (I)`;
       case 'window': return 'Hold E to rebuild the barrier';
       case 'perk': return `Press E to drink ${it.pm.name} [${it.pm.cost}]`;
       case 'pap': {
@@ -1457,7 +1453,7 @@ export class ZombiesGame {
         if (p === this.player) this.requestMenu('shop');
         break;
       case 'case':
-        this.buyCase(p, it.cm.rarity);
+        this.buyCase(p);
         break;
       case 'perk':
         if (p.perks.has(it.pm.id) || !this.spend(p, it.pm.cost)) return;
@@ -1999,7 +1995,7 @@ export class ZombiesGame {
     switch (ev.k) {
       case 'perk': { const pm = map.perkMachines.find((x) => x.id === ev.id); return pm && near(pm.at, 1.7) ? { type: 'perk', pm } : null; }
       case 'pap': { const st = map.papStations[ev.id]; return st && near(st.at, 1.9) && Math.abs(st.at.y - pos.y) < 2 ? { type: 'pap', st } : null; }
-      case 'case': { const cm = map.caseMachines.find((x) => x.rarity === ev.id); return cm && near(cm.at, 1.6) ? { type: 'case', cm } : null; }
+      case 'case': { const cm = map.caseMachines[ev.id | 0]; return cm && near(cm.at, 1.6) ? { type: 'case', cm } : null; }
     }
     return null;
   }

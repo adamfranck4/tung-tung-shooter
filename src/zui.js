@@ -3,7 +3,7 @@
 // game pauses; online the match keeps running behind it). Everything you do here goes through
 // game.invAct(), which the host checks.
 import * as THREE from 'three';
-import { WEAPONS, RARITIES, rarityOf, caseOdds, rollCase, ammoCost, STASH_SIZE, sellValue } from './weapons.js';
+import { WEAPONS, RARITIES, rarityOf, caseOdds, rollCase, CASE_COLOR, CASE_ODDS, ammoCost, STASH_SIZE, sellValue } from './weapons.js';
 import { displayGuns, onGunModels } from './viewmodel.js';
 import { stashDef } from './zombies.js';
 import { esc } from './hud.js';
@@ -74,10 +74,10 @@ function buildIcons() {
 export function gunIcon(key) { if (!ICONS) buildIcons(); return ICONS[key] || ''; }
 export function warmIcons() { if (!ICONS) buildIcons(); }
 
-const CASE_ICONS = {};
-export function caseIcon(rarity) {
-  if (CASE_ICONS[rarity]) return CASE_ICONS[rarity];
-  const R = RARITIES[rarity], W = 300, H = 130, cv = document.createElement('canvas');
+let CASE_ICON = null;
+export function caseIcon() {
+  if (CASE_ICON) return CASE_ICON;
+  const W = 300, H = 130, cv = document.createElement('canvas');
   cv.width = W; cv.height = H;
   const ctx = cv.getContext('2d');
   const rr = (x, y, w, h, r) => { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); };
@@ -88,9 +88,9 @@ export function caseIcon(rarity) {
   body.addColorStop(0, '#4a4d57'); body.addColorStop(1, '#22242b');
   ctx.fillStyle = body; rr(46, 30, 208, 92, 12); ctx.fill();
   ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 3; ctx.stroke();
-  // the rarity's color across the front, with a soft shine
+  // the case color across the front, with a soft shine
   const band = ctx.createLinearGradient(0, 46, 0, 106);
-  band.addColorStop(0, R.color); band.addColorStop(1, shade(R.color, 0.55));
+  band.addColorStop(0, CASE_COLOR); band.addColorStop(1, shade(CASE_COLOR, 0.55));
   ctx.fillStyle = band; rr(60, 46, 180, 60, 8); ctx.fill();
   ctx.fillStyle = 'rgba(255,255,255,0.18)'; rr(64, 49, 172, 18, 6); ctx.fill();
   // latches
@@ -99,12 +99,14 @@ export function caseIcon(rarity) {
   // a big question mark
   ctx.fillStyle = 'rgba(10,10,14,0.75)'; ctx.font = '700 52px Rajdhani, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText('?', 150, 79);
-  return (CASE_ICONS[rarity] = cv.toDataURL('image/png'));
+  return (CASE_ICON = cv.toDataURL('image/png'));
 }
 function shade(hex, k) {
   const n = parseInt(hex.slice(1), 16), f = (v) => Math.round(v * k).toString(16).padStart(2, '0');
   return '#' + f(n >> 16) + f((n >> 8) & 255) + f(n & 255);
 }
+
+const pctText = (p) => (p >= 10 ? p.toFixed(1) : p.toFixed(2));
 
 // ---------- the case opening reel ----------
 const STEP = 156;        // card width + gap, px
@@ -183,9 +185,9 @@ export class ZMenu {
       + `<div class="zm-foot">${foot}${this.online ? ' &middot; the match keeps running while this is open' : ''}</div>`;
   }
 
-  card({ rarity, img, name, sub, extra = '', buttons = '', cls = '', key = '' }) {
+  card({ rarity, color, img, name, sub, extra = '', buttons = '', cls = '', key = '' }) {
     const R = RARITIES[rarity];
-    return `<div class="zc ${cls}" style="--rc:${R ? R.color : '#8a8a8a'}">${key ? `<span class="zc-k">${key}</span>` : ''}`
+    return `<div class="zc ${cls}" style="--rc:${color || (R ? R.color : '#8a8a8a')}">${key ? `<span class="zc-k">${key}</span>` : ''}`
       + `<div class="zc-img">${img ? `<img src="${img}" alt="">` : ''}</div>`
       + `<div class="zc-n">${name}</div><div class="zc-c">${sub}</div>${extra}`
       + `${buttons ? `<div class="zc-b">${buttons}</div>` : ''}</div>`;
@@ -204,7 +206,7 @@ export class ZMenu {
       });
     }
     return `<div class="zm-sec"><h4>AMMO FOR YOUR GUNS</h4><div class="zm-grid two">${ammo}</div></div>`
-      + '<p class="zm-note">The Gun Shop only sells ammo. Guns come out of cases: buy them from the vending machines by the north door of the Courtyard, then open them in your inventory (I).</p>';
+      + '<p class="zm-note">The Gun Shop only sells ammo. Guns come out of gun cases: buy them from the vending machine by the north door of the Courtyard, then open them in your inventory (I).</p>';
   }
 
   invHTML(g, p) {
@@ -221,8 +223,7 @@ export class ZMenu {
     const knife = this.card({ img: '', name: esc(p.meleeName || 'Knife'), sub: 'Slot 3 &middot; melee', cls: 'wide knife', key: '3' });
     const items = p.stash.map((it) => {
       if (it.t === 'case') {
-        const R = RARITIES[it.rarity];
-        return this.card({ rarity: it.rarity, img: caseIcon(it.rarity), name: `${R.name} Case`, sub: 'One of 5 guns', cls: 'case',
+        return this.card({ color: CASE_COLOR, img: caseIcon(), name: 'Gun Case', sub: 'One of 20 guns', cls: 'case',
           buttons: `<button data-act="open" data-id="${it.id}" class="go">OPEN</button>` });
       }
       const def = stashDef(it), rarity = rarityOf(it.key), R = RARITIES[rarity], perk = perkOf(def);
@@ -235,7 +236,7 @@ export class ZMenu {
             : `<button data-act="sell" data-id="${it.id}" class="sell" title="Sell it (click twice)">SELL ${sellValue(it.key, it.pap)}</button>`),
       });
     }).join('');
-    const empty = '<p class="zm-empty">Nothing stored yet. Buy cases from the vending machines by the north door of the Courtyard, '
+    const empty = '<p class="zm-empty">Nothing stored yet. Buy gun cases from the vending machine by the north door of the Courtyard, '
       + 'or put a gun away here to carry another one.</p>';
     return `<div class="zm-inv"><div class="zm-load"><h4>LOADOUT</h4>${slotCard(1)}${slotCard(2)}${knife}</div>`
       + `<div class="zm-stash"><h4>STORED <span>${p.stash.length} / ${STASH_SIZE}</span></h4>`
@@ -295,16 +296,20 @@ export class ZMenu {
   showCase(id) {
     const it = this.player.stash.find((x) => x.id === id && x.t === 'case');
     if (!it) { this.closeCase(); return; }
-    this.kase = { id, rarity: it.rarity, state: 'preview' };
-    const R = RARITIES[it.rarity];
-    const odds = caseOdds(it.rarity).map(([key, pct]) => this.card({
-      rarity: it.rarity, img: gunIcon(key), name: WEAPONS[key].name, sub: `${pct}%`, extra: perkOf(WEAPONS[key]) ? `<div class="zc-p">${perkOf(WEAPONS[key])}</div>` : '',
-    })).join('');
-    this.cs.style.setProperty('--rc', R.color);
-    this.cs.innerHTML = `<div class="zx-box"><div class="zx-title">${R.name.toUpperCase()} CASE</div>`
-      + `<img class="zx-case" src="${caseIcon(it.rarity)}" alt="">`
+    this.kase = { id, state: 'preview' };
+    const tiers = caseOdds().map(([rarity, guns]) => {   // commonest first, legendary last
+      const R = RARITIES[rarity];
+      const cards = guns.map(([key, pct]) => this.card({
+        rarity, img: gunIcon(key), name: WEAPONS[key].name, sub: `${pctText(pct)}%`, extra: perkOf(WEAPONS[key]) ? `<div class="zc-p">${perkOf(WEAPONS[key])}</div>` : '',
+      })).join('');
+      return `<div class="zx-tier" style="--rc:${R.color}"><h5>${R.name.toUpperCase()}<span>${CASE_ODDS[rarity].toFixed(2)}%</span></h5>`
+        + `<div class="zx-odds">${cards}</div></div>`;
+    }).join('');
+    this.cs.style.setProperty('--rc', CASE_COLOR);
+    this.cs.innerHTML = '<div class="zx-box"><div class="zx-title">GUN CASE</div>'
+      + `<img class="zx-case" src="${caseIcon()}" alt="">`
       + '<div class="zx-sub">Holds one of these guns:</div>'
-      + `<div class="zx-odds">${odds}</div>`
+      + tiers
       + '<div class="zx-btns"><button data-act="unlock" class="go">UNLOCK CASE</button><button data-act="back">BACK</button></div>'
       + '<div class="zx-msg"></div></div>';
     this.cs.classList.remove('hidden');
@@ -324,13 +329,13 @@ export class ZMenu {
   caseResult(ev) {
     const k = this.kase;
     if (!this.visible || !k || k.state !== 'wait' || ev.id !== k.id || !WEAPONS[ev.k]) return;
-    Object.assign(k, { state: 'spin', key: ev.k, gid: ev.g, t: 0, lastCard: -1 });
-    // the strip: random guns from the same case (as often as their odds say), the winner near the end
-    const keys = [];
-    for (let i = 0; i < CARDS; i++) keys.push(i === WIN_AT ? ev.k : rollCase(k.rarity));
-    const R = RARITIES[k.rarity];
-    const cards = keys.map((key, i) => `<div class="zr-card${i === WIN_AT ? ' win' : ''}"><img src="${gunIcon(key)}" alt=""><span>${WEAPONS[key].name}</span></div>`).join('');
-    this.cs.innerHTML = `<div class="zx-box spin"><div class="zx-title">UNLOCKING ${R.name.toUpperCase()} CASE</div>`
+    Object.assign(k, { state: 'spin', key: ev.k, rarity: rarityOf(ev.k) || 'common', gid: ev.g, t: 0, lastCard: -1 });
+    // the strip: random guns from the case (as often as their odds say), the winner near the end
+    const keys = k.keys = [];
+    for (let i = 0; i < CARDS; i++) keys.push(i === WIN_AT ? ev.k : rollCase());
+    const cards = keys.map((key, i) => `<div class="zr-card${i === WIN_AT ? ' win' : ''}" style="--rc:${RARITIES[rarityOf(key)]?.color || CASE_COLOR}">`
+      + `<img src="${gunIcon(key)}" alt=""><span>${WEAPONS[key].name}</span></div>`).join('');
+    this.cs.innerHTML = '<div class="zx-box spin"><div class="zx-title">UNLOCKING GUN CASE</div>'
       + `<div class="zx-reel"><div class="zx-strip">${cards}</div><div class="zx-line"></div></div>`
       + '<div class="zx-result"></div><div class="zx-hint">Click or press Esc to skip</div></div>';
     const reel = this.cs.querySelector('.zx-reel');
@@ -356,7 +361,10 @@ export class ZMenu {
     const x = k.dist * easeOut(k.t / SPIN_TIME);
     k.strip.style.transform = `translateX(${-x}px)`;
     const card = Math.floor((x + k.half) / STEP);   // the card under the line
-    if (card !== k.lastCard) { if (k.lastCard >= 0) this.sound.caseTick(TIER[k.rarity] * 0.15); k.lastCard = card; }
+    if (card !== k.lastCard) {   // a click for every gun past the line, higher for rarer ones
+      if (k.lastCard >= 0) this.sound.caseTick((TIER[rarityOf(k.keys[card])] || 0) * 0.15);
+      k.lastCard = card;
+    }
     if (k.t >= SPIN_TIME) this.finishCase();
   }
 
@@ -366,8 +374,9 @@ export class ZMenu {
     this.sound.caseReveal(TIER[k.rarity]);
     this.cs.querySelector('.zr-card.win')?.classList.add('shine');
     const box = this.cs.querySelector('.zx-box'); box.classList.remove('spin'); box.classList.add('done');
-    this.cs.querySelector('.zx-title').textContent = `${R.name.toUpperCase()} CASE UNLOCKED`;
-    const again = this.player.stash.find((x) => x.t === 'case' && x.rarity === k.rarity);
+    this.cs.style.setProperty('--rc', R.color);   // the screen takes the color of what you got
+    this.cs.querySelector('.zx-title').textContent = 'GUN CASE UNLOCKED';
+    const again = this.player.stash.find((x) => x.t === 'case');
     const perk = perkOf(def);
     this.cs.querySelector('.zx-hint').textContent = '';
     this.cs.querySelector('.zx-result').innerHTML = `<div class="zx-got"><img src="${gunIcon(k.key)}" alt="">`

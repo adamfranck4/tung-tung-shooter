@@ -106,12 +106,12 @@ Every Zombies gun (except the P-9 you start with) has a rarity: **common** (grey
 (purple) or **legendary** (gold). Rarer guns are stronger, but not by a mile: a legendary gun is a big help, not a win
 button.
 
-| Rarity | Guns | Where you get them |
+| Rarity | Guns | Chance per gun case |
 | --- | --- | --- |
-| Common | Six-Shooter (revolver), Desert Eagle, SMG-7, Kampung Micro (fast machine pistol), Pump Shotgun | Common Case |
-| Rare | M16 Burst, Hornet PDW (50-round bullpup), Scout, Combat Shotgun (semi-auto), M4 Rifle | Rare Case |
-| Epic | AK Rifle, Drum LMG, Bolt Sniper, Sentinel Auto-Sniper (semi-auto, scoped), Coconut Thumper (explosive launcher) | Epic Case |
-| Legendary | Sahur Shredder, Petir Arc, Tung Lance, Sambal Torch, Tung Ray | Legendary Case |
+| Common | Six-Shooter (revolver), Desert Eagle, SMG-7, Kampung Micro (fast machine pistol), Pump Shotgun | 79.92% |
+| Rare | M16 Burst, Hornet PDW (50-round bullpup), Scout, Combat Shotgun (semi-auto), M4 Rifle | 15.98% |
+| Epic | AK Rifle, Drum LMG, Bolt Sniper, Sentinel Auto-Sniper (semi-auto, scoped), Coconut Thumper (explosive launcher) | 3.20% |
+| Legendary | Sahur Shredder, Petir Arc, Tung Lance, Sambal Torch, Tung Ray | 0.90% |
 
 The legendary guns each do something special:
 - **Sahur Shredder:** a six-barrel minigun. It fires slowly at first and spins up over about a second while you hold
@@ -125,21 +125,17 @@ The legendary guns each do something special:
 - **Tung Ray:** the old wonder weapon, nerfed: 90 damage (was 140), a smaller and weaker blast (2.6 m / 110, was
   3.2 m / 240), 16-shot magazine (was 20) and a bit slower. Still the best splash gun.
 
-**Case vending machines:** four machines stand side by side against the Courtyard's north wall, by the door to the Drum
-Tower, under a glowing CASES sign: one per rarity, in its color. Press **E** at one to buy that case; it goes into your
-inventory.
-
-| Case | Price |
-| --- | --- |
-| Common | 1000 |
-| Rare | 2500 |
-| Epic | 6000 |
-| Legendary | 15000 |
+**The gun case:** there's one kind of case, and it holds every gun above. It costs **2000** at the vending machine
+against the Courtyard's north wall, by the door to the Drum Tower, under a glowing GUN CASES sign. Press **E** there to
+buy one; it goes into your inventory. Its odds are a CS2 weapon case's: common = Mil-Spec (79.92%), rare = Restricted
+(15.98%), epic = Classified (3.20%), legendary = Covert plus the rare special item (0.64% + 0.26% = 0.90%). Then each
+gun's weight picks which gun of that rarity, so a single legendary gun is about 0.13-0.20%. On average that's one epic or
+better in about 24 cases, and one legendary in about 111.
 
 **Inventory (press I, anywhere):** shows your loadout (slots 1 and 2, and your knife) and up to 24 stored cases and
-guns. Click **OPEN** on a case for the CS-style case opening: the case and its five guns with their odds, then **UNLOCK
+guns. Click **OPEN** on a case for the CS-style case opening: the case and all 20 guns with their odds, then **UNLOCK
 CASE** spins a strip of guns past a yellow line that slows down and stops on what you got (click or Esc to skip). The
-gun goes into your inventory; equip it to slot 1 or 2 right there, open another case of the same kind, or keep it
+gun goes into your inventory; equip it to slot 1 or 2 right there, open another case, or keep it
 stored. Stored guns keep their ammo and Pack-a-Punch level. On a stored gun: **SLOT 1 / SLOT 2** swaps it with what's in
 that slot, **SELL** (click twice) sells it (common 250, rare 600, epic 1500, legendary 3750, +1000 per Pack-a-Punch
 level). On a gun you carry: **PUT AWAY** stores it. Max Ammo refills stored guns as well.
@@ -209,7 +205,7 @@ everyone is told when someone unboxes an epic or legendary gun.
   from a balcony or the landings to get out fast.
 - **Minimap (top left):** the area around you (32 m to the edge), turning with you so the way you face is up,
   with N on the rim. It shows open and locked floor, walls, closed doors, the Gun Shop, perks, Pack-a-Punch
-  and the case machines, and your teammates as arrows in their map colors with their names (a red
+  and the gun case machine, and your teammates as arrows in their map colors with their names (a red
   cross when they're down). A teammate off the edge shows as a dot on the rim, in their direction. It hides while
   the big map is open.
 - **Map (press M):** shows the whole village with the rooms you've opened lit up (locked ones hatched, with the round
@@ -270,7 +266,7 @@ everyone is told when someone unboxes an epic or legendary gun.
 | 1 / 2 / 3, Q, wheel | Switch weapons |
 | R | Reload |
 | B | Buy menu (in spawn during buy time), then 1-8 to buy (5v5 only) |
-| E | Zombies: buy (Gun Shop counter, case machines, perks, Pack-a-Punch) |
+| E | Zombies: buy (Gun Shop counter, gun case machine, perks, Pack-a-Punch) |
 | I | Zombies: inventory (stored guns and cases, case opening) |
 | E (hold) | Plant / defuse, rebuild boards, revive a teammate |
 | Tab | Scoreboard |

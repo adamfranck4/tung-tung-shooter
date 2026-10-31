@@ -87,7 +87,7 @@ export class ZombiesClient extends ZombiesGame {
     const req = { e: 'use', k: it.type };
     if (it.type === 'perk') req.id = it.pm.id;
     else if (it.type === 'pap') req.id = this.map.papStations.indexOf(it.st);
-    else if (it.type === 'case') req.id = it.cm.rarity;
+    else if (it.type === 'case') req.id = this.map.caseMachines.indexOf(it.cm);
     this.net.emit(req);
   }
 
