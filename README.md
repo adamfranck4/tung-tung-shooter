@@ -108,10 +108,10 @@ button.
 
 | Rarity | Guns | Where you get them |
 | --- | --- | --- |
-| Common | Six-Shooter (revolver), Desert Eagle, SMG-7, Kampung Micro (fast machine pistol), Pump Shotgun | Gun Shop, Common Case, Mystery Box |
-| Rare | M16 Burst, Hornet PDW (50-round bullpup), Scout, Combat Shotgun (semi-auto), M4 Rifle | Gun Shop, Rare Case, Mystery Box |
-| Epic | AK Rifle, Drum LMG, Bolt Sniper, Sentinel Auto-Sniper (semi-auto, scoped), Coconut Thumper (explosive launcher) | Epic Case, Mystery Box |
-| Legendary | Sahur Shredder, Petir Arc, Tung Lance, Sambal Torch, Tung Ray | Legendary Case, Mystery Box |
+| Common | Six-Shooter (revolver), Desert Eagle, SMG-7, Kampung Micro (fast machine pistol), Pump Shotgun | Gun Shop, Common Case |
+| Rare | M16 Burst, Hornet PDW (50-round bullpup), Scout, Combat Shotgun (semi-auto), M4 Rifle | Gun Shop, Rare Case |
+| Epic | AK Rifle, Drum LMG, Bolt Sniper, Sentinel Auto-Sniper (semi-auto, scoped), Coconut Thumper (explosive launcher) | Epic Case |
+| Legendary | Sahur Shredder, Petir Arc, Tung Lance, Sambal Torch, Tung Ray | Legendary Case |
 
 The legendary guns each do something special:
 - **Sahur Shredder:** a six-barrel minigun. It fires slowly at first and spins up over about a second while you hold
@@ -142,7 +142,7 @@ CASE** spins a strip of guns past a yellow line that slows down and stops on wha
 gun goes into your inventory; equip it to slot 1 or 2 right there, open another case of the same kind, or keep it
 stored. Stored guns keep their ammo and Pack-a-Punch level. On a stored gun: **SLOT 1 / SLOT 2** swaps it with what's in
 that slot, **SELL** (click twice) sells it (common 250, rare 600, epic 1500, legendary 3750, +1000 per Pack-a-Punch
-level). On a gun you carry: **PUT AWAY** stores it. When a new gun (Gun Shop, Mystery Box) replaces the one in your
+level). On a gun you carry: **PUT AWAY** stores it. When a new gun from the Gun Shop replaces the one in your
 hands, that one goes into your inventory too, if there's room. Max Ammo refills stored guns as well.
 
 The case odds (each case holds its five guns):
@@ -159,8 +159,8 @@ online the match keeps running (like the Esc menu), so find a quiet moment. Onli
 everyone is told when someone unboxes an epic or legendary gun.
 
 - Endless rounds of Tung Tung zombies with bats. They tear boards off the windows and climb in, or rise from
-  the ground. Regular zombies start with 100 HP (same as a player); each round brings more of them, and they get
-  faster (walkers → runners → sprinters) and tougher (see *Zombie health* below).
+  the ground. Regular zombies have 100 HP (same as a player); each round brings more of them, and they get
+  faster (walkers → runners → sprinters).
 - **Big zombies** (from round 3): ~1.7x size, 400 + 80 × round HP, hit for 80, worth 250 points. They rise from
   the ground (max 3 at once).
 - **Zombie types.** Regular (red) zombies stay the most common (at least 40% of each round). The first time a
@@ -178,27 +178,10 @@ everyone is told when someone unboxes an epic or legendary gun.
   - **THE BOSS** (every 7th round: 7, 14, 21...): a huge crowned, winged Tung Tung with a health bar across the
     top of the screen. It flies, hovers to throw fans of big coconuts, and swoops in to hit for 90. Each visit
     it comes back in new colors (Magma, Frost, Venom, Void, then round again) and tougher: more health
-    (4272 on round 7, more per visit, and more with more players), more coconuts per volley (3, 4, 5... up
+    (3620 on round 7, more per visit, and more with more players), more coconuts per volley (3, 4, 5... up
     to 7), faster flying and throwing, and from round 14 it calls in purple flyers. Ignores Insta-Kill and
     Kaboom, worth 3000 points, and always drops a power-up. The round doesn't end until it's down.
   - Kill points: the usual 60 / 100 headshot / 130 knife, +30 speedster, +20 crawler, +40 thrower or flyer.
-- **Zombie health goes up every round.** The health above is round 1. Regular zombies and the speedster, crawler,
-  thrower and flyer gain 12% of it a round up to double on round 10, then 8% more each round after that (up to
-  20x). Big zombies, the rainbow giant and the boss already grow with the round, and on top of that gain 3% a
-  round, then 5% a round after round 10 (up to 8x).
-
-  | Round | Regular | Speedster | Big zombie | Rainbow giant | Boss |
-  | --- | --- | --- | --- | --- | --- |
-  | 1 | 100 | 70 | 480 | 1020 | |
-  | 5 | 148 | 104 | 896 | 1680 | |
-  | 7 | 172 | 120 | 1133 | 2053 | 4272 |
-  | 10 | 208 | 146 | 1524 | 2667 | |
-  | 14 | 283 | 198 | 2346 | 3983 | 9170 |
-  | 20 | 449 | 314 | 4137 | 6827 | |
-  | 21 | 485 | 339 | 4518 | 7429 | 17942 |
-  | 30 | 969 | 679 | 9435 | 15164 | |
-
-  (The boss gets 65% more for each extra player.)
 - You get 20 seconds between waves (time to get back to the Gun Shop); press **N** to start the next wave right away.
 - **Sahur Hill** (doors from the Courtyard and the Kitchen alley): two hills, a walk-through hut, and a stepped
   stone pyramid with a staircase up the middle of each side and braziers on its corners. The last Pack-a-Punch
@@ -226,13 +209,13 @@ everyone is told when someone unboxes an epic or legendary gun.
   down at the zombies coming for you. Zombies take the stairs; only flyers come straight in. You can jump down
   from a balcony or the landings to get out fast.
 - **Minimap (top left):** the area around you (32 m to the edge), turning with you so the way you face is up,
-  with N on the rim. It shows open and locked floor, walls, closed doors, the Gun Shop, perks, Pack-a-Punch, the
-  Mystery Box and the case machines, and your teammates as arrows in their map colors with their names (a red
+  with N on the rim. It shows open and locked floor, walls, closed doors, the Gun Shop, perks, Pack-a-Punch
+  and the case machines, and your teammates as arrows in their map colors with their names (a red
   cross when they're down). A teammate off the edge shows as a dot on the rim, in their direction. It hides while
   the big map is open.
 - **Map (press M):** shows the whole village with the rooms you've opened lit up (locked ones hatched, with the round
   they open after), every closed door with its round (R3 = opens after round 3), the Gun Shop, the stairs (the arrow
-  points up), perks, Pack-a-Punch stations and the Mystery Box,
+  points up), perks and Pack-a-Punch stations,
   and an arrow for you and each teammate (a red cross when someone is down). Underneath, it lists which room
   everyone is in. It stays open while you play; M again closes it.
 - **Aim down sights (hold right click):** any gun without a scope comes up to your eye with its front sight on the
@@ -246,11 +229,9 @@ everyone is told when someone unboxes an epic or legendary gun.
 - Points: +10 per hit, +60 per kill, +100 headshot kill, +130 knife kill, +10 per board you rebuild (hold E).
 - At the Gun Shop a new gun replaces the gun in your hands when you already carry two (that one goes into your
   inventory). It's the only place that sells guns (there are no wall guns); epic and legendary guns only come out of
-  cases and the Mystery Box.
+  cases.
 - Spend points on (press E):
   - Perks: Quick Revive 500 (gets you back up once), Double Tap 2000, Juggernog 2500 (more health), Speed Cola 3000 (faster reloads)
-  - Mystery Box 950: a random gun of any rarity, but mostly common ones (55% common, 30% rare, 12% epic, 3% legendary).
-    A case is the sure way to get the rarity you want.
   - **Pack-a-Punch, four levels.** Each station upgrades the gun in your hands one level, in order, so a gun
     can keep up as the waves get harder. The hint at a station tells you where the next one is.
 
@@ -269,9 +250,8 @@ everyone is told when someone unboxes an epic or legendary gun.
 ### Co-op
 
 - Zombies go for whoever is closest. Each round has more of them with more players (+50% per extra player).
-- Areas, windows, the Mystery Box, Pack-a-Punch and power-ups are shared; points, perks, guns and inventories are your own.
-  Only the player who paid for the Mystery Box can take its gun. Max Ammo refills everyone; Carpenter and
-  Kaboom give every player their points.
+- Areas, windows, Pack-a-Punch and power-ups are shared; points, perks, guns and inventories are your own.
+  Max Ammo refills everyone; Carpenter and Kaboom give every player their points.
 - Going down doesn't end the game: you lose your perks and have 100 seconds. A teammate holds **E** next to you
   for 3 seconds to revive you (1.5 with Quick Revive). Downed teammates show a red cross you can see through walls.
 - While down you're in last stand: you can't move, but you can aim, shoot and reload a pistol to cover whoever is
@@ -293,7 +273,7 @@ everyone is told when someone unboxes an epic or legendary gun.
 | 1 / 2 / 3, Q, wheel | Switch weapons |
 | R | Reload |
 | B | Buy menu (in spawn during buy time), then 1-8 to buy (5v5 only) |
-| E | Zombies: buy (Gun Shop counter, case machines, perks, box, Pack-a-Punch) |
+| E | Zombies: buy (Gun Shop counter, case machines, perks, Pack-a-Punch) |
 | I | Zombies: inventory (stored guns and cases, case opening) |
 | E (hold) | Plant / defuse, rebuild boards, revive a teammate |
 | Tab | Scoreboard |

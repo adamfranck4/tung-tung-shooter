@@ -325,7 +325,6 @@ export class Hud {
     for (const pm of map.perkMachines) dot(pm.pos[0], pm.pos[2], 5, hex(pm.color));
     for (const st of map.papStations) dot(st.pos[0], st.pos[2], 5, hex(st.color));
     for (const cm of map.caseMachines) dot(cm.pos[0], cm.pos[2] + 0.6, 3.5, RARITIES[cm.rarity].color);
-    dot(map.box.pos[0], map.box.pos[2], 5, '#66b8ff');
     return c;
   }
 
@@ -539,7 +538,7 @@ export class Hud {
       ctx.strokeStyle = 'rgba(170,215,255,0.8)'; ctx.lineWidth = 1; ctx.strokeRect(cx - w / 2, cz - 7, w, 14);
       ctx.fillStyle = '#bfe2ff'; ctx.fillText(t, cx, cz + 0.5);
     }
-    // machines: Mystery Box, Pack-a-Punch (by level), perks
+    // machines: Pack-a-Punch (by level), perks
     const dot = (x, z, r, fill, text, ink = '#111') => {
       ctx.beginPath(); ctx.arc(x * k, z * k, r, 0, 7); ctx.fillStyle = fill; ctx.fill();
       ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(0,0,0,0.8)'; ctx.stroke();
@@ -562,13 +561,6 @@ export class Hud {
       ctx.restore();
       ctx.font = '700 10px Rajdhani, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#111';
       ctx.fillText(ROMAN[st.level], x, z + 0.5);
-    }
-    {
-      const bx = map.box.pos[0] * k, bz = map.box.pos[2] * k;
-      ctx.fillStyle = '#66b8ff'; ctx.fillRect(bx - 8, bz - 6, 16, 12);
-      ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(0,0,0,0.8)'; ctx.strokeRect(bx - 8, bz - 6, 16, 12);
-      ctx.font = '700 12px Rajdhani, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#0b1a2a';
-      ctx.fillText('?', bx, bz + 0.5);
     }
     {   // the Gun Shop (where you spawn): a gold block over the hut
       const [x0, z0, x1, z1] = GUN_SHOP.rect.map((v) => v * k);

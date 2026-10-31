@@ -277,7 +277,6 @@ export class Sound {
   powerSpawn(pos) { const o = this.out(pos, 0.4, 60); if (o) [1200, 1500, 1800].forEach((f, i) => this.tone(o.node, { freq: f, decay: 0.2, type: 'sine', delay: i * 0.07 })); }
   powerGrab() { const o = this.out(null, 0.5); if (o) [392, 523, 659, 784, 1046].forEach((f, i) => this.tone(o.node, { freq: f, decay: 0.25, type: 'triangle', vol: 0.6, delay: i * 0.06 })); }
   nuke() { this.explosion(null); }
-  boxRoll() { const o = this.out(null, 0.3); if (o) for (let i = 0; i < 12; i++) this.tone(o.node, { freq: 600 + (i % 4) * 200, decay: 0.12, type: 'triangle', vol: 0.4, delay: i * 0.27 }); }
   zRoundStart() { this.tung(null, 0.8); const o = this.out(null, 0.5); if (o) this.tone(o.node, { freq: 55, end: 45, decay: 2.5, type: 'sawtooth', vol: 0.4, delay: 0.7 }); }
   zRoundEnd() { const o = this.out(null, 0.4); if (o) [784, 659, 523, 392, 523].forEach((f, i) => this.tone(o.node, { freq: f, decay: 0.4, type: 'triangle', vol: 0.5, delay: i * 0.22 })); }
 

@@ -23,7 +23,7 @@ const PLANT_TIME = 3.2;
 const DEFUSE_TIME = 5;
 const END_DELAY = 5;
 // sounds a message from the host may ask a player's browser to play
-export const NET_SOUNDS = new Set(['buy', 'pickup', 'plantTick', 'denied', 'purchase', 'perk', 'boardFix', 'boxRoll']);
+export const NET_SOUNDS = new Set(['buy', 'pickup', 'plantTick', 'denied', 'purchase', 'perk', 'boardFix']);
 
 const _hit = {}, _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _end = new THREE.Vector3(), _d = new THREE.Vector3();
 

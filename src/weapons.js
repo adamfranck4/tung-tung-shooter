@@ -182,12 +182,6 @@ export function rollCase(rarity, rnd = Math.random) {
 export const STASH_SIZE = 24;
 // selling a stored gun: by rarity, plus 1000 a Pack-a-Punch level (the starting P-9: 100)
 export const sellValue = (key, pap = 0) => (RARITIES[rarityOf(key)]?.sell || 100) + 1000 * (pap | 0);
-// The Mystery Box: any gun, but mostly common ones (a case is the sure way to get a better one)
-const BOX_RARITY = { common: 55, rare: 30, epic: 12, legendary: 3 };
-export const BOX_WEAPONS = RARITY_ORDER.flatMap((r) => {
-  const g = RARITIES[r].guns, total = g.reduce((a, [, w]) => a + w, 0);
-  return g.map(([k, w]) => [k, BOX_RARITY[r] * w / total]);
-});
 
 // Aiming down sights (Zombies, hold right click), by viewmodel: how much it zooms in and how long
 // it takes to raise the gun. Scoped snipers use their scope instead; knives can't aim, and neither
@@ -227,7 +221,7 @@ export function papDef(def, level = 1) {
 
 // ----- Zombies Gun Shop (the counter you spawn at): the common and rare guns, one more for every
 // round you survive. after: how many rounds you need to have survived before it's on sale.
-// Prices in points. (Epic and legendary guns only come out of cases and the Mystery Box.)
+// Prices in points. (Epic and legendary guns only come out of cases.)
 export const ZOMBIE_PRICES = { pistol: 500, revolver: 500, deagle: 700, smg: 1000, micro: 1100, shotgun: 1500,
   m16: 1600, pdw: 1800, scout: 1700, autoshotgun: 2000, m4: 2200 };
 export const ZOMBIE_SHOP = [

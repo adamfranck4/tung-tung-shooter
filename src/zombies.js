@@ -1,23 +1,20 @@
 // Zombies mode: survive endless rounds of Tung Tung zombies in Sahur Village, alone or with up to
 // three friends online. Online, the host's browser runs the zombies and the shared world (doors,
-// box, power-ups); each player's points, perks and health live here too. See netzombies.js for
+// windows, power-ups); each player's points, perks and health live here too. See netzombies.js for
 // the joining side.
 import * as THREE from 'three';
 import { Combatant, RUN_SPEED, dirFrom, chaseCamera } from './combatant.js';
 import { Player } from './player.js';
 import { buildTungModel, makeCoconut, tickRainbow } from './bots.js';
-import { WEAPONS, papDef, MAX_PAP, ZOMBIE_SHOP, ZOMBIE_PRICES, ammoCost, RARITIES, rarityOf, rollCase, BOX_WEAPONS, STASH_SIZE, sellValue } from './weapons.js';
+import { WEAPONS, papDef, MAX_PAP, ZOMBIE_SHOP, ZOMBIE_PRICES, ammoCost, RARITIES, rollCase, STASH_SIZE, sellValue } from './weapons.js';
 import { raycast, raySphere, rayBox, moveBody, wrapAngle } from './physics.js';
 import { PLAYER_START, AREAS, START_AREA } from './zmap.js';
 import { knifeName } from './viewmodel.js';
 import { Avatar, Interp, F, r1, r2, r3, packSlots, showShot } from './avatar.js';
 import { Statue, STATUE_R, statueMaxHp, hunterChance, chooseRoom, statueSpot } from './zstatue.js';
 import { NET_SOUNDS } from './game.js';
-import { BEAM_OPACITY } from './gfx.js';
 
 const MAX_ALIVE = 24;
-// the Mystery Box label: the gun's name in its rarity's color
-export const boxColor = (key) => RARITIES[rarityOf(key)]?.color || '#ffd36a';
 
 // ----- inventory (I): the cases and guns a player has stored -----
 // items: { id, t: 'case', rarity } or { id, t: 'gun', key, pap, mag, reserve }
@@ -51,19 +48,8 @@ export const BASE_HEALTH = 150;
 const JUGG_HEALTH = 250;
 export const BLEED_TIME = 100;    // co-op: seconds a downed player lasts without a revive
 export const REVIVE_TIME = 3;     // holding E next to them (half with Quick Revive)
-export const ZOMBIE_HP = 100;                            // regular zombies on round 1: same health as a player
+export const ZOMBIE_HP = 100;                            // regular zombies: same health as a player
 export const bigZombieHealth = (r) => 400 + 80 * r;      // big zombies: a real bullet sponge
-// Every zombie gets tougher as the rounds go on. Regular types (and the speedsters, crawlers,
-// throwers and flyers): +12% of their health a round up to double on round 10, then +8% a round
-// after that (x3 on 15, x4.5 on 20, x9.7 on 30, up to x20). The big ones, the rainbow giant and the
-// boss already grow with the round, so on top of that they get +3% a round, then +5% a round after
-// round 10 (up to x8).
-export const hpScale = (r) => Math.min(20, (1 + 0.12 * (Math.min(r, 10) - 1)) * Math.pow(1.08, Math.max(0, r - 10)));
-export const bigHpScale = (r) => Math.min(8, (1 + 0.03 * (Math.min(r, 10) - 1)) * Math.pow(1.05, Math.max(0, r - 10)));
-export const zombieHealth = (kind, r) => {
-  const v = VARIANTS[kind] || VARIANTS.normal, k = Math.max(1, r | 0);
-  return Math.round(v.hp(k) * (v.ground || v.boss ? bigHpScale(k) : hpScale(k)));
-};
 const BIG_SCALE = 1.7;
 // chance that a spawn is a big zombie (from round 3, up to 1 in 4), max 3 alive at once
 const bigChance = (r) => (r < 3 ? 0 : clamp(0.06 + (r - 3) * 0.02, 0, 0.25));
@@ -194,7 +180,7 @@ export class Zombie extends Combatant {
   spawn(sp, round, kind = 'normal') {
     this.reset(kind);
     const v = this.v, b = this.body, s = this.scale;
-    this.health = this.maxHealth = zombieHealth(kind, round) * (kind === 'boss' ? 1 + 0.65 * (this.game.players.length - 1) : 1);
+    this.health = this.maxHealth = v.hp(round) * (kind === 'boss' ? 1 + 0.65 * (this.game.players.length - 1) : 1);
     this.puppet = false;
     // some zombies go straight for the Golden Tung Tung instead of you (never the boss)
     this.hunter = kind !== 'boss' && Math.random() < hunterChance(round, this.game.players.length);
@@ -624,7 +610,6 @@ export class ZombiesGame {
     this.interaction = null; this.flowT = 0; this.mapOpen = false;
     this.setupPlayers(roster || [{ nid: 0, name: 'You', kind: 'local' }], net ? net.myId : null, knife);
     for (const a of this.remotes) a.spawnEpoch = 0;   // matches the joining player's first state
-    this.resetBox();
     this.betweenRounds = true; this.nextRoundAt = 0; this.toSpawn = 0;
     this.ready = new Set(); this.roomVisits = {}; this.statue.room = null; this.overWhy = null;
     this.syncUnlocks(0);
@@ -675,12 +660,6 @@ export class ZombiesGame {
       lastHurt: -10, downed: false, downT: 0, reviveT: 0, reviveFrac: 0, reviver: null, rebuildT: 0, reloadMul: 1, rateMul: 1,
       stash: [], stashSeq: 0,
     });
-  }
-
-  resetBox() {
-    const box = this.map.box;
-    Object.assign(box, { state: 'idle', t: 0, open: 0, weapon: null, owner: null });
-    box.label.visible = false;
   }
 
   stop() {
@@ -1444,7 +1423,7 @@ export class ZombiesGame {
     this.net?.emit({ e: 'door', id: d.id });
   }
 
-  // ----- interactions: the Gun Shop, windows, perks, box, Pack-a-Punch, reviving -----
+  // ----- interactions: the Gun Shop, windows, perks, Pack-a-Punch, reviving -----
   // (a closed door just tells you when it opens)
   findInteraction(p) {
     if (!p.alive || p.downed) return null;
@@ -1465,7 +1444,6 @@ export class ZombiesGame {
     for (const pm of map.perkMachines) if (!p.perks.has(pm.id)) consider(flat(pos, pm.at), 1.7, { type: 'perk', pm });
     for (const cm of map.caseMachines) consider(flat(pos, cm.at), 1.6, { type: 'case', cm });
     for (const st of map.papStations) if (Math.abs(st.at.y - pos.y) < 1.5) consider(flat(pos, st.at), 1.9, { type: 'pap', st });
-    consider(flat(pos, map.box.at), 2.0, { type: 'box' });
     if (map.atGunShop(pos)) consider(0, 1, { type: 'shop' });
     return best;
   }
@@ -1504,16 +1482,6 @@ export class ZombiesGame {
         if (lv !== st.level - 1) return `This gun's next upgrade is at ${papName(stations[lv], true)}`;
         return `Press E to upgrade to ${papDef(w.def, st.level).name} [${st.cost}]`;
       }
-      case 'box': {
-        const b = this.map.box;
-        if (b.state === 'idle') return `Press E for the Mystery Box [${b.cost}]`;
-        if (b.state === 'ready') {
-          if (b.owner !== p) return `${b.owner?.name || 'Someone'}'s Mystery Box weapon`;
-          const R = RARITIES[rarityOf(b.weapon)];
-          return `Press E to take the ${R ? R.name + ' ' : ''}${WEAPONS[b.weapon].name}`;
-        }
-        return '';
-      }
     }
     return '';
   }
@@ -1542,20 +1510,6 @@ export class ZombiesGame {
         this.syncInv(p, 'pap');
         this.tell(p, { e: 'snd', n: 'perk' });
         this.tell(p, { e: 'msg', s: `${w.def.name}!`, d: 2.5 });
-        break;
-      }
-      case 'box': {
-        const b = map.box;
-        if (b.state === 'idle') {
-          if (!this.spend(p, b.cost)) return;
-          Object.assign(b, { state: 'rolling', t: 0, nextSwap: 0, owner: p });
-          b.label.visible = true;
-          this.tell(p, { e: 'snd', n: 'boxRoll' });
-        } else if (b.state === 'ready' && b.owner === p) {
-          this.givePlayerWeapon(p, b.weapon);
-          this.tell(p, { e: 'snd', n: 'purchase' });
-          b.state = 'idle'; b.label.visible = false; b.owner = null;
-        }
         break;
       }
     }
@@ -1603,43 +1557,6 @@ export class ZombiesGame {
       if (this.coop && p.reviveT > 0) continue;   // the clock stops while someone is reviving you
       p.downT -= dt;
       if (p.downT <= 0) { if (this.coop) this.bleedOut(p); else this.revive(p, null); }
-    }
-  }
-
-  updateBox(dt) {
-    this.animateBox(dt);
-    const b = this.map.box;
-    if (b.state === 'rolling' && b.t >= 3.6) {
-      const owner = b.owner;
-      let pool = BOX_WEAPONS.filter(([k]) => !owner || !this.ownedSlot(owner, k));
-      if (!pool.length) pool = BOX_WEAPONS;
-      const total = pool.reduce((a, [, w]) => a + w, 0);
-      let r = Math.random() * total;
-      b.weapon = pool[0][0];
-      for (const [k, w] of pool) { r -= w; if (r <= 0) { b.weapon = k; break; } }
-      this.map.setBoxLabel(WEAPONS[b.weapon].name, boxColor(b.weapon));
-      b.state = 'ready'; b.t = 0;
-    } else if (b.state === 'ready' && b.t > 9) { b.state = 'idle'; b.label.visible = false; b.owner = null; }
-  }
-
-  // lid, light beam and the floating label (the label cycles through guns while rolling)
-  animateBox(dt) {
-    const b = this.map.box;
-    const target = b.state === 'idle' ? 0 : 1;
-    b.open += (target - b.open) * Math.min(1, dt * 6);
-    b.lid.rotation.x = -b.open * 1.7;
-    b.beam.material.opacity = (0.12 + Math.sin(this.time * 3) * 0.05) * BEAM_OPACITY;
-    if (b.state === 'rolling') {
-      b.t += dt;
-      b.label.position.y = 1.0 + Math.min(1, b.t / 1.5) * 0.9;
-      if (this.time >= (b.nextSwap || 0)) {
-        const k = BOX_WEAPONS[Math.floor(Math.random() * BOX_WEAPONS.length)][0];
-        this.map.setBoxLabel(WEAPONS[k].name);
-        b.nextSwap = this.time + 0.07 + b.t * 0.05;
-      }
-    } else if (b.state === 'ready') {
-      b.t += dt;
-      b.label.position.y = 1.9 + Math.sin(this.time * 3) * 0.05;
     }
   }
 
@@ -1996,7 +1913,6 @@ export class ZombiesGame {
     if (this.phase === 'over') return;
     this.updateInteract(dt);
     this.updatePowerups(dt);
-    this.updateBox(dt);
     this.map.updateDoors(dt);
     this.statue.animate(dt, this.time, this.camera.position);
     this.updateSpectate();
@@ -2060,11 +1976,9 @@ export class ZombiesGame {
         Math.round(zb.attackT * 100), KINDS.indexOf(zb.kind), Math.round(zb.throwT * 100),
         ...(zb.kind === 'boss' ? [Math.round(Math.max(0, zb.health) / zb.maxHealth * 1000)] : [])]);
     }
-    const box = this.map.box;
     return {
       T: r3(this.time), r: this.round, br: this.betweenRounds ? 1 : 0, nr: r2(this.nextRoundAt), p, z,
       wb: this.map.windows.map((w) => w.boards).join(''),
-      bx: [box.state, box.weapon || '', box.owner ? box.owner.nid : -1],
       ef: [r1(this.effects.instakill), r1(this.effects.double)],
       pu: this.powerups.map((q) => [q.id, q.type, r2(q.pos.x), r2(q.pos.y), r2(q.pos.z), r1(q.t)]),
       sa: this.statue.alive ? [this.statue.room, r2(this.statue.body.pos.x), r2(this.statue.body.pos.y), r2(this.statue.body.pos.z),
@@ -2121,7 +2035,6 @@ export class ZombiesGame {
     switch (ev.k) {
       case 'perk': { const pm = map.perkMachines.find((x) => x.id === ev.id); return pm && near(pm.at, 1.7) ? { type: 'perk', pm } : null; }
       case 'pap': { const st = map.papStations[ev.id]; return st && near(st.at, 1.9) && Math.abs(st.at.y - pos.y) < 2 ? { type: 'pap', st } : null; }
-      case 'box': return near(map.box.at, 2.0) ? { type: 'box' } : null;
       case 'case': { const cm = map.caseMachines.find((x) => x.rarity === ev.id); return cm && near(cm.at, 1.6) ? { type: 'case', cm } : null; }
     }
     return null;
@@ -2135,7 +2048,6 @@ export class ZombiesGame {
     this.remotes = this.remotes.filter((a) => a !== p);
     this.players = this.players.filter((a) => a !== p);
     this.combatants = this.players.slice();
-    if (this.map.box.owner === p) this.map.box.owner = null;
     if (this.spectating === p) this.spectating = this.nextSpectate(null);
     this.hud.center(`${p.name} left the game`, 2.5);
     this.net?.emit({ e: 'left', n: p.nid });

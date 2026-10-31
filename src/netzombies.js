@@ -1,9 +1,8 @@
-// Zombies co-op on a joining player's browser. The host runs the zombies, doors, box and
+// Zombies co-op on a joining player's browser. The host runs the zombies, doors, windows and
 // power-ups; this side moves its own player, reports hits and button presses, and draws the
 // shared world from the host's snapshots.
 import * as THREE from 'three';
-import { ZombiesGame, Zombie, boxColor, unpackStash } from './zombies.js';
-import { WEAPONS } from './weapons.js';
+import { ZombiesGame, Zombie, unpackStash } from './zombies.js';
 import { START_AREA, AREAS } from './zmap.js';
 import { F, r1, r2, r3, packSlots, applyInventory, showShot } from './avatar.js';
 
@@ -22,7 +21,6 @@ export class ZombiesClient extends ZombiesGame {
     this.interaction = null; this.spectating = null; this.mapOpen = false;
     this.setupPlayers(roster, net.myId, knife);
     this.player.spawnEpoch = 0; this.player.invVer = 0;
-    this.resetBox();
     this.betweenRounds = true; this.nextRoundAt = 0;
     this.ready = new Set(); this.statue.room = null; this.overWhy = null;
     this.syncUnlocks(0);
@@ -56,7 +54,6 @@ export class ZombiesClient extends ZombiesGame {
     this.separate();
     this.updateInteract();
     this.animatePowerups(dt);
-    this.animateBox(dt);
     this.map.updateDoors(dt);
     this.statue.animate(dt, this.time, this.camera.position);
     this.updateSpectate();
@@ -186,15 +183,6 @@ export class ZombiesClient extends ZombiesGame {
       if (n < w.boards) { this.sound.boardBreak(w.center); this.fx.burst(w.boardMeshes[w.boards - 1].position, 0xa47a4c, 8, 3); }
       this.map.setBoards(w, n);
     }
-    // mystery box
-    const [bst, bw, bown] = s.bx, b = this.map.box;
-    if (bst !== b.state) {
-      b.t = 0; b.nextSwap = 0;
-      if (bst === 'ready' && WEAPONS[bw]) { b.weapon = bw; this.map.setBoxLabel(WEAPONS[bw].name, boxColor(bw)); }
-      b.label.visible = bst !== 'idle';
-      b.state = bst;
-    }
-    b.owner = this.byNid(bown);
     // power-ups
     const keep = new Set();
     for (const [id, type, x, y, z, t] of s.pu) {

@@ -13,7 +13,7 @@ import { solidDistance, mergeBands, blockHash, addEdgeTrims, buildContactShadows
 import { WEAPONS, ZOMBIE_SHOP, ZOMBIE_PRICES, RARITIES, rarityOf } from './weapons.js';
 import { displayGuns } from './viewmodel.js';
 import { buildMound, buildTrees, buildLogs, buildStalls, buildBunting, buildWallDecor } from './zdecor.js';
-import { matte, beamColor, glowColor, MIST_OPACITY, LAMP_LIGHTS } from './gfx.js';
+import { matte, glowColor, MIST_OPACITY, LAMP_LIGHTS } from './gfx.js';
 
 const C = 2;                 // cell size in meters
 const GW = 60, GH = 54;
@@ -229,7 +229,6 @@ export const PAP_STATIONS = [
   { level: 3, pos: [8.7, 0, 31], face: [1, 0, 0], cost: 15000, area: 'E', color: 0xffc93a, ink: '#ffe49a' },
   { level: 4, pos: [101, 4, 31.2], face: [-1, 0, 0], cost: 25000, area: 'F', color: 0xff3b3b, ink: '#ffa0a0' },
 ];
-export const BOX = { pos: [24, 0, 45.5], cost: 950, area: 'B' };
 // Case vending machines: one per rarity, side by side against the Courtyard's north wall (just east
 // of the door to the Drum Tower). E buys that rarity's case; it goes into your inventory (I).
 export const CASE_MACHINES = [
@@ -420,7 +419,6 @@ export class ZMap {
     }
     // shipping containers (stacked ones are one tall box)
     for (const [x0, z0, x1, z1, n] of CONTAINERS) this.obstacles.push({ x0, y0: 0, z0, x1, y1: CONT_H * n, z1 });
-    this.obstacles.push({ x0: BOX.pos[0] - 0.9, y0: 0, z0: BOX.pos[2] - 0.4, x1: BOX.pos[0] + 0.9, y1: 0.9, z1: BOX.pos[2] + 0.4 });
     { const [x0, z0, x1, z1] = GUN_SHOP.counter; this.obstacles.push({ x0, y0: 0, z0, x1, y1: GUN_SHOP.counterH, z1 }); }
     for (const l of LIGHTS) if (l.post) this.obstacles.push({ x0: l.pos[0] - 0.15, y0: 0, z0: l.pos[2] - 0.15, x1: l.pos[0] + 0.15, y1: 3.3, z1: l.pos[2] + 0.15 });
 
@@ -997,7 +995,7 @@ export class ZMap {
   decorFaces() {
     const busy = [
       ...PERKS.map((p) => [p.pos[0], p.pos[2]]), ...CASE_MACHINES.map((c) => [c.pos[0], c.pos[2]]),
-      ...PAP_STATIONS.map((p) => [p.pos[0], p.pos[2]]), [BOX.pos[0], BOX.pos[2]],
+      ...PAP_STATIONS.map((p) => [p.pos[0], p.pos[2]]),
       ...this.windows.map((w) => [w.center.x, w.center.z]), ...this.doors.map((d) => [d.center.x, d.center.z]),
       ...STALLS.map((s) => [(s.counter[0] + s.counter[2]) / 2, s.back]),
     ];
@@ -1267,25 +1265,6 @@ export class ZMap {
       this.scene.add(g);
       return { ...st, at: new THREE.Vector3(st.pos[0] + st.face[0] * 1.4, st.pos[1], st.pos[2] + st.face[2] * 1.4) };
     });
-    // Mystery box with a light beam
-    {
-      const g = new THREE.Group(); g.position.set(...BOX.pos);
-      const wood = matte({ map: signTex(['?', ''], '#5a3b20', '#ffe08a', 128, 96) });
-      mesh(box, wood, 0, 0.35, 0, 1.8, 0.7, 0.8, g);
-      const lid = new THREE.Group(); lid.position.set(0, 0.7, -0.4); g.add(lid);
-      mesh(box, lambert(0x4a2f18), 0, 0.08, 0.4, 1.84, 0.16, 0.84, lid);
-      const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.7, 14, 16, 1, true),
-        new THREE.MeshBasicMaterial({ color: beamColor(0x66b8ff), transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
-      beam.position.y = 7; g.add(beam);
-      this.scene.add(g);
-      // floating label that shows the cycling weapon
-      const c = document.createElement('canvas'); c.width = 512; c.height = 128;
-      const labelTex = new THREE.CanvasTexture(c); labelTex.colorSpace = THREE.SRGBColorSpace;
-      const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTex, transparent: true, depthWrite: false }));
-      label.scale.set(2.4, 0.6, 1); label.position.set(BOX.pos[0], 1.9, BOX.pos[2]); label.visible = false;
-      this.scene.add(label);
-      this.box = { ...BOX, group: g, lid, beam, label, labelCanvas: c, labelTex, at: new THREE.Vector3(BOX.pos[0], 0, BOX.pos[2] + 1.3) };
-    }
     this.buildGunShop();
     this.buildLampLights();
   }
@@ -1452,15 +1431,6 @@ export class ZMap {
     const [fx0, fx1, fz] = GUN_SHOP.front;
     const d = Math.hypot(pos.x - Math.max(fx0, Math.min(fx1, pos.x)), pos.z - fz);
     return d < GUN_SHOP.reach + slack && pos.y < 1.5 + slack;
-  }
-
-  setBoxLabel(text, color = '#ffe9a8') {
-    const b = this.box, ctx = b.labelCanvas.getContext('2d');
-    ctx.clearRect(0, 0, 512, 128);
-    ctx.font = '700 64px Rajdhani, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 10; ctx.fillStyle = color;
-    ctx.fillText(text, 256, 64);
-    b.labelTex.needsUpdate = true;
   }
 
   // ---------- navigation (flow field toward the player) ----------
