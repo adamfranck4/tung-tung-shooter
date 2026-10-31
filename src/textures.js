@@ -449,8 +449,8 @@ export function tungFaceTexture() {
   return t;
 }
 
-export function makeTextures(quality = 'high') {
-  const hi = quality === 'high';
+export function makeTextures(quality = 'high') {   // 'ultra' | 'high' | 'low'
+  const hi = quality !== 'low';
   const wall = wallTexture(hi), sand = sandTexture(hi), tile = tileTexture(hi), crate = crateTexture(hi);
   const tex = {
     quality,
@@ -519,7 +519,7 @@ function loadPhotos(tex) {
 // Map surface material. High quality: physically based with surface detail (normal map).
 // Performance: cheap matte shading.
 export function surfaceMaterial(tex, name, extra = {}) {
-  if (tex.quality !== 'high' || !tex[name + 'N']) {
+  if (tex.quality === 'low' || !tex[name + 'N']) {
     const { roughness, metalness, ...lambert } = extra;   // (physically based options only)
     return new THREE.MeshLambertMaterial({ map: tex[name], vertexColors: true, ...lambert });
   }

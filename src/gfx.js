@@ -1,12 +1,17 @@
 // Graphics quality (read once when the page loads) and the materials that depend on it.
-// High: physically based materials, which pick up the sky's soft light and show highlights.
-// Low (performance mode): the cheaper matte and shiny materials.
+// Ultra: High plus screen effects (glow and ambient occlusion, see postfx.js) and sharper
+//        shadows/resolution. Costly: for strong graphics cards.
+// High (default): physically based materials, which pick up the sky's soft light and show
+//        highlights, photo textures and 3D gun models. No screen effects.
+// Low (performance mode): the cheaper matte and shiny materials, drawn textures, hand-built guns.
 import * as THREE from 'three';
 
 let saved = null;
 try { saved = localStorage.getItem('defuse.quality'); } catch (_) { /* storage unavailable */ }
-export const QUALITY = new URLSearchParams(location.search).has('low') || saved === 'low' ? 'low' : 'high';
-export const HIGH = QUALITY === 'high';
+const asked = new URLSearchParams(location.search).has('low') ? 'low' : saved;
+export const QUALITY = asked === 'low' || asked === 'ultra' ? asked : 'high';
+export const HIGH = QUALITY !== 'low';         // realistic materials, photo textures, 3D guns
+export const EFFECTS = QUALITY === 'ultra';    // glow + ambient occlusion
 
 // Matte surfaces: wood, skin, cloth, stone, painted things. Takes MeshLambertMaterial options;
 // `pbr` overrides the High look (roughness, metalness).
@@ -26,11 +31,15 @@ export function glossy(opts = {}, pbr = {}) {
   return new THREE.MeshStandardMaterial({ roughness, metalness: 0, ...o, ...pbr });
 }
 
-// On High, see-through effects blend in linear light before the final color step, so pale mist
-// and light beams over a dark night look brighter and heavier than on Low. These keep the Low look.
-export const BEAM_OPACITY = HIGH ? 0.7 : 1;
-export const MIST_OPACITY = HIGH ? 0.5 : 1;
-export const beamColor = (hex) => (HIGH ? new THREE.Color(hex).lerp(new THREE.Color(0xffffff), 0.3) : new THREE.Color(hex));
+// With the screen effects, see-through effects blend in linear light before the final color step,
+// so pale mist and light beams over a dark night look brighter and heavier. These keep the usual look.
+export const BEAM_OPACITY = EFFECTS ? 0.7 : 1;
+export const MIST_OPACITY = EFFECTS ? 0.5 : 1;
+export const beamColor = (hex) => (EFFECTS ? new THREE.Color(hex).lerp(new THREE.Color(0xffffff), 0.3) : new THREE.Color(hex));
 
-// Something that gives off light (fire, a lamp): on High it's brighter than white, so it glows.
-export const glowColor = (hex, k) => new THREE.Color(hex).multiplyScalar(HIGH ? k : 1);
+// Something that gives off light (fire, a lamp): with the screen effects it's brighter than white, so it glows.
+export const glowColor = (hex, k) => new THREE.Color(hex).multiplyScalar(EFFECTS ? k : 1);
+
+// Zombies map: how many of its lamps really light things up at once (the ones nearest to where
+// you're looking; the rest just glow). Every real light costs on every pixel drawn.
+export const LAMP_LIGHTS = EFFECTS ? 10 : 6;

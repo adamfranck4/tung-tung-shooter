@@ -1,10 +1,10 @@
-// Screen effects for High graphics:
+// Screen effects for Ultra graphics:
 //  - ambient occlusion: soft shade where surfaces meet (wall bases, corners, under crates and zombies)
 //  - glow: fire, lanterns, neon signs and other players' muzzle flashes bleed a little light around them
 // (your own gun is drawn on top afterwards, so it isn't affected)
 // The scene is drawn into an HDR buffer, the effects run on it, and the last pass applies the
 // tone mapping and exposure (which the renderer otherwise does inside every material).
-// Low graphics doesn't create this at all.
+// High and Low graphics don't create this at all.
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';

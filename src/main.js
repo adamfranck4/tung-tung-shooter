@@ -15,22 +15,23 @@ import { Session, NetLink, MAX_PLAYERS, TEAM_SIZE, cleanName, normalizeCode } fr
 import { CROSSHAIRS, getCrosshair, drawCrosshair } from './crosshair.js';
 import { CS_DEG_PER_COUNT } from './player.js';
 import { ZMenu } from './zui.js';
-import { QUALITY } from './gfx.js';
+import { QUALITY, HIGH, EFFECTS } from './gfx.js';
 import { PostFX } from './postfx.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 const load = (k) => { try { return localStorage.getItem(k); } catch (_) { return null; } };
 const save = (k, v) => { try { localStorage.setItem(k, v); } catch (_) { /* storage unavailable */ } };
-// Graphics: 'high' = detailed surfaces, soft environment light, glow and ambient occlusion; 'low' = performance mode
+// Graphics: 'ultra' = High + glow, ambient occlusion and sharper shadows; 'high' = detailed
+// surfaces and soft environment light; 'low' = performance mode (see gfx.js)
 const quality = QUALITY;
-const lowShadows = quality === 'low';
+const shadowSize = (best) => (EFFECTS ? best : HIGH ? 2048 : 1024);
 const TICK = 1 / 128; // physics rate (CS2 runs 64 tick + sub-tick input; 128 keeps input tight)
 
 // ---------- renderer ----------
 const canvas = $('game');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, quality === 'high' ? 1.5 : 1));
+renderer.setPixelRatio(Math.min(devicePixelRatio, EFFECTS ? 1.5 : 1));   // (sharp screens: 1.5x is over twice the pixels)
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -40,8 +41,8 @@ renderer.autoClear = false;
 
 const camera = new THREE.PerspectiveCamera(74, innerWidth / innerHeight, 0.05, 800);
 camera.rotation.order = 'YXZ';
-// High graphics: ambient occlusion + glow, drawn through an effects chain (see postfx.js)
-const post = quality === 'high' ? new PostFX(renderer, camera) : null;
+// Ultra graphics: ambient occlusion + glow, drawn through an effects chain (see postfx.js)
+const post = EFFECTS ? new PostFX(renderer, camera) : null;
 
 // gradient sky dome that follows the camera
 function makeSky(top, horizon) {
@@ -58,7 +59,7 @@ function makeSky(top, horizon) {
   return sky;
 }
 
-// Soft sky lighting for physically based materials (high quality only).
+// Soft sky lighting for physically based materials (High and Ultra).
 const pmrem = new THREE.PMREMGenerator(renderer);
 function makeEnvironment(top, horizon, ground) {
   const s = new THREE.Scene();
@@ -91,13 +92,13 @@ function buildClassicWorld() {
   scene.fog = new THREE.Fog(0xe6d2ad, 70, 280);
   const sky = makeSky(0x4d8fd6, 0xf0dcb6);
   scene.add(sky);
-  if (quality === 'high') { scene.environment = makeEnvironment(0x5b8fcf, 0xe9d6b3, 0x9a8160); scene.environmentIntensity = 0.45; }
-  scene.add(new THREE.HemisphereLight(0xd8e8ff, 0xb08a5c, quality === 'high' ? 0.6 : 1.5));
+  if (HIGH) { scene.environment = makeEnvironment(0x5b8fcf, 0xe9d6b3, 0x9a8160); scene.environmentIntensity = 0.45; }
+  scene.add(new THREE.HemisphereLight(0xd8e8ff, 0xb08a5c, HIGH ? 0.6 : 1.5));
   const sun = new THREE.DirectionalLight(0xfff0d0, 3.2);
   sun.position.set(WORLD / 2 + 55, 95, WORLD / 2 + 35);
   sun.target.position.set(WORLD / 2, 0, WORLD / 2);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(lowShadows ? 1024 : 4096, lowShadows ? 1024 : 4096);
+  sun.shadow.mapSize.setScalar(shadowSize(4096));
   Object.assign(sun.shadow.camera, { left: -95, right: 95, top: 95, bottom: -95, near: 10, far: 260 });
   sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.04;
   scene.add(sun, sun.target);
@@ -139,13 +140,13 @@ function buildZombiesWorld() {
   moon.position.set(-40, 90, -30).normalize().multiplyScalar(440); moon.scale.set(70, 70, 1);
   sky.add(moon);
 
-  if (quality === 'high') { scene.environment = makeEnvironment(0x0a1020, 0x26324f, 0x1a1510); scene.environmentIntensity = 0.45; }
-  scene.add(new THREE.HemisphereLight(0x6a7cae, 0x2a1e14, quality === 'high' ? 0.75 : 1.15));
+  if (HIGH) { scene.environment = makeEnvironment(0x0a1020, 0x26324f, 0x1a1510); scene.environmentIntensity = 0.45; }
+  scene.add(new THREE.HemisphereLight(0x6a7cae, 0x2a1e14, HIGH ? 0.75 : 1.15));
   const moonLight = new THREE.DirectionalLight(0xa8bcff, 1.4);
   moonLight.position.set(ZW / 2 - 40, 90, ZH / 2 - 30);
   moonLight.target.position.set(ZW / 2, 0, ZH / 2);
   moonLight.castShadow = true;
-  moonLight.shadow.mapSize.set(lowShadows ? 1024 : 2048, lowShadows ? 1024 : 2048);
+  moonLight.shadow.mapSize.setScalar(shadowSize(2048));
   Object.assign(moonLight.shadow.camera, { left: -78, right: 78, top: 78, bottom: -78, near: 10, far: 260 });
   moonLight.shadow.bias = -0.0005; moonLight.shadow.normalBias = 0.04;
   scene.add(moonLight, moonLight.target);
@@ -514,6 +515,8 @@ function render() {
   const g = world.game, p = g.player;
   world.sky.position.copy(camera.position);
   renderer.toneMappingExposure = world.exposure;
+  // Zombies: move its few real lights to the lamps you can see (menu: around the middle of the map)
+  world.map.updateLights?.(camera, state === 'menu' || state === 'lobby' ? world.orbit.r : 8);
   if (post?.enabled) post.render(world.scene, world.look);
   else { renderer.clear(); renderer.render(world.scene, camera); }
   if ((state === 'playing' || state === 'paused' || state === 'zmenu' || state === 'test') && p?.alive && !p.scoped) {
@@ -610,7 +613,7 @@ window.__sim = (seconds = 1, fps = 60) => {
 };
 
 window.__renderer = renderer; // debug: lets test scripts render frames to a contact sheet
-window.__post = post;         // debug: the High graphics effects (null on Low)
+window.__post = post;         // debug: the Ultra graphics effects (null otherwise)
 // debug helper: average milliseconds per frame (simulation + rendering, waiting for the GPU)
 window.__bench = (frames = 120) => {
   const gl = renderer.getContext();

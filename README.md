@@ -40,9 +40,12 @@ No build step, no server code, no assets to download — every texture, model an
   at 30, 60, 144 or 240 fps and stays smooth on high-refresh screens.
 - Raw mouse input (no OS pointer acceleration) and CS2's sensitivity scale (0.022° × sensitivity per count),
   so you can type in your CS2 sensitivity.
-- Graphics: **High quality** (3D gun models, photo textures, realistic materials, soft sky lighting, ambient occlusion
-  in corners and a glow on fire, lamps and neon) or **Performance** for slower computers (hand-built guns, drawn
-  textures, nothing extra to download).
+- Graphics: **High** (the default: 3D gun models, photo textures, realistic materials, soft sky lighting),
+  **Ultra** for strong graphics cards (High plus ambient occlusion in corners, a glow on fire, lamps and neon,
+  sharper shadows and full resolution on sharp screens) or **Performance** for slower computers (hand-built guns,
+  drawn textures, nothing extra to download).
+- On the Zombies map only the 6 lamps nearest to where you're looking really light things up (10 on Ultra);
+  the others just glow. Each real light costs on every pixel, so this keeps the night map smooth.
 
 ## Online play
 
@@ -307,8 +310,8 @@ python -m http.server 8000
 
 Then open http://localhost:8000.
 
-Add `?low` to the URL for Performance graphics on slow machines (simpler materials and shadows, no ambient
-occlusion or glow).
+Add `?low` to the URL for Performance graphics on slow machines (simpler materials and shadows, drawn textures,
+hand-built guns).
 
 ## Deploy to Vercel (Hobby plan)
 
@@ -331,7 +334,7 @@ vercel --prod
 - `index.html`, `style.css` — page, menus, HUD layout
 - `src/main.js` — renderer, lighting, sky, menu, game loop
 - `src/gfx.js` — the graphics setting and the materials that depend on it
-- `src/postfx.js` — High graphics screen effects: ambient occlusion and glow
+- `src/postfx.js` — Ultra graphics screen effects: ambient occlusion and glow
 - `assets/textures/` — photo textures for High graphics (walls, ground, floor tiles, wood; 1.5 MB). `src/textures.js`
   draws the Performance ones and loads these, starting with the drawn ones until the photos arrive
 - `assets/models/` — 3D gun models for High graphics (15 guns, 1.4 MB). `src/viewmodel.js` builds every gun by hand

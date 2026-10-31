@@ -6,13 +6,14 @@
 // (see UPSTAIRS). Along the south edge: the Spooky Woods and the Container Yard. The props and
 // decoration are built in zdecor.js.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { BoxBuilder } from './map.js';
 import { surfaceMaterial } from './textures.js';
 import { solidDistance, mergeBands, blockHash, addEdgeTrims, buildContactShadows } from './mapkit.js';
 import { WEAPONS, ZOMBIE_SHOP, ZOMBIE_PRICES, RARITIES, rarityOf } from './weapons.js';
 import { displayGuns } from './viewmodel.js';
 import { buildMound, buildTrees, buildLogs, buildStalls, buildBunting, buildWallDecor } from './zdecor.js';
-import { matte, beamColor, glowColor, MIST_OPACITY } from './gfx.js';
+import { matte, beamColor, glowColor, MIST_OPACITY, LAMP_LIGHTS } from './gfx.js';
 
 const C = 2;                 // cell size in meters
 const GW = 60, GH = 54;
@@ -373,6 +374,7 @@ class Heap {
 
 const box = new THREE.BoxGeometry(1, 1, 1);
 const _lines = new Int32Array(6);   // clearLine: the cell each of its three lines is in
+const _dir = new THREE.Vector3(), _focus = new THREE.Vector3();   // updateLights
 function mesh(geo, material, x, y, z, sx = 1, sy = 1, sz = 1, parent = null) {
   const m = new THREE.Mesh(geo, material);
   m.position.set(x, y, z); m.scale.set(sx, sy, sz);
@@ -814,7 +816,17 @@ export class ZMap {
   // ---------- doors ----------
   buildDoors() {
     this.doors = [];
-    const plank = lambert(0x6b4a2c), brace = lambert(0x3f2a18);
+    // each door's planks and braces are merged into one mesh (one draw, and one for its shadow)
+    const doorMat = lambert(0xffffff, { vertexColors: true });
+    const plank = new THREE.Color(0x6b4a2c), brace = new THREE.Color(0x3f2a18);
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
+    const part = (parts, color, x, y, z, sx, sy, sz, rx = 0, rz = 0) => {
+      const geo = box.clone().applyMatrix4(m4.compose(new THREE.Vector3(x, y, z), q.setFromEuler(e.set(rx, 0, rz)), new THREE.Vector3(sx, sy, sz)));
+      const n = geo.attributes.position.count, col = new Float32Array(n * 3);
+      for (let k = 0; k < n; k++) color.toArray(col, k * 3);
+      geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      parts.push(geo);
+    };
     for (const def of DOORS) {
       // a door filling corridor cells, or (upstairs) one in a thin wall's doorway at floor height
       let center, spanX, span, collider;
@@ -833,17 +845,21 @@ export class ZMap {
         for (let z = z0; z < z1; z++) for (let x = x0; x < x1; x++) this.navBlock[z * GW + x] = 1;
       }
       const g = new THREE.Group(); g.position.copy(center);
-      const n = Math.round(span / 0.32);
+      const n = Math.round(span / 0.32), parts = [];
       for (let i = 0; i < n; i++) {
         const off = -span / 2 + (i + 0.5) * (span / n);
         const h = 3.0 + (i % 3) * 0.12;
-        if (spanX) mesh(box, plank, off, h / 2, 0, span / n - 0.03, h, 0.12, g);
-        else mesh(box, plank, 0, h / 2, off, 0.12, h, span / n - 0.03, g);
+        if (spanX) part(parts, plank, off, h / 2, 0, span / n - 0.03, h, 0.12);
+        else part(parts, plank, 0, h / 2, off, 0.12, h, span / n - 0.03);
       }
       for (const y of [0.8, 2.3]) {
-        if (spanX) mesh(box, brace, 0, y, 0.1, span, 0.18, 0.06, g).rotation.z = 0.12;
-        else mesh(box, brace, 0.1, y, 0, 0.06, 0.18, span, g).rotation.x = 0.12;
+        if (spanX) part(parts, brace, 0, y, 0.1, span, 0.18, 0.06, 0, 0.12);
+        else part(parts, brace, 0.1, y, 0, 0.06, 0.18, span, 0.12, 0);
       }
+      const planks = new THREE.Mesh(mergeGeometries(parts), doorMat);
+      planks.castShadow = planks.receiveShadow = true;
+      g.add(planks);
+      for (const geo of parts) geo.dispose();
       const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.55), matte({ map: signTex(['LOCKED', `AFTER ROUND ${def.after}`], '#2a1b10', '#f4e2b0') }));
       const sign2 = sign.clone();
       if (spanX) { sign.position.set(0, 1.6, 0.14); sign2.position.set(0, 1.6, -0.14); sign2.rotation.y = Math.PI; }
@@ -1050,10 +1066,7 @@ export class ZMap {
     for (const { pos: [lx, ly, lz], light } of S.lanterns) {
       mesh(box, glow, lx, ly, lz, 0.22, 0.3, 0.22, this.scene).castShadow = false;
       mesh(box, lambert(0x2a2622), lx, ly + 0.35, lz, 0.03, 0.4, 0.03, this.scene).castShadow = false;   // hanging cord
-      if (!light) continue;   // (point lights are costly: only the huts that need one)
-      const l = new THREE.PointLight(0xffb36b, 22, 11, 2);
-      l.position.set(lx, ly - 0.2, lz);
-      this.scene.add(l);
+      if (light) this.addLamp([lx, ly - 0.2, lz], 0xffb36b, 22, 11);   // (only the huts that need one)
     }
   }
 
@@ -1199,11 +1212,7 @@ export class ZMap {
     const lantern = new THREE.MeshBasicMaterial({ color: 0xffc77a });
     const pole = lambert(0x2a2622);
     for (const l of LIGHTS) {
-      if (!l.glowOnly) {   // (every point light costs on every pixel: glowOnly lamps just glow)
-        const light = new THREE.PointLight(l.color, l.intensity, l.dist, 2);
-        light.position.set(...l.pos);
-        this.scene.add(light);
-      }
+      if (!l.glowOnly) this.addLamp(l.pos, l.color, l.intensity, l.dist);   // (glowOnly lamps just glow)
       if (l.wisp) {   // a floating ball of ghost light with a soft halo
         const g = new THREE.Group(); g.position.set(...l.pos); g.userData.y = l.pos[1];
         g.add(new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 8), new THREE.MeshBasicMaterial({ color: l.color })));
@@ -1278,6 +1287,39 @@ export class ZMap {
       this.box = { ...BOX, group: g, lid, beam, label, labelCanvas: c, labelTex, at: new THREE.Vector3(BOX.pos[0], 0, BOX.pos[2] + 1.3) };
     }
     this.buildGunShop();
+    this.buildLampLights();
+  }
+
+  // ---------- lamp lights ----------
+  // The map has about twenty lamps, but every real light costs on every pixel drawn. So there are
+  // only LAMP_LIGHTS real lights, and each frame they move to the lamps nearest to where you're
+  // looking; the other lamps just glow. The last lamp in line fades by how much nearer it is than
+  // the next one, so when two lamps swap places nothing pops.
+  addLamp(pos, color, intensity, dist) {
+    intensity *= 0.8;   // (turned down a little from the brightness in the lists)
+    (this.lamps ||= []).push({ pos: new THREE.Vector3(...pos), color: new THREE.Color(color), intensity, dist, key: 0 });
+  }
+  buildLampLights() {
+    this.lampLights = [];
+    for (let i = 0; i < Math.min(LAMP_LIGHTS, this.lamps.length); i++) {
+      const l = new THREE.PointLight(0xffffff, 0, 10, 2);
+      this.scene.add(l); this.lampLights.push(l);
+    }
+    this.lampOrder = this.lamps.slice();
+  }
+  // ahead: how far along the view the spot to light up is (meters)
+  updateLights(camera, ahead = 8) {
+    camera.getWorldDirection(_dir);
+    _focus.copy(camera.position).addScaledVector(_dir, ahead);
+    for (const L of this.lamps) L.key = L.pos.distanceTo(_focus) - L.dist;   // how far outside its reach
+    const order = this.lampOrder.sort((a, b) => a.key - b.key), n = this.lampLights.length;
+    const next = order[n] ? order[n].key : Infinity;
+    for (let i = 0; i < n; i++) {
+      const L = order[i], light = this.lampLights[i];
+      const f = Math.min(1, (next - L.key) / 6);   // fades over the last 6 m before the next lamp takes over
+      light.position.copy(L.pos); light.color.copy(L.color); light.distance = L.dist;
+      light.intensity = L.intensity * f * f * (3 - 2 * f);
+    }
   }
 
   // ---------- case vending machines: a dark cabinet in the rarity's color, cases on lit shelves ----------
