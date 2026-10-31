@@ -10,8 +10,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { BoxBuilder } from './map.js';
 import { surfaceMaterial } from './textures.js';
 import { solidDistance, mergeBands, blockHash, addEdgeTrims, buildContactShadows } from './mapkit.js';
-import { WEAPONS, ZOMBIE_SHOP, ZOMBIE_PRICES, RARITIES, rarityOf } from './weapons.js';
-import { displayGuns } from './viewmodel.js';
+import { RARITIES } from './weapons.js';
 import { buildMound, buildTrees, buildLogs, buildStalls, buildBunting, buildWallDecor } from './zdecor.js';
 import { matte, glowColor, MIST_OPACITY, LAMP_LIGHTS } from './gfx.js';
 
@@ -116,7 +115,7 @@ const ROOF_Y = 4.9;
 // h - 0.7 tall, so even the rainbow giant fits); light: a lantern that lights the inside.
 const HUTS = [
   { rect: [80, 8, 88, 16], skip: ['n', 'w'], doors: [['e', 6], ['s', 43]], windows: [['s', 41]], h: 5, lantern: [84, 4.2, 12], light: true, roof: 0 },
-  // the Gun Shop (see GUN_SHOP), walk-through; its north wall holds the gun rack
+  // the Gun Shop (see GUN_SHOP), walk-through; the ammo counter is along its north wall
   { rect: [48, 36, 56, 44], skip: [], doors: [['w', 19], ['e', 20]], windows: [['s', 26]], h: 5, lantern: [52, 4.2, 38.8], light: true, roof: 1 },
   // Night Market shop ("warung"), walk-through
   { rect: [100, 62, 108, 70], skip: [], doors: [['w', 32], ['e', 33]], windows: [['n', 51], ['s', 52]], h: 5, lantern: [104, 4.2, 66], roof: 2, tiles: false },
@@ -238,15 +237,13 @@ export const CASE_MACHINES = [
   { rarity: 'legendary', pos: [48.5, 0, 22.45], face: [0, 0, 1] },
 ];
 // The Gun Shop: the walk-in hut in the middle of the Courtyard (the middle of the village), where
-// everyone spawns and buys guns (E at the counter). The counter runs along the north wall, flush
-// with it so there's nothing to hide behind; the guns hang on the wall above it and show up as
-// they unlock. rack: rows of [y, keys] in the order they unlock.
+// everyone spawns and buys ammo (E at the counter; guns only come out of cases). The counter runs
+// along the north wall, flush with it so there's nothing to hide behind.
 export const GUN_SHOP = {
   rect: [48, 36, 56, 44],
   counter: [48.6, 36.15, 55.4, 37.0], counterH: 1.05,
   front: [49.2, 54.8, 37.5],          // the line in front of the counter you buy from (x0, x1, z)
   reach: 1.9,
-  rack: [[1.9, ['revolver', 'deagle', 'smg', 'micro', 'shotgun']], [3.1, ['m16', 'pdw', 'scout', 'autoshotgun', 'm4']]],
   area: 'B',
 };
 const GROUND_SPAWNS = [
@@ -324,16 +321,6 @@ function signTex(lines, bg, fg = '#fff', w = 256, h = 96) {
   });
 }
 
-// Gun Shop price tag: the gun's name, and its price (or when it unlocks) underneath
-function tagTex(name, line2, color) {
-  return canvasTex(256, 82, (ctx, w, h) => {
-    ctx.fillStyle = 'rgba(20,14,9,0.92)'; ctx.fillRect(0, 0, w, h);
-    ctx.strokeStyle = 'rgba(255,214,140,0.5)'; ctx.lineWidth = 3; ctx.strokeRect(2, 2, w - 4, h - 4);
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.font = '700 30px Rajdhani, sans-serif'; ctx.fillStyle = '#f4e2b0'; ctx.fillText(name, w / 2, 27);
-    ctx.font = '700 25px Rajdhani, sans-serif'; ctx.fillStyle = color; ctx.fillText(line2, w / 2, 60);
-  });
-}
 // a glowing shop sign (no lighting needed: it's for MeshBasicMaterial)
 function neonTex(title, sub, w = 512, h = 150) {
   return canvasTex(w, h, (ctx) => {
@@ -1341,7 +1328,7 @@ export class ZMap {
     top.position.set((x0 + x1) / 2, 3.05, 22.02); this.scene.add(top);
   }
 
-  // ---------- the Gun Shop: counter, a wall of guns (each one shows up when it unlocks), signs ----------
+  // ---------- the Gun Shop: the ammo counter, a painted AMMO board over it, signs ----------
   buildGunShop() {
     const S = GUN_SHOP, [cx0, cz0, cx1, cz1] = S.counter, h = S.counterH, cx = (cx0 + cx1) / 2, w = cx1 - cx0;
     const sc = this.scene;
@@ -1355,49 +1342,17 @@ export class ZMap {
     }
     mesh(box, lambert(0x34363a), cx, h + 0.12, cz0 + 0.42, 0.46, 0.24, 0.34, sc);
     mesh(box, new THREE.MeshBasicMaterial({ color: 0x7dff8a }), cx, h + 0.2, cz0 + 0.595, 0.3, 0.06, 0.01, sc).castShadow = false;
-    // the rack: a dark board on the wall above the counter, the guns hung on it, a price tag under each
+    // a light wood board on the wall above the counter, with AMMO painted on it
     const wallZ = cz0, boardZ = wallZ + 0.04;
-    // (light wood, so the dark guns and the black outlines of the locked ones stand out)
     mesh(box, lambert(0xc49a68), cx, 2.55, wallZ + 0.02, w, 2.6, 0.04, sc).castShadow = false;
     for (const y of [1.28, 3.82]) mesh(box, lambert(0x5a3c24), cx, y, wallZ + 0.05, w + 0.08, 0.08, 0.06, sc).castShadow = false;
-    const guns = displayGuns(), dark = new THREE.MeshBasicMaterial({ color: 0x15100c, transparent: true, opacity: 0.4, depthWrite: false });
-    const after = Object.fromEntries(ZOMBIE_SHOP.map((it) => [it.key, it.after]));
-    const x0 = cx0 + 0.15, x1 = cx1 - 0.15, TAG = 0.85;
-    this.shopSlots = [];
-    for (const [y, keys] of S.rack) {
-      const items = keys.map((key) => {
-        const g = guns[key];
-        g.rotation.y = -Math.PI / 2;   // barrel to the right, its right side facing out
-        g.updateMatrixWorld(true);
-        const bb = new THREE.Box3().setFromObject(g);
-        return { key, g, bb, len: bb.max.x - bb.min.x };
-      });
-      // as big as fits, leaving every gun room for its tag
-      const room = (s) => items.reduce((a, it) => a + Math.max(TAG, it.len * s), 0) + 0.2 * (items.length - 1);
-      let s = 1.15;
-      while (s > 0.6 && room(s) > x1 - x0) s -= 0.05;
-      const gap = (x1 - x0 - room(s) + 0.2 * (items.length - 1)) / items.length;
-      let x = x0 + gap / 2;
-      for (const it of items) {
-        const slot = Math.max(TAG, it.len * s), mid = x + slot / 2, c = it.bb.getCenter(new THREE.Vector3());
-        it.g.scale.setScalar(s);
-        it.g.position.set(mid - c.x * s, y - c.y * s, boardZ + 0.03 + (it.bb.max.z - it.bb.min.z) * s / 2 - c.z * s);
-        it.g.traverse((m) => { if (m.isMesh) { m.userData.lit = m.material; m.castShadow = false; } });
-        sc.add(it.g);
-        const def = WEAPONS[it.key], due = after[it.key] ?? 0;
-        const on = new THREE.MeshBasicMaterial({ map: tagTex(def.name, String(ZOMBIE_PRICES[it.key]), RARITIES[rarityOf(it.key)]?.color || '#9be07a'), transparent: true });
-        const off = new THREE.MeshBasicMaterial({ map: tagTex(def.name, `AFTER ROUND ${due}`, '#ff9a6a'), transparent: true });
-        const tag = new THREE.Mesh(new THREE.PlaneGeometry(TAG - 0.06, (TAG - 0.06) * 0.32), off);
-        tag.position.set(mid, y - 0.48, boardZ + 0.012);
-        sc.add(tag);
-        this.shopSlots.push({ key: it.key, after: due, gun: it.g, tag, on, off, dark, shown: null });
-        x += slot + gap;
-      }
-    }
-    // glowing signs: over the rack inside, and on all four outside walls (over the doors on the
+    const painted = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 1.3),
+      matte({ map: signTex(['AMMO', 'Refill your guns here (E)'], '#2a1b10', '#ffd36a', 256, 80) }));
+    painted.position.set(cx, 2.55, boardZ + 0.005); sc.add(painted);
+    // glowing signs: over the board inside, and on all four outside walls (over the doors on the
     // west and east, where you walk in)
     const [rx0, rz0, rx1, rz1] = S.rect, T = 0.17;
-    const inner = new THREE.MeshBasicMaterial({ map: neonTex('GUN SHOP', 'Common & rare guns · ammo') });
+    const inner = new THREE.MeshBasicMaterial({ map: neonTex('GUN SHOP', 'Ammo for your guns') });
     const outer = new THREE.MeshBasicMaterial({ map: neonTex('GUN SHOP', '') });
     const plane = (mat, sw, sh, x, y, z, ry) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(sw, sh), mat); m.position.set(x, y, z); m.rotation.y = ry; sc.add(m); };
     plane(inner, 2.9, 0.9, cx, 4.35, wallZ + 0.02, 0);
@@ -1411,19 +1366,6 @@ export class ZMap {
     mesh(box, lambert(0x2a1c12), mx, sy, mz, 0.08, 1.32, 4.5, sc);
     plane(outer, 4.3, 1.2, mx - 0.05, sy, mz, -Math.PI / 2);
     plane(outer, 4.3, 1.2, mx + 0.05, sy, mz, Math.PI / 2);
-    this.setShopRound(0);
-  }
-
-  // Show the guns that are on sale after `cleared` rounds (the rest are dark outlines with the
-  // round they unlock after).
-  setShopRound(cleared) {
-    for (const s of this.shopSlots || []) {
-      const on = s.after <= cleared;
-      if (s.shown === on) continue;
-      s.shown = on;
-      s.tag.material = on ? s.on : s.off;
-      s.gun.traverse((m) => { if (m.isMesh) m.material = on ? m.userData.lit : s.dark; });
-    }
   }
 
   // close enough to the Gun Shop counter to buy (slack: a little extra reach)

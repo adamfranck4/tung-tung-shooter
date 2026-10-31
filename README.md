@@ -72,32 +72,32 @@ Pick **Zombies** in the menu for survival in **Sahur Village**, a night-time map
 online with up to 3 friends.
 
 - **The Gun Shop** is where you spawn: the walk-in shop in the middle of the Courtyard (the middle of the village),
-  with glowing signs on its roof and over both doors. Press **E** at the counter to open the shop menu: it sells the
-  common and rare guns, and ammo for whatever two guns you carry (any rarity). Click a gun to buy it (or press 1-9, 0).
-  The guns also hang on the wall behind the counter: the ones on sale with their price (in their rarity's color),
-  the rest as faded outlines with the round they unlock after. Buying a gun you already carry refills its ammo.
+  with glowing signs on its roof and over both doors. It only sells ammo: press **E** at the counter to open the
+  shop menu and refill the spare ammo of either gun you carry (click it, or press 1 or 2). Guns only come out of
+  cases (see *Guns, rarities and cases* below).
 - **Everything unlocks as you survive.** Nobody buys doors: at the end of each round one more area opens (its doors
-  swing open by themselves) and one more gun goes on sale at the Gun Shop. A banner says what's new.
+  swing open by themselves). A banner says what's new.
 
-  | Survive round | Area that opens | New at the Gun Shop |
-  | --- | --- | --- |
-  | (start) | Courtyard | Six-Shooter 500, Desert Eagle 700, SMG-7 1000 |
-  | 1 | Village Hall (Quick Revive) | Kampung Micro 1100 |
-  | 2 | Kitchen | Pump Shotgun 1500 |
-  | 3 | Drum Tower | M16 Burst 1600 |
-  | 4 | Garden | Hornet PDW 1800 |
-  | 5 | Rice Barn | Scout 1700 |
-  | 6 | Sahur Hill | Combat Shotgun 2000 |
-  | 7 | Tree House (upstairs) | M4 Rifle 2200 |
-  | 8 | Dead Orchard | |
-  | 9 | Night Market | |
-  | 10 | Spooky Woods | |
-  | 11 | Container Yard | |
+  | Survive round | Area that opens |
+  | --- | --- |
+  | (start) | Courtyard |
+  | 1 | Village Hall (Quick Revive) |
+  | 2 | Kitchen |
+  | 3 | Drum Tower |
+  | 4 | Garden |
+  | 5 | Rice Barn |
+  | 6 | Sahur Hill |
+  | 7 | Tree House (upstairs) |
+  | 8 | Dead Orchard |
+  | 9 | Night Market |
+  | 10 | Spooky Woods |
+  | 11 | Container Yard |
 
   A door opens when both of the areas it joins are open. A locked door shows the round it opens after (on the
   door and on the map), and standing next to it tells you which area is behind it.
-- **Ammo:** at the Gun Shop only (there's no B menu in Zombies). It refills the spare ammo of a gun you carry: half
-  the gun's price for common and rare guns, 1500 for epic guns, 2500 for legendary guns, and 4500 / 6500 / 8500 / 10500
+- **Ammo:** at the Gun Shop only (there's no B menu in Zombies). It refills the spare ammo of a gun you carry: 250 to
+  1100 for common and rare guns (Six-Shooter 250, Desert Eagle 350, SMG-7 500, Kampung Micro 550, Pump Shotgun 750,
+  M16 Burst 800, Scout 850, Hornet PDW 900, Combat Shotgun 1000, M4 Rifle 1100; the starting P-9 250), 1500 for epic guns, 2500 for legendary guns, and 4500 / 6500 / 8500 / 10500
   once it's upgraded to level I-IV.
 
 ### Guns, rarities and cases
@@ -108,8 +108,8 @@ button.
 
 | Rarity | Guns | Where you get them |
 | --- | --- | --- |
-| Common | Six-Shooter (revolver), Desert Eagle, SMG-7, Kampung Micro (fast machine pistol), Pump Shotgun | Gun Shop, Common Case |
-| Rare | M16 Burst, Hornet PDW (50-round bullpup), Scout, Combat Shotgun (semi-auto), M4 Rifle | Gun Shop, Rare Case |
+| Common | Six-Shooter (revolver), Desert Eagle, SMG-7, Kampung Micro (fast machine pistol), Pump Shotgun | Common Case |
+| Rare | M16 Burst, Hornet PDW (50-round bullpup), Scout, Combat Shotgun (semi-auto), M4 Rifle | Rare Case |
 | Epic | AK Rifle, Drum LMG, Bolt Sniper, Sentinel Auto-Sniper (semi-auto, scoped), Coconut Thumper (explosive launcher) | Epic Case |
 | Legendary | Sahur Shredder, Petir Arc, Tung Lance, Sambal Torch, Tung Ray | Legendary Case |
 
@@ -142,8 +142,7 @@ CASE** spins a strip of guns past a yellow line that slows down and stops on wha
 gun goes into your inventory; equip it to slot 1 or 2 right there, open another case of the same kind, or keep it
 stored. Stored guns keep their ammo and Pack-a-Punch level. On a stored gun: **SLOT 1 / SLOT 2** swaps it with what's in
 that slot, **SELL** (click twice) sells it (common 250, rare 600, epic 1500, legendary 3750, +1000 per Pack-a-Punch
-level). On a gun you carry: **PUT AWAY** stores it. When a new gun from the Gun Shop replaces the one in your
-hands, that one goes into your inventory too, if there's room. Max Ammo refills stored guns as well.
+level). On a gun you carry: **PUT AWAY** stores it. Max Ammo refills stored guns as well.
 
 The case odds (each case holds its five guns):
 
@@ -227,9 +226,7 @@ everyone is told when someone unboxes an epic or legendary gun.
 - Every roof and hut doorway is tall enough for the rainbow giant. The village also has bunting with paper
   lanterns, painted shutters (some windows lit from inside), boarded-up doors, and dead trees and logs here and there.
 - Points: +10 per hit, +60 per kill, +100 headshot kill, +130 knife kill, +10 per board you rebuild (hold E).
-- At the Gun Shop a new gun replaces the gun in your hands when you already carry two (that one goes into your
-  inventory). It's the only place that sells guns (there are no wall guns); epic and legendary guns only come out of
-  cases.
+- Guns only come out of cases (there are no wall guns, and the Gun Shop only sells ammo).
 - Spend points on (press E):
   - Perks: Quick Revive 500 (gets you back up once), Double Tap 2000, Juggernog 2500 (more health), Speed Cola 3000 (faster reloads)
   - **Pack-a-Punch, four levels.** Each station upgrades the gun in your hands one level, in order, so a gun
@@ -242,7 +239,7 @@ everyone is told when someone unboxes an epic or legendary gun.
     | III | Garden (gold) | 15000 | x4.6 | x2 / x3 | +22% |
     | IV | Top of the pyramid (red) | 25000 | x6.6 | x2.5 / x3.5 | +35% |
 
-    Buying a new gun starts it back at level 0.
+    A new gun from a case starts at level 0.
 - Power-ups drop from zombies: Max Ammo, Insta-Kill, Double Points, Kaboom (nuke), Carpenter.
 - Health regenerates when you avoid hits for a few seconds. Without Quick Revive, going down ends the game
   (with it, you shoot back with your pistol for a few seconds while it gets you up).
@@ -318,7 +315,7 @@ vercel --prod
 - `assets/textures/` — photo textures for High graphics (walls, ground, floor tiles, wood; 1.5 MB). `src/textures.js`
   draws the Performance ones and loads these, starting with the drawn ones until the photos arrive
 - `assets/models/` — 3D gun models for High graphics (15 guns, 1.4 MB). `src/viewmodel.js` builds every gun by hand
-  and swaps in its model once it loads (in your hands, on the Gun Shop wall and in the menu pictures); the minigun,
+  and swaps in its model once it loads (in your hands and in the menu pictures); the minigun,
   Petir Arc, Tung Lance, Sambal Torch, Drum LMG and M16 stay hand-built
 - `src/map.js` — map layout, geometry, collision boxes, A* pathfinding, attack routes for the bots
 - `src/game.js` — rounds, economy, bomb, bullets, damage, spectating
@@ -326,7 +323,7 @@ vercel --prod
 - `src/player.js` — keyboard/mouse control
 - `src/bots.js`, `src/director.js` — bot AI and team strategy (and the Tung Tung model)
 - `src/zmap.js`, `src/zombies.js` — Zombies map (Sahur Village) and Zombies rules / zombie AI
-- `src/zui.js` — Zombies Gun Shop menu, inventory and case opening (gun pictures are rendered from the gun models)
+- `src/zui.js` — Zombies Gun Shop (ammo) menu, inventory and case opening (gun pictures are rendered from the gun models)
 - `src/net.js` — online rooms, lobby and message batching (PeerJS)
 - `src/avatar.js` — other players' fighters, moved by network updates
 - `src/netclassic.js`, `src/netzombies.js` — 5v5 and Zombies on a joining player's browser (the host runs

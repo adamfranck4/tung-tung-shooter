@@ -53,7 +53,7 @@ export class Player extends Combatant {
     if (!this.alive) return;
 
     // ----- buy menu (Zombies: B is the ammo menu; the Gun Shop counter opens its own with E) -----
-    if (inp.pressed('KeyB') && g.mode === 'zombies') g.hud.center('Buy guns and ammo at the Gun Shop counter (E)', 1.5);
+    if (inp.pressed('KeyB') && g.mode === 'zombies') g.hud.center('Buy ammo at the Gun Shop counter (E)', 1.5);
     else if (inp.pressed('KeyB')) {
       if (this.buyOpen) this.buyOpen = false;
       else {

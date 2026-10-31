@@ -143,9 +143,8 @@ Object.assign(WEAPONS, {
 });
 
 // ----- Zombies: gun rarities -----
-// Every Zombies gun (except the starting P-9) has a rarity. Common and rare guns are sold at the
-// Gun Shop; every rarity has its own case, sold at its own vending machine. A case holds the five
-// guns of its rarity: `guns` are [key, weight] (the odds of each one when you open it).
+// Every Zombies gun (except the starting P-9) has a rarity. Guns come out of cases: every rarity
+// has its own case, sold at its own vending machine. A case holds the five guns of its rarity: `guns` are [key, weight] (the odds of each one when you open it).
 export const RARITIES = {
   common: {
     name: 'Common', color: '#b0c3d9', glow: 0xb0c3d9, casePrice: 1000, ammo: 0, sell: 250,
@@ -219,22 +218,14 @@ export function papDef(def, level = 1) {
   };
 }
 
-// ----- Zombies Gun Shop (the counter you spawn at): the common and rare guns, one more for every
-// round you survive. after: how many rounds you need to have survived before it's on sale.
-// Prices in points. (Epic and legendary guns only come out of cases.)
-export const ZOMBIE_PRICES = { pistol: 500, revolver: 500, deagle: 700, smg: 1000, micro: 1100, shotgun: 1500,
-  m16: 1600, pdw: 1800, scout: 1700, autoshotgun: 2000, m4: 2200 };
-export const ZOMBIE_SHOP = [
-  { key: 'revolver', cat: 'Pistol', after: 0 }, { key: 'deagle', cat: 'Pistol', after: 0 }, { key: 'smg', cat: 'SMG', after: 0 },
-  { key: 'micro', cat: 'SMG', after: 1 }, { key: 'shotgun', cat: 'Shotgun', after: 2 },
-  { key: 'm16', cat: 'Rifle', after: 3 }, { key: 'pdw', cat: 'SMG', after: 4 }, { key: 'scout', cat: 'Sniper', after: 5 },
-  { key: 'autoshotgun', cat: 'Shotgun', after: 6 }, { key: 'm4', cat: 'Rifle', after: 7 },
-];
-// refilling a gun's ammo (at the Gun Shop): half its price; epic and legendary guns have a set
-// price; more once it's upgraded
+// ----- Zombies Gun Shop (the counter you spawn at): it only sells ammo (guns come out of cases).
+// Refilling a gun's spare ammo, in points: common and rare guns by gun, epic and legendary ones a
+// set price by rarity, more once it's upgraded.
+const AMMO_PRICES = { pistol: 250, revolver: 250, deagle: 350, smg: 500, micro: 550, shotgun: 750,
+  m16: 800, pdw: 900, scout: 850, autoshotgun: 1000, m4: 1100 };
 export function ammoCost(w) {
   if (w.def.pap) return 2500 + 2000 * w.def.pap;
-  if (ZOMBIE_PRICES[w.key]) return Math.round(ZOMBIE_PRICES[w.key] / 2);
+  if (AMMO_PRICES[w.key]) return AMMO_PRICES[w.key];
   return RARITIES[rarityOf(w.key)]?.ammo || 500;
 }
 

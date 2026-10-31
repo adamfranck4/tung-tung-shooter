@@ -797,8 +797,8 @@ function buildKnife(skin, band) {
   return g;
 }
 
-// The gun models without arms or knives, with their own materials (for props out in the world,
-// like the guns on the Zombies Gun Shop wall). key -> Group, barrel toward -z, about 1 unit = 1 m.
+// The gun models without arms or knives, with their own materials (for the gun pictures in the
+// Zombies menus). key -> Group, barrel toward -z, about 1 unit = 1 m.
 export function displayGuns() {
   bareGuns = true;
   let models;
@@ -1107,8 +1107,8 @@ function buildModels(team, gunsOnly = false) {
 
 // ---------- gun models (High graphics) ----------
 // Free CC0 low-poly guns by Quaternius (via poly.pizza), in assets/models (1.4 MB). Each gun starts
-// as the hand-built one above and switches to its model once that has loaded, in your hands, on the
-// Gun Shop wall and in the menu pictures (a failed download keeps the hand-built one). The
+// as the hand-built one above and switches to its model once that has loaded, in your hands and in
+// the menu pictures (a failed download keeps the hand-built one). The
 // animations move the whole gun, so a model only has to sit in the hands: it's turned barrel
 // forward, sized and placed like the hand-built gun, then nudged per gun:
 //   flip / upright: overrule the guess of which end is the barrel / which way is up

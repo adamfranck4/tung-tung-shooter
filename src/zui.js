@@ -3,7 +3,7 @@
 // game pauses; online the match keeps running behind it). Everything you do here goes through
 // game.invAct(), which the host checks.
 import * as THREE from 'three';
-import { WEAPONS, RARITIES, rarityOf, caseOdds, rollCase, ZOMBIE_SHOP, ZOMBIE_PRICES, ammoCost, STASH_SIZE, sellValue } from './weapons.js';
+import { WEAPONS, RARITIES, rarityOf, caseOdds, rollCase, ammoCost, STASH_SIZE, sellValue } from './weapons.js';
 import { displayGuns, onGunModels } from './viewmodel.js';
 import { stashDef } from './zombies.js';
 import { esc } from './hud.js';
@@ -175,7 +175,7 @@ export class ZMenu {
     const tabs = `<button class="zm-tab${this.tab === 'shop' ? ' on' : ''}" data-act="tab" data-tab="shop"${near ? '' : ' disabled title="Go to the Gun Shop counter"'}>GUN SHOP</button>`
       + `<button class="zm-tab${this.tab === 'inv' ? ' on' : ''}" data-act="tab" data-tab="inv">INVENTORY <small>${p.stash.length}/${STASH_SIZE}</small></button>`;
     const foot = this.tab === 'shop'
-      ? '1-9, 0 buy a gun &middot; E or Esc to close'
+      ? '1, 2 refill ammo &middot; E or Esc to close'
       : 'I or Esc to close';
     this.box.innerHTML = `<div class="zm-head"><div class="zm-tabs">${tabs}</div><div class="zm-pts">${p.points}<small>points</small></div>`
       + '<button class="zm-x" data-act="close" title="Close">&times;</button></div>'
@@ -191,40 +191,20 @@ export class ZMenu {
       + `${buttons ? `<div class="zc-b">${buttons}</div>` : ''}</div>`;
   }
 
+  // the Gun Shop only sells ammo: a refill for each gun you carry
   shopHTML(g, p) {
-    const cleared = g.cleared();
-    const gunCard = (it, i) => {
-      const def = WEAPONS[it.key], rarity = rarityOf(it.key), locked = cleared < it.after, s = locked ? 0 : g.ownedSlot(p, it.key);
-      let btn, cls = '';
-      if (locked) { btn = `<button disabled>AFTER ROUND ${it.after}</button>`; cls = 'lock'; }
-      else if (s) {   // already carried: buying it again refills its ammo
-        const w = p.slots[s], full = w.reserve >= w.def.reserve, cost = ammoCost(w);
-        btn = full ? '<button disabled>OWNED &middot; FULL</button>' : `<button data-act="gun" data-k="${it.key}"${p.points < cost ? ' class="poor"' : ''}>AMMO ${cost}</button>`;
-      } else {
-        const price = ZOMBIE_PRICES[it.key];
-        btn = `<button data-act="gun" data-k="${it.key}"${p.points < price ? ' class="poor"' : ''}>BUY ${price}</button>`;
-      }
-      return this.card({ rarity, img: gunIcon(it.key), name: def.name, sub: `${RARITIES[rarity].name} &middot; ${it.cat}`, buttons: btn, cls, key: String((i + 1) % 10) });
-    };
-    const section = (rarity) => {
-      const items = ZOMBIE_SHOP.map((it, i) => [it, i]).filter(([it]) => rarityOf(it.key) === rarity);
-      return `<div class="zm-sec"><h4 style="--rc:${RARITIES[rarity].color}">${RARITIES[rarity].name.toUpperCase()} GUNS</h4>`
-        + `<div class="zm-grid">${items.map(([it, i]) => gunCard(it, i)).join('')}</div></div>`;
-    };
     let ammo = '';
     for (const s of [1, 2]) {
       const w = p.slots[s];
       if (!w || w.def.melee) { ammo += this.card({ img: '', name: 'Empty', sub: `Slot ${s}`, cls: 'empty' }); continue; }
       const full = w.reserve >= w.def.reserve, cost = ammoCost(w);
       ammo += this.card({
-        rarity: rarityOf(w.key), img: gunIcon(w.key), name: esc(w.def.name), sub: `Slot ${s} &middot; ${w.mag} / ${w.reserve}`,
+        rarity: rarityOf(w.key), img: gunIcon(w.key), name: esc(w.def.name), sub: `Slot ${s} &middot; ${w.mag} / ${w.reserve}`, key: String(s),
         buttons: full ? '<button disabled>FULL</button>' : `<button data-act="ammo" data-s="${s}"${p.points < cost ? ' class="poor"' : ''}>REFILL ${cost}</button>`,
       });
     }
-    const next = ZOMBIE_SHOP.find((it) => it.after > cleared);
-    return section('common') + section('rare')
-      + `<div class="zm-sec"><h4>AMMO FOR YOUR GUNS</h4><div class="zm-grid two">${ammo}</div></div>`
-      + `<p class="zm-note">${next ? `Next gun after round ${next.after}. ` : ''}Epic and legendary guns only come out of cases: buy them from the vending machines by the north door.</p>`;
+    return `<div class="zm-sec"><h4>AMMO FOR YOUR GUNS</h4><div class="zm-grid two">${ammo}</div></div>`
+      + '<p class="zm-note">The Gun Shop only sells ammo. Guns come out of cases: buy them from the vending machines by the north door of the Courtyard, then open them in your inventory (I).</p>';
   }
 
   invHTML(g, p) {
@@ -272,7 +252,6 @@ export class ZMenu {
     switch (act) {
       case 'close': this.close(); break;
       case 'tab': this.tab = b.dataset.tab; this.sig = ''; this.render(); break;
-      case 'gun': g.invAct({ a: 'gun', k: b.dataset.k }); break;
       case 'ammo': g.invAct({ a: 'ammo', s }); break;
       case 'store': g.invAct({ a: 'store', s }); break;
       case 'equip': g.invAct({ a: 'equip', id, s }); break;
@@ -307,9 +286,8 @@ export class ZMenu {
       return;
     }
     if (e.code === 'KeyI' || (e.code === 'KeyE' && this.tab === 'shop')) { e.preventDefault(); this.close(); return; }
-    if (this.tab === 'shop' && /^Digit\d$/.test(e.code)) {
-      const n = +e.code.slice(5), it = ZOMBIE_SHOP[(n + 9) % 10];
-      if (it) { e.preventDefault(); this.game.invAct({ a: 'gun', k: it.key }); this.sig = ''; }
+    if (this.tab === 'shop' && (e.code === 'Digit1' || e.code === 'Digit2')) {   // refill that slot's ammo
+      e.preventDefault(); this.game.invAct({ a: 'ammo', s: +e.code.slice(5) }); this.sig = '';
     }
   }
 

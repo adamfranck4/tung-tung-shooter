@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { Combatant, RUN_SPEED, dirFrom, chaseCamera } from './combatant.js';
 import { Player } from './player.js';
 import { buildTungModel, makeCoconut, tickRainbow } from './bots.js';
-import { WEAPONS, papDef, MAX_PAP, ZOMBIE_SHOP, ZOMBIE_PRICES, ammoCost, RARITIES, rollCase, STASH_SIZE, sellValue } from './weapons.js';
+import { WEAPONS, papDef, MAX_PAP, ammoCost, RARITIES, rollCase, STASH_SIZE, sellValue } from './weapons.js';
 import { raycast, raySphere, rayBox, moveBody, wrapAngle } from './physics.js';
 import { PLAYER_START, AREAS, START_AREA } from './zmap.js';
 import { knifeName } from './viewmodel.js';
@@ -674,12 +674,12 @@ export class ZombiesGame {
   }
 
   // ----- interface used by Player / Combatant / HUD -----
-  // There's no B menu in Zombies: guns and ammo are bought at the Gun Shop counter (E there opens
-  // the shop), cases at their vending machines, and the inventory (I) holds what you don't carry.
+  // There's no B menu in Zombies: ammo is bought at the Gun Shop counter (E there opens the shop),
+  // guns come in cases from their vending machines, and the inventory (I) holds what you don't carry.
   canBuy() { return false; }
   // (a little extra reach once it's open, and for other players online: their position here lags)
   nearGunShop(p) { return this.map.atGunShop(p.body.pos, p.isAvatar ? 1.2 : 0.3); }
-  // rounds survived so far: what the doors and the Gun Shop go by
+  // rounds survived so far: what the doors go by
   cleared() { return this.betweenRounds ? this.round : Math.max(0, this.round - 1); }
 
   // Ask main.js to open a menu that takes the mouse: 'shop' (the Gun Shop) or 'inv' (inventory).
@@ -694,33 +694,17 @@ export class ZombiesGame {
   // it to the host instead, see ZombiesClient)
   invAct(ev) { this.invAction(this.player, ev); }
 
-  // ev.a: 'gun' (buy gun ev.k), 'ammo' (refill the gun in slot ev.s) - both at the Gun Shop -
-  // 'open' (open case ev.id), 'equip' (stored gun ev.id into slot ev.s), 'store' (put the gun in
+  // ev.a: 'ammo' (refill the gun in slot ev.s, at the Gun Shop), 'open' (open case ev.id), 'equip' (stored gun ev.id into slot ev.s), 'store' (put the gun in
   // slot ev.s away), 'sell' (sell stored gun ev.id)
   invAction(p, ev) {
     if (!p || !p.alive || p.downed || this.phase === 'over' || !ev) return;
     switch (ev.a) {
-      case 'gun': this.buyGun(p, String(ev.k)); break;
       case 'ammo': this.buyAmmo(p, ev.s | 0); break;
       case 'open': this.openCase(p, ev.id | 0); break;
       case 'equip': this.equipGun(p, ev.id | 0, ev.s | 0); break;
       case 'store': this.storeGun(p, ev.s | 0); break;
       case 'sell': this.sellGun(p, ev.id | 0); break;
     }
-  }
-
-  buyGun(p, key) {
-    const it = ZOMBIE_SHOP.find((x) => x.key === key);
-    if (!it || !this.nearGunShop(p)) return;
-    if (this.cleared() < it.after) {
-      this.tell(p, { e: 'snd', n: 'denied' }); this.tell(p, { e: 'msg', s: `Unlocks after round ${it.after}`, d: 1.2 });
-      return;
-    }
-    const s = this.ownedSlot(p, it.key);
-    if (s) { this.refillAmmo(p, p.slots[s]); return; }   // already have it: buying it again is its ammo
-    if (!this.spend(p, ZOMBIE_PRICES[it.key])) return;
-    this.givePlayerWeapon(p, it.key);
-    this.tell(p, { e: 'snd', n: 'purchase' });
   }
 
   buyAmmo(p, slot) {
@@ -858,7 +842,7 @@ export class ZombiesGame {
     this.hud.zRound(r, true);
     this.sound.zRoundStart();
     this.net?.emit({ e: 'round', r });
-    if (r === 1) this.announce(null, 'Guns and ammo at the Gun Shop (E) · cases by the north door · I opens your inventory');
+    if (r === 1) this.announce(null, 'Ammo at the Gun Shop (E) · guns come in cases, by the north door · I opens your inventory');
   }
 
   // Round won: the next one waits until everyone presses N (solo: until you do).
@@ -945,21 +929,18 @@ export class ZombiesGame {
     st.hide(); this.removeStatueCollider();
   }
 
-  // Open every area due after `cleared` rounds survived (and the doors between open areas), and
-  // put the guns due on the Gun Shop wall. (Joining players run this too, to stay in step.)
+  // Open every area due after `cleared` rounds survived (and the doors between open areas).
+  // (Joining players run this too, to stay in step.)
   syncUnlocks(cleared) {
     for (const [id, a] of Object.entries(AREAS)) if (a.after <= cleared) this.activeAreas.add(id);
     for (const d of this.map.doors) if (!d.open && d.after <= cleared) this.openDoor(d);
-    this.map.setShopRound(cleared);
   }
 
-  // "ROUND 3 SURVIVED · Drum Tower is open · New at the Gun Shop: Scout"
+  // "ROUND 3 SURVIVED · Drum Tower is open · Next: the Golden Tung Tung moves to the Kitchen"
   roundBanner(r, room) {
     const areas = Object.values(AREAS).filter((a) => a.after === r).map((a) => a.name);
-    const guns = ZOMBIE_SHOP.filter((it) => it.after === r).map((it) => WEAPONS[it.key].name);
     const parts = [];
     if (areas.length) parts.push(`${areas.join(' and ')} ${areas.length > 1 ? 'are' : 'is'} open`);
-    if (guns.length) parts.push(`New at the Gun Shop: ${guns.join(', ')}`);
     if (AREAS[room]) parts.push(`Next: the Golden Tung Tung moves to the ${AREAS[room].name}`);
     parts.push('Press N when ready');
     this.hud.banner(`ROUND ${r} SURVIVED`, parts.join(' · '), 'T', 6);
@@ -1379,23 +1360,6 @@ export class ZombiesGame {
   }
 
   // ----- weapons -----
-  ownedSlot(p, key) {
-    for (const s of [1, 2]) if (p.slots[s] && p.slots[s].key === key) return s;
-    return 0;
-  }
-
-  // A new gun goes into an empty slot, or replaces the one in your hands (which goes into your
-  // inventory, if there's room).
-  givePlayerWeapon(p, key) {
-    let slot = [1, 2].find((s) => !p.slots[s]);
-    if (!slot) {
-      slot = (p.slot === 1 || p.slot === 2) ? p.slot : 1;
-      this.stashGun(p, p.slots[slot]);
-    }
-    p.give(key, slot);
-    this.drawGun(p, slot);
-  }
-
   // take out the gun now in `slot` (it was just put there)
   drawGun(p, slot) {
     if (p.slot === slot) {
@@ -1466,7 +1430,7 @@ export class ZombiesGame {
         const a = it.d.areas.map((id) => AREAS[id]).find((x) => x.after === it.d.after);
         return `${a.name} opens after round ${it.d.after}`;
       }
-      case 'shop': return 'Press E to browse the Gun Shop (guns and ammo)';
+      case 'shop': return 'Press E to buy ammo at the Gun Shop';
       case 'case': {
         const R = RARITIES[it.cm.rarity];
         if (p.stash.length >= STASH_SIZE) return 'Your inventory is full (press I to make room)';
