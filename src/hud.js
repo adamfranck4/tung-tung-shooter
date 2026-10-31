@@ -5,7 +5,7 @@ import { drawCrosshair, crosshairScale } from './crosshair.js';
 import { PERKS, AREAS, ZW, FL, GUN_SHOP } from './zmap.js';
 
 // Zombies map (M): marker colors for you and up to three teammates
-const MAP_COLORS = ['#ffd36a', '#7fd4ff', '#a6ff8a', '#ff9ad8'];
+const MAP_COLORS = ['#ffd36a', '#7fd4ff', '#a6ff8a', '#ff9ad8', '#ffa05a', '#b89aff'];
 const ROMAN = ['', 'I', 'II', 'III', 'IV'];
 const MINI_RANGE = 32;   // Zombies minimap: meters from the middle to the edge
 const MINI_K = 8;        // ...and its picture of the village: pixels a meter

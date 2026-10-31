@@ -9,21 +9,23 @@ import { matte, glossy, beamColor, BEAM_OPACITY } from './gfx.js';
 export const STATUE_R = 0.6;          // half the plinth's width: what zombies bump into and hit
 const PLINTH_H = 0.5, SCALE = 1.35;
 export const STATUE_H = PLINTH_H + 1.85 * SCALE;
-// Balance by team size. A bigger team gets more zombies (x1.5 / x2 / x2.5, see startRound) but
-// also has more guns to defend with, and can leave someone on guard. So the statue's health grows
-// a little slower than the horde (hp), while a few more zombies head for it (hunters), because a
-// team spread round the map pulls the rest of the horde away from it.
-//   players:  1      2      3      4
-//   hp:       x1     x1.3   x1.55  x1.8
-//   hunters:  +0     +4%    +7%    +10%   (on top of 30% on round 1, up to 50%)
+// Balance by team size. A bigger team gets more zombies (x1.5 / x2 / x2.5 / x3 / x3.5, see
+// startRound) but also has more guns to defend with, and can leave someone on guard. So the
+// statue's health grows a little slower than the horde (hp), while a few more zombies head for it
+// (hunters), because a team spread round the map pulls the rest of the horde away from it.
+//   players:  1      2      3      4      5      6
+//   hp:       x1     x1.3   x1.55  x1.8   x2.05  x2.3
+//   hunters:  +0     +4%    +7%    +10%   +12%   +14%   (on top of 30% on round 1, up to 50%)
 const TEAM = [
   null,
   { hp: 1, hunters: 0 },
   { hp: 1.3, hunters: 0.04 },
   { hp: 1.55, hunters: 0.07 },
   { hp: 1.8, hunters: 0.1 },
+  { hp: 2.05, hunters: 0.12 },
+  { hp: 2.3, hunters: 0.14 },
 ];
-const team = (players) => TEAM[Math.max(1, Math.min(4, players | 0))];
+const team = (players) => TEAM[Math.max(1, Math.min(TEAM.length - 1, players | 0))];
 // health: more every round, scaled for the team
 export const statueMaxHp = (r, players = 1) => Math.round((2000 + 220 * (Math.max(1, r) - 1)) * team(players).hp);
 // share of the zombies that head straight for the statue instead of you

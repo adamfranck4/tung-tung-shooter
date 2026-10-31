@@ -1,5 +1,5 @@
 // Zombies mode: survive endless rounds of Tung Tung zombies in Sahur Village, alone or with up to
-// three friends online. Online, the host's browser runs the zombies and the shared world (doors,
+// five friends online. Online, the host's browser runs the zombies and the shared world (doors,
 // windows, power-ups); each player's points, perks and health live here too. See netzombies.js for
 // the joining side.
 import * as THREE from 'three';
@@ -121,9 +121,12 @@ const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V'];
 // "Pack-a-Punch II (Kitchen)"
 const papName = (st, where = false) => `Pack-a-Punch${st.level > 1 ? ' ' + ROMAN[st.level] : ''}${where ? ` (${AREAS[st.area].name})` : ''}`;
 const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
-// where each player starts in the Gun Shop
-const START_OFFSETS = [[0, 0], [1.6, 0.8], [-1.6, 0.8], [0, -1.6]];
-export const spawnPoint = (i) => new THREE.Vector3(PLAYER_START.x + START_OFFSETS[i % 4][0], 0, PLAYER_START.z + START_OFFSETS[i % 4][1]);
+// where each player starts in the Gun Shop (up to 6)
+const START_OFFSETS = [[0, 0], [1.6, 0.8], [-1.6, 0.8], [0, -1.6], [1.6, -1.6], [-1.6, -1.6]];
+export const spawnPoint = (i) => {
+  const [dx, dz] = START_OFFSETS[i % START_OFFSETS.length];
+  return new THREE.Vector3(PLAYER_START.x + dx, 0, PLAYER_START.z + dz);
+};
 
 const _t = new THREE.Vector3(), _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _d = new THREE.Vector3(), _end = new THREE.Vector3();
 const _hp = new THREE.Vector3(), _ca = new THREE.Vector3(), _cb = new THREE.Vector3(), _cm = new THREE.Vector3();

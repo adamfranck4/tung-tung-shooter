@@ -54,7 +54,7 @@ code (and a **Copy invite link** button); everyone else types the code and click
 
 - **5v5 Classic:** up to 10 players. Everyone picks a team in the lobby (5 per team); the host can fill the empty
   slots with bots (and pick their difficulty) and set the rounds to win.
-- **Zombies Co-op:** up to 4 players. See *Co-op* below.
+- **Zombies Co-op:** up to 6 players. See *Co-op* below.
 - The host's browser runs the match: keep that tab open. Switching tabs is fine (the match keeps ticking in the
   background), but if the host closes the tab or leaves, the room closes for everyone.
 - Pressing Esc opens a menu but doesn't pause an online match. The host can end the match from there and
@@ -69,7 +69,7 @@ code (and a **Copy invite link** button); everyone else types the code and click
 ## Zombies mode
 
 Pick **Zombies** in the menu for survival in **Sahur Village**, a night-time map built for this mode — alone or
-online with up to 3 friends.
+online with up to 5 friends.
 
 - **The Gun Shop** is where you spawn: the walk-in shop in the middle of the Courtyard (the middle of the village),
   with glowing signs on its roof and over both doors. It only sells ammo: press **E** at the counter to open the
@@ -242,7 +242,9 @@ everyone is told when someone unboxes an epic or legendary gun.
 
 ### Co-op
 
-- Zombies go for whoever is closest. Each round has more of them with more players (+50% per extra player).
+- Zombies go for whoever is closest. Each round has more of them with more players (+50% per extra player: x1.5 with 2,
+  up to x3.5 with 6). No more than 24 are out at once, so with a big team the rounds last longer rather than getting
+  more crowded. The Golden Tung Tung gets more health with a bigger team too (up to x2.3 with 6).
 - Areas, windows, Pack-a-Punch and power-ups are shared; points, perks, guns and inventories are your own.
   Max Ammo refills everyone; Carpenter and Kaboom give every player their points.
 - Going down doesn't end the game: you lose your perks and have 100 seconds. A teammate holds **E** next to you
