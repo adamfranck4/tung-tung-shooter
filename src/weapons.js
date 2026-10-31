@@ -166,12 +166,11 @@ export const RARITIES = {
 };
 export const RARITY_ORDER = ['common', 'rare', 'epic', 'legendary'];
 export const rarityOf = (key) => RARITY_ORDER.find((r) => RARITIES[r].guns.some(([k]) => k === key)) || null;
-// The gun case: one kind, from the vending machine in the Courtyard. Its odds go by rarity, like a
-// CS2 weapon case: Mil-Spec 79.92%, Restricted 15.98%, Classified 3.20%, Covert 0.64% and the rare
-// special item (knife or gloves) 0.26%. Here the last two together are legendary: 0.90%.
+// The gun case: one kind, from the vending machine in the Courtyard. Its odds go by rarity:
+// common 40%, rare 30%, epic 20%, legendary 10%.
 export const CASE_PRICE = 2000;
 export const CASE_COLOR = '#ffb648';
-export const CASE_ODDS = { common: 79.92, rare: 15.98, epic: 3.2, legendary: 0.9 };
+export const CASE_ODDS = { common: 40, rare: 30, epic: 20, legendary: 10 };
 // the case's odds, as percentages: [[rarity, [[key, %], ...]], ...], commonest first
 export const caseOdds = () => RARITY_ORDER.map((r) => {
   const g = RARITIES[r].guns, total = g.reduce((a, [, w]) => a + w, 0);

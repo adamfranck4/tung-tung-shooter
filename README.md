@@ -108,10 +108,10 @@ button.
 
 | Rarity | Guns | Chance per gun case |
 | --- | --- | --- |
-| Common | Six-Shooter (revolver), Desert Eagle, SMG-7, Kampung Micro (fast machine pistol), Pump Shotgun | 79.92% |
-| Rare | M16 Burst, Hornet PDW (50-round bullpup), Scout, Combat Shotgun (semi-auto), M4 Rifle | 15.98% |
-| Epic | AK Rifle, Drum LMG, Bolt Sniper, Sentinel Auto-Sniper (semi-auto, scoped), Coconut Thumper (explosive launcher) | 3.20% |
-| Legendary | Sahur Shredder, Petir Arc, Tung Lance, Sambal Torch, Tung Ray | 0.90% |
+| Common | Six-Shooter (revolver), Desert Eagle, SMG-7, Kampung Micro (fast machine pistol), Pump Shotgun | 40% |
+| Rare | M16 Burst, Hornet PDW (50-round bullpup), Scout, Combat Shotgun (semi-auto), M4 Rifle | 30% |
+| Epic | AK Rifle, Drum LMG, Bolt Sniper, Sentinel Auto-Sniper (semi-auto, scoped), Coconut Thumper (explosive launcher) | 20% |
+| Legendary | Sahur Shredder, Petir Arc, Tung Lance, Sambal Torch, Tung Ray | 10% |
 
 The legendary guns each do something special:
 - **Sahur Shredder:** a six-barrel minigun. It fires slowly at first and spins up over about a second while you hold
@@ -127,10 +127,9 @@ The legendary guns each do something special:
 
 **The gun case:** there's one kind of case, and it holds every gun above. It costs **2000** at the vending machine
 against the Courtyard's north wall, by the door to the Drum Tower, under a glowing GUN CASES sign. Press **E** there to
-buy one; it goes into your inventory. Its odds are a CS2 weapon case's: common = Mil-Spec (79.92%), rare = Restricted
-(15.98%), epic = Classified (3.20%), legendary = Covert plus the rare special item (0.64% + 0.26% = 0.90%). Then each
-gun's weight picks which gun of that rarity, so a single legendary gun is about 0.13-0.20%. On average that's one epic or
-better in about 24 cases, and one legendary in about 111.
+buy one; it goes into your inventory. Its odds go by rarity: common 40%, rare 30%, epic 20%, legendary 10%. Then each
+gun's weight picks which gun of that rarity, so a single legendary gun is about 1.4-2.2%. On average that's one epic or
+better in about 3 cases, and one legendary in about 10.
 
 **Inventory (press I, anywhere):** shows your loadout (slots 1 and 2, and your knife) and up to 24 stored cases and
 guns. Click **OPEN** on a case for the CS-style case opening: the case and all 20 guns with their odds, then **UNLOCK
