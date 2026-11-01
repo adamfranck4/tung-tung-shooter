@@ -145,7 +145,7 @@ export class ClassicClient extends Game {
         this.running = false;
         this.onMatchOver?.(ev.w);
         break;
-      case 'left': this.removeAvatar(ev.n); break;
+      case 'left': this.removeAvatar(ev.n, !!ev.k); break;
       case 'inv': applyInventory(this.player, ev); break;
       default: this.feedback(ev);
     }
@@ -205,7 +205,7 @@ export class ClassicClient extends Game {
     } else if (this.spectating === v) this.spectateSwitchAt = this.time + 1.5;
   }
 
-  removeAvatar(nid) {
+  removeAvatar(nid, kicked = false) {
     const c = this.byNid.get(nid);
     if (!c || c === this.player) return;
     c.dispose();
@@ -213,6 +213,6 @@ export class ClassicClient extends Game {
     this.combatants = this.combatants.filter((a) => a !== c);
     this.byNid.delete(nid);
     if (this.spectating === c) this.spectating = this.nextSpectate(null);
-    this.hud.center(`${c.name} left the game`, 2.5);
+    this.hud.center(`${c.name} ${kicked ? 'was kicked by the anticheat' : 'left the game'}`, 3);
   }
 }

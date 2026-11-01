@@ -13,6 +13,7 @@ import { dirFrom, chaseCamera } from './combatant.js';
 import { knifeName } from './viewmodel.js';
 import { Avatar, F, r2, r3, packSlots, showShot } from './avatar.js';
 import { BOT_NAMES } from './net.js';
+import { Anticheat } from './anticheat.js';
 import { matte } from './gfx.js';
 
 const FREEZE_TIME = 5;
@@ -71,6 +72,7 @@ export class Game {
     this.stop();
     this.net = net; this.netDelay = 0.075;
     this.time = 0;
+    this.ac = net ? new Anticheat(this) : null;   // checks what the other players' browsers report
     this.roundsToWin = roundsToWin;
     this.score = { T: 0, CT: 0 };
     this.lossStreak = { T: 0, CT: 0 };
@@ -619,6 +621,7 @@ export class Game {
     this.player.update(dt);
     for (const a of this.avatars) a.update(dt);
     for (const b of this.bots) b.update(dt);
+    this.ac?.record(this.combatants);
     this.director.update();
     this.separate();
     this.updateBomb(dt);
@@ -700,21 +703,22 @@ export class Game {
   // a message from a player's browser
   onNet(pid, msg) {
     const c = this.avatars.find((a) => a.pid === pid);
-    if (!c || !this.running) return;
+    if (!c || !this.running || c.kicked) return;
     if (msg.st) c.netState(msg.st, this.time);
-    if (Array.isArray(msg.ev)) for (const ev of msg.ev) this.onPlayerEvent(c, ev);
+    if (Array.isArray(msg.ev)) for (const ev of this.ac.order(msg.ev)) this.onPlayerEvent(c, ev);
+    if (msg.st) c.netAmmo(msg.st);
   }
 
   onPlayerEvent(c, ev) {
     switch (ev?.e) {
       case 'shot':
-        if (!c.alive) return;
+        if (!c.alive || !this.ac.shot(c)) return;
         showShot(this, c, ev);
         this.emitNoise(c.body.pos, 45, c);
         this.net.emit({ e: 'shot', n: c.nid, s: ev.s, d: ev.d }, c.pid);
         break;
       case 'knife':
-        if (!c.alive) return;
+        if (!c.alive || !this.ac.melee(c)) return;
         this.sound.knife(c.body.pos);
         this.net.emit({ e: 'knife', n: c.nid }, c.pid);
         break;
@@ -723,12 +727,18 @@ export class Game {
     }
   }
 
-  // a player says their shot hit someone: trust it (it's a game among friends), within limits
+  // a player says their shot hit someone: the anticheat checks it could have
   remoteHit(att, ev) {
-    const v = this.byNid.get(ev.v), def = WEAPONS[ev.w];
-    if (!v || !def || !att.alive || !v.alive || v.team === att.team) return;
-    const max = def.melee ? 180 : def.damage * (def.headMult || 4);
-    const dmg = Math.min(max, Math.max(0, +ev.d || 0));
+    const v = this.byNid.get(ev.v), claimed = WEAPONS[ev.w];
+    if (!v || !claimed || !att.alive || !v.alive || v.team === att.team) return;
+    // it must be the gun the host knows they're holding (or their knife)
+    const held = claimed.melee ? att.slots[3] : att.slots[att.slot];
+    if (held?.key !== ev.w) { this.ac.flag(att, 'gun', 3); return; }
+    if (!this.ac.hit(att, v, { melee: !!claimed.melee })) return;
+    const def = held.def, max = def.melee ? 180 : def.damage * (def.headMult || 4);
+    const raw = Math.max(0, +ev.d || 0);
+    if (raw > max + 1) this.ac.flag(att, 'damage', 3);
+    const dmg = Math.min(max, raw);
     if (!dmg) return;
     const dir = Array.isArray(ev.dir) ? _d.set(+ev.dir[0] || 0, +ev.dir[1] || 0, +ev.dir[2] || 0) : _d.set(0, 0, 0);
     if (dir.lengthSq() < 1e-6) dir.subVectors(v.body.pos, att.body.pos);
@@ -748,7 +758,7 @@ export class Game {
     this.combatants = this.combatants.filter((a) => a !== c);
     this.byNid.delete(c.nid);
     if (this.spectating === c) this.spectating = this.nextSpectate(null);
-    this.hud.center(`${c.name} left the game`, 2.5);
-    this.net?.emit({ e: 'left', n: c.nid });
+    this.hud.center(`${c.name} ${c.kicked ? 'was kicked by the anticheat' : 'left the game'}`, 3);
+    this.net?.emit({ e: 'left', n: c.nid, k: c.kicked ? 1 : 0 });
   }
 }

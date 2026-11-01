@@ -13,6 +13,7 @@ import { knifeName } from './viewmodel.js';
 import { Avatar, Interp, F, r1, r2, r3, packSlots, showShot } from './avatar.js';
 import { Statue, STATUE_R, statueMaxHp, hunterChance, chooseRoom, statueSpot } from './zstatue.js';
 import { NET_SOUNDS } from './game.js';
+import { Anticheat } from './anticheat.js';
 
 const MAX_ALIVE = 24;
 
@@ -604,6 +605,7 @@ export class ZombiesGame {
     this.stop();
     this.net = net; this.netDelay = 0.075;
     this.running = true; this.phase = 'live'; this.time = 0;
+    this.ac = net ? new Anticheat(this) : null;   // checks what the other players' browsers report
     this.map.resetDoors();
     this.activeAreas = new Set([START_AREA]);
     this.round = 0;
@@ -1872,6 +1874,7 @@ export class ZombiesGame {
     }
     for (const z of this.zombies) if (z.active) z.update(dt);
     this.separate();
+    this.ac?.record(this.players, this.zombies);
     this.updateProjectiles(dt);
     if (this.phase === 'over') return;
     this.updateInteract(dt);
@@ -1952,28 +1955,34 @@ export class ZombiesGame {
 
   onNet(pid, msg) {
     const p = this.remotes.find((a) => a.pid === pid);
-    if (!p || !this.running) return;
+    if (!p || !this.running || p.kicked) return;
     if (msg.st) p.netState(msg.st, this.time);
-    if (Array.isArray(msg.ev)) for (const ev of msg.ev) this.onPlayerEvent(p, ev);
+    if (Array.isArray(msg.ev)) for (const ev of this.ac.order(msg.ev)) this.onPlayerEvent(p, ev);
+    if (msg.st) p.netAmmo(msg.st);
   }
 
   onPlayerEvent(p, ev) {
     if (this.phase === 'over') return;
     switch (ev?.e) {
-      case 'zh': {   // "my bullet hit zombie #n"
-        const z = this.zombies[ev.z];
+      case 'zh': {   // "my bullet hit zombie #n": the anticheat checks it could have
+        const z = Number.isInteger(ev.z) ? this.zombies[ev.z] : null;
         if (!z || !z.active || !z.alive || !p.alive) return;   // downed players shoot back too
+        const melee = !!ev.m;
+        if (!this.ac.hit(p, z, { melee, quiet: !!ev.q })) return;
+        const max = this.ac.maxDamage(p, melee), raw = Math.max(0, +ev.d || 0);
+        if (raw > max) this.ac.flag(p, 'damage', 3);
         const knock = Array.isArray(ev.k) ? _d.set(+ev.k[0] || 0, 0, +ev.k[1] || 0) : null;
-        this.hitZombie(z, Math.min(3000, Math.max(0, +ev.d || 0)), !!ev.h, !!ev.m, !!ev.q, p, knock);
+        if (knock && knock.lengthSq() > 1) knock.normalize();
+        this.hitZombie(z, Math.min(max, raw), !!ev.h, melee, !!ev.q, p, knock);
         break;
       }
       case 'shot':
-        if (!p.alive) return;
+        if (!p.alive || !this.ac.shot(p)) return;
         showShot(this, p, ev);
         this.net.emit({ e: 'shot', n: p.nid, s: ev.s, d: ev.d, tc: ev.tc, sp: ev.sp }, p.pid);
         break;
       case 'knife':
-        if (!p.alive) return;
+        if (!p.alive || !this.ac.melee(p)) return;
         this.sound.knife(p.body.pos);
         this.net.emit({ e: 'knife', n: p.nid }, p.pid);
         break;
@@ -2012,8 +2021,8 @@ export class ZombiesGame {
     this.players = this.players.filter((a) => a !== p);
     this.combatants = this.players.slice();
     if (this.spectating === p) this.spectating = this.nextSpectate(null);
-    this.hud.center(`${p.name} left the game`, 2.5);
-    this.net?.emit({ e: 'left', n: p.nid });
+    this.hud.center(`${p.name} ${p.kicked ? 'was kicked by the anticheat' : 'left the game'}`, 3);
+    this.net?.emit({ e: 'left', n: p.nid, k: p.kicked ? 1 : 0 });
     this.checkWipe();
   }
 }

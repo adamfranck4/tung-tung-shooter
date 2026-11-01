@@ -203,7 +203,7 @@ export class Session {
       L.players.push({ id, name: this.uniqueName(cleanName(m.name)), team: this.openTeam() });
       const peer = { conn, heard: performance.now() };
       this.peers.set(id, peer);
-      conn.onmessage = (msg) => { peer.heard = performance.now(); this.fromClient(id, msg); };
+      conn.onmessage = (msg) => { peer.heard = performance.now(); if (!peer.kicked) this.fromClient(id, msg); };
       conn.onclose = () => this.drop(id);
       conn.send({ t: 'welcome', id });
       this.pushLobby();
@@ -239,6 +239,15 @@ export class Session {
     if (i >= 0) L.players.splice(i, 1);
     if (L.inGame) this.onLeft?.(id, name);
     this.pushLobby();
+  }
+
+  // host: remove a player (the anticheat). They're told why; a match in progress can't be rejoined.
+  kick(id, why) {
+    const peer = this.peers.get(id);
+    if (!peer || peer.kicked) return;
+    peer.kicked = true;
+    peer.conn.send({ t: 'closed', why });
+    setTimeout(() => this.drop(id), 300);   // let the message go out first
   }
 
   setTeam(id, team) {

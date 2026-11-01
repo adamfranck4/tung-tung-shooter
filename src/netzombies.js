@@ -249,7 +249,7 @@ export class ZombiesClient extends ZombiesGame {
         } else c.spawn(_v, ev.yaw);
         break;
       case 'over': this.onOver(ev); break;
-      case 'left': this.removeRemote(ev.n); break;
+      case 'left': this.removeRemote(ev.n, !!ev.k); break;
       case 'inv': applyInventory(this.player, ev); break;
       case 'stash': this.player.stash = unpackStash(ev.it); break;
       default: this.feedback(ev);
@@ -270,7 +270,7 @@ export class ZombiesClient extends ZombiesGame {
     this.sound.roundEnd(false);
   }
 
-  removeRemote(nid) {
+  removeRemote(nid, kicked = false) {
     const q = this.byNid(nid);
     if (!q || q === this.player) return;
     q.dispose();
@@ -278,6 +278,6 @@ export class ZombiesClient extends ZombiesGame {
     this.players = this.players.filter((a) => a !== q);
     this.combatants = this.players.slice();
     if (this.spectating === q) this.spectating = this.nextSpectate(null);
-    this.hud.center(`${q.name} left the game`, 2.5);
+    this.hud.center(`${q.name} ${kicked ? 'was kicked by the anticheat' : 'left the game'}`, 3);
   }
 }

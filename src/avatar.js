@@ -173,6 +173,7 @@ export class Avatar extends Bot {
     this.interp.clear();
     this.downed = false; this.crouching = false; this.crouchK = 0;
     if (this.tag) this.tag.visible = true;
+    this.game.ac?.spawned(this);
   }
 
   onDeath() {
@@ -183,19 +184,29 @@ export class Avatar extends Bot {
 
   renderPos(out) { return out.copy(this.body.pos); }
 
-  // host: a state update from this player's browser
+  // host: a state update from this player's browser (the anticheat checks the position)
   netState(st, t) {
     if (!st || st.ep !== this.spawnEpoch || !Array.isArray(st.p)) return;
-    const [x, y, z] = st.p;
-    if (![x, y, z, st.y].every(Number.isFinite)) return;
-    this.interp.push(t, x, y, z, st.y, +st.pi || 0);
+    let [x, y, z] = st.p;
+    const pitch = +st.pi || 0;
+    if (![x, y, z, st.y, pitch].every(Number.isFinite)) return;
+    const ac = this.game.ac;
+    if (ac) {
+      if (!this.alive) return;   // the dead stay where they fell
+      ({ x, y, z } = ac.move(this, x, y, z));
+    }
+    this.interp.push(t, x, y, z, st.y, Math.max(-1.6, Math.min(1.6, pitch)));
     this.netFlags = st.f | 0;
     this.wantsUse = !!(this.netFlags & F.USE);
     this.scoped = !!(this.netFlags & F.SCOPE);
     if (st.iv === this.invVer && Array.isArray(st.s)) {
-      unpackSlots(this, st.s);
+      if (!ac) unpackSlots(this, st.s);
       if (this.slots[st.cur]) this.slot = st.cur;
     }
+  }
+  // host: the ammo in that update, once its shots were counted (see Anticheat.ammo)
+  netAmmo(st) {
+    if (st && st.ep === this.spawnEpoch && st.iv === this.invVer) this.game.ac?.ammo(this, st.s);
   }
 
   // move to where the network says this fighter was at time rt

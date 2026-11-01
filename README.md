@@ -63,6 +63,13 @@ code (and a **Copy invite link** button); everyone else types the code and click
   is only used to find each other, so there is still no server to deploy. Hosting a full 10-player room uses about
   1 Mbps of upload.
 - Joining a match that has already started isn't supported: join in the lobby.
+- **Anticheat:** the host checks everything the other players' browsers report and ignores what isn't possible:
+  moving faster than a run (or bunny hop), teleporting, walking through walls, staying in the air, guns or ammo the
+  host never gave them, firing faster than the gun, and hits with no shot behind them, from too far away, through a
+  wall, aimed the wrong way or for more damage than the gun does. Each failed check adds suspicion points that are
+  slowly forgiven; a player who keeps failing them is kicked ("You were kicked by the anticheat") and can't rejoin
+  that match. The host's console lists every failed check. It can't stop a cheating *host*, wallhacks (everyone's
+  position is sent to everyone) or an aimbot that only aims for you.
 - Testing on one computer: open two tabs with `?net=local` added to the URL (they connect without the internet;
   `&lag=150` fakes a 150 ms round trip).
 
@@ -323,6 +330,7 @@ vercel --prod
 - `src/zui.js` — Zombies Gun Shop (ammo) menu, inventory and case opening (gun pictures are rendered from the gun models)
 - `src/net.js` — online rooms, lobby and message batching (PeerJS)
 - `src/avatar.js` — other players' fighters, moved by network updates
+- `src/anticheat.js` — the host's checks on what other players report (movement, guns and ammo, shots, hits)
 - `src/netclassic.js`, `src/netzombies.js` — 5v5 and Zombies on a joining player's browser (the host runs
   `game.js` / `zombies.js` for everyone)
 - `src/viewmodel.js`, `src/effects.js`, `src/audio.js`, `src/hud.js`, `src/textures.js`
