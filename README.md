@@ -68,8 +68,17 @@ code (and a **Copy invite link** button); everyone else types the code and click
   host never gave them, firing faster than the gun, and hits with no shot behind them, from too far away, through a
   wall, aimed the wrong way or for more damage than the gun does. Each failed check adds suspicion points that are
   slowly forgiven; a player who keeps failing them is kicked ("You were kicked by the anticheat") and can't rejoin
-  that match. The host's console lists every failed check. It can't stop a cheating *host*, wallhacks (everyone's
-  position is sent to everyone) or an aimbot that only aims for you.
+  that match. The host's console lists every failed check.
+- **Aim cheats:** the host also watches where each player looks (30 times a second, with their measured ping
+  allowed for) and flags an **aimbot** (aim that stays locked on a moving target's head or chest, or snaps onto one
+  in a single update and fires), a **triggerbot** (firing the instant an enemy walks into a still crosshair, again
+  and again, faster than people react), a **spinbot** (spinning several turns a second, or view angles no mouse can
+  reach), shots that don't leave where the player was looking (silent aim), and aim that follows someone behind a
+  wall. These come up once per gunfight, so their points are forgiven slowly (one a minute).
+- **Wallhacks:** in 5v5 each player is only sent where an enemy is when they could know it: in sight (or about to
+  be, around a corner), close by, running within earshot, just fired, or spotted on the radar. Dead players get
+  what their living teammates see. A wallhack has nothing to draw for everyone else.
+- It can't stop a cheating *host*, or an aimbot tuned to aim as sloppily as a person.
 - Testing on one computer: open two tabs with `?net=local` added to the URL (they connect without the internet;
   `&lag=150` fakes a 150 ms round trip).
 
@@ -330,7 +339,8 @@ vercel --prod
 - `src/zui.js` — Zombies Gun Shop (ammo) menu, inventory and case opening (gun pictures are rendered from the gun models)
 - `src/net.js` — online rooms, lobby and message batching (PeerJS)
 - `src/avatar.js` — other players' fighters, moved by network updates
-- `src/anticheat.js` — the host's checks on what other players report (movement, guns and ammo, shots, hits)
+- `src/anticheat.js` — the host's checks on what other players report (movement, guns and ammo, shots, hits, aim)
+  and which enemy positions each player is sent
 - `src/netclassic.js`, `src/netzombies.js` — 5v5 and Zombies on a joining player's browser (the host runs
   `game.js` / `zombies.js` for everyone)
 - `src/viewmodel.js`, `src/effects.js`, `src/audio.js`, `src/hud.js`, `src/textures.js`

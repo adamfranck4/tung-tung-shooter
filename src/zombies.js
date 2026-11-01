@@ -1977,7 +1977,7 @@ export class ZombiesGame {
         break;
       }
       case 'shot':
-        if (!p.alive || !this.ac.shot(p)) return;
+        if (!p.alive || !this.ac.shot(p, ev)) return;
         showShot(this, p, ev);
         this.net.emit({ e: 'shot', n: p.nid, s: ev.s, d: ev.d, tc: ev.tc, sp: ev.sp }, p.pid);
         break;

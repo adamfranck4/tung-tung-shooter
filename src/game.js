@@ -270,7 +270,7 @@ export class Game {
     const wallInfo = wall ? { nx: wall.nx, ny: wall.ny, nz: wall.nz } : null;
     let victim = null, part = null;
     for (const c of this.combatants) {
-      if (c === shooter || !c.alive || c.team === shooter.team) continue;
+      if (c === shooter || !c.alive || c.team === shooter.team || c.hidden) continue;
       const r = c.rayHit(origin, dir, hitT);
       if (r && r.t < hitT) { hitT = r.t; victim = c; part = r.part; }
     }
@@ -671,7 +671,8 @@ export class Game {
     this.net.emitTo(c.pid, { e: 'inv', ver: c.invVer, cur: c.slot, s: packSlots(c), h: hint });
   }
 
-  netUpdate(dt) { this.net?.update(dt, () => this.snapshot()); }
+  // each player gets the snapshot without the enemies they can't see (see Anticheat.cull)
+  netUpdate(dt) { this.net?.update(dt, () => this.snapshot(), this.ac && ((snap, id) => this.ac.cull(snap, id))); }
 
   // what every player's browser needs to draw the match
   snapshot() {
@@ -712,7 +713,7 @@ export class Game {
   onPlayerEvent(c, ev) {
     switch (ev?.e) {
       case 'shot':
-        if (!c.alive || !this.ac.shot(c)) return;
+        if (!c.alive || !this.ac.shot(c, ev)) return;
         showShot(this, c, ev);
         this.emitNoise(c.body.pos, 45, c);
         this.net.emit({ e: 'shot', n: c.nid, s: ev.s, d: ev.d }, c.pid);

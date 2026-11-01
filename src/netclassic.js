@@ -101,6 +101,13 @@ export class ClassicClient extends Game {
       c.hasBomb = !!(f & F.BOMB);
       c.useProgress = e[10];
       if (c === this.player) continue;
+      // out of your sight: the host doesn't say where they are, so hide them until it does
+      if (f & F.HIDE) {
+        c.hidden = true; c.model.root.visible = false; c.spottedUntil = 0;
+        c.body.vel.x = c.body.vel.z = 0;
+        continue;
+      }
+      if (c.hidden) { c.hidden = false; c.interp.clear(); c.model.root.visible = true; }
       c.interp.push(s.T, e[1], e[2], e[3], e[4], e[5]);
       c.netFlags = f;
       c.scoped = !!(f & F.SCOPE);

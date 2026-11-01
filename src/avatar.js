@@ -7,7 +7,8 @@ import { WEAPONS, papDef, MAX_PAP } from './weapons.js';
 import { wrapAngle } from './physics.js';
 
 // bit flags used in state updates and snapshots
-export const F = { ALIVE: 1, CROUCH: 2, GROUND: 4, USE: 8, SCOPE: 16, BOMB: 32, SPOT: 64, DOWN: 128 };
+// HIDE (snapshots only): an enemy the host doesn't tell you the position of (out of sight)
+export const F = { ALIVE: 1, CROUCH: 2, GROUND: 4, USE: 8, SCOPE: 16, BOMB: 32, SPOT: 64, DOWN: 128, HIDE: 256 };
 export const r1 = (v) => Math.round(v * 10) / 10;
 export const r2 = (v) => Math.round(v * 100) / 100;
 export const r3 = (v) => Math.round(v * 1000) / 1000;
@@ -199,6 +200,8 @@ export class Avatar extends Bot {
     this.netFlags = st.f | 0;
     this.wantsUse = !!(this.netFlags & F.USE);
     this.scoped = !!(this.netFlags & F.SCOPE);
+    // where they look: checked for aimbots, triggerbots and spinbots
+    ac?.look(this, st.y, pitch, this.downed ? 0.55 : (this.netFlags & F.CROUCH) ? 1.15 : 1.65);
     if (st.iv === this.invVer && Array.isArray(st.s)) {
       if (!ac) unpackSlots(this, st.s);
       if (this.slots[st.cur]) this.slot = st.cur;

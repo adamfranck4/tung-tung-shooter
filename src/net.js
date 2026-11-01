@@ -226,8 +226,16 @@ export class Session {
       case 'g': this.onGame?.(id, m); break;
       case 'team': this.setTeam(id, m.team); break;
       case 'bye': this.drop(id); break;
+      case 'pong': {   // the answer to our ping: how long a message takes there and back
+        const peer = this.peers.get(id), ms = performance.now() - m.k;
+        if (peer && Number.isFinite(ms) && ms >= 0 && ms < 5000) peer.rtt = peer.rtt == null ? ms : peer.rtt + (ms - peer.rtt) * 0.25;
+        break;
+      }
     }
   }
+
+  // host: a player's round trip time in seconds (null until measured)
+  rtt(id) { const r = this.peers.get(id)?.rtt; return r == null ? null : r / 1000; }
 
   drop(id) {
     const peer = this.peers.get(id);
@@ -342,6 +350,7 @@ export class Session {
       case 'g': this.onGame?.('h', m); break;
       case 'abort': this.onAbort?.(); break;
       case 'closed': this.lost(m.why || 'The host closed the room.'); break;
+      case 'ping': if (m.k != null) this.send('h', { t: 'pong', k: m.k }); break;
     }
   }
 
@@ -364,7 +373,7 @@ export class Session {
   update() {
     if (this.closed || !this.role) return;
     const now = performance.now();
-    if (now - this.pingT > 1000) { this.pingT = now; this.broadcast({ t: 'ping' }); }
+    if (now - this.pingT > 1000) { this.pingT = now; this.broadcast({ t: 'ping', k: this.isHost ? now : undefined }); }
     for (const [id, p] of this.peers) {
       if (now - p.heard < TIMEOUT_MS) continue;
       if (this.isHost) this.drop(id);
@@ -423,12 +432,13 @@ export class NetLink {
     return q;
   }
 
-  update(dt, payload) {
+  // perPeer (host): (data, id) => what that player is sent of it
+  update(dt, payload, perPeer = null) {
     this.acc += dt;
     if (this.acc < this.interval) return;
     this.acc = Math.min(this.acc - this.interval, this.interval);
     const data = payload?.();
     if (this.role !== 'host') { this.session.send('h', { t: 'g', st: data, ev: this.take('h') }); return; }
-    for (const id of this.session.peers.keys()) this.session.send(id, { t: 'g', s: data, ev: this.take(id) });
+    for (const id of this.session.peers.keys()) this.session.send(id, { t: 'g', s: perPeer && data ? perPeer(data, id) : data, ev: this.take(id) });
   }
 }
