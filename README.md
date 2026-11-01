@@ -192,7 +192,10 @@ everyone is told when someone unboxes an epic or legendary gun.
     to 7), faster flying and throwing, and from round 14 it calls in purple flyers. Ignores Insta-Kill and
     Kaboom, worth 3000 points, and always drops a power-up. The round doesn't end until it's down.
   - Kill points: the usual 60 / 100 headshot / 130 knife, +30 speedster, +20 crawler, +40 thrower or flyer.
-- You get 20 seconds between waves (time to get back to the Gun Shop); press **N** to start the next wave right away.
+- Between rounds nothing happens until you're ready: press **N** to start the next round (in co-op, everyone
+  presses N; press it again to take it back). Or turn on **Auto-start next round** under *Options* in your
+  inventory (I): 10 seconds after each round you're marked ready by yourself (solo: the next round starts). N still
+  works during those 10 seconds. The setting is saved for next time.
 - **Sahur Hill** (doors from the Courtyard and the Kitchen alley): two hills, a walk-through hut, and a stepped
   stone pyramid with a staircase up the middle of each side and braziers on its corners. The last Pack-a-Punch
   is on top, and zombies come up all four staircases. Its sides are four 1 m steps, each 0.8 m high: jump up and
@@ -285,6 +288,7 @@ everyone is told when someone unboxes an epic or legendary gun.
 | B | Buy menu (in spawn during buy time), then 1-8 to buy (5v5 only) |
 | E | Zombies: buy (Gun Shop counter, gun case machine, perks, Pack-a-Punch) |
 | I | Zombies: inventory (stored guns and cases, case opening) |
+| N | Zombies: ready for the next round (press again to cancel) |
 | E (hold) | Plant / defuse, rebuild boards, revive a teammate |
 | Tab | Scoreboard |
 | M | Map (Zombies) |

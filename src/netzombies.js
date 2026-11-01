@@ -23,6 +23,7 @@ export class ZombiesClient extends ZombiesGame {
     this.player.spawnEpoch = 0; this.player.invVer = 0;
     this.betweenRounds = true; this.nextRoundAt = 0;
     this.ready = new Set(); this.statue.room = null; this.overWhy = null;
+    this.autoAt = 0; this.autoDone = true;
     this.syncUnlocks(0);
     this.hud.zReset(this);
     this.introBanner();
@@ -45,7 +46,8 @@ export class ZombiesClient extends ZombiesGame {
       if (this.overT <= 0) { this.running = false; this.onGameOver?.(this.finalStats()); }
       return;
     }
-    if (this.betweenRounds && this.input.pressed('KeyN')) this.net.emit({ e: 'next' });   // ready / not ready
+    if (this.betweenRounds && this.input.pressed('KeyN')) { this.autoDone = true; this.net.emit({ e: 'next' }); }   // ready / not ready
+    else if (this.autoReadyDue()) this.net.emit({ e: 'next' });   // auto-start (inventory option)
     if (p.alive) {
       if (p.downed) { p.eyeH += (0.55 - p.eyeH) * Math.min(1, dt * 6); p.applyMovement(dt, 0, 0, 1, false); p.lastStand(dt); }
       else p.update(dt);
@@ -212,6 +214,7 @@ export class ZombiesClient extends ZombiesGame {
         break;
       case 'rend':
         this.round = ev.r; this.betweenRounds = true;
+        this.armAutoReady();
         this.sound.zRoundEnd(); this.hud.zRound(ev.r, true);
         this.syncUnlocks(ev.r);
         this.roundBanner(ev.r, ev.st);

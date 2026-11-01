@@ -16,6 +16,8 @@ import { NET_SOUNDS } from './game.js';
 import { Anticheat } from './anticheat.js';
 
 const MAX_ALIVE = 24;
+// Auto-start next round (inventory option): how long a break you get before you're marked ready by yourself
+export const AUTO_BREAK = 10;
 
 // ----- inventory (I): the cases and guns a player has stored -----
 // items: { id, t: 'case' } (a gun case) or { id, t: 'gun', key, pap, mag, reserve }
@@ -617,6 +619,7 @@ export class ZombiesGame {
     for (const a of this.remotes) a.spawnEpoch = 0;   // matches the joining player's first state
     this.betweenRounds = true; this.nextRoundAt = 0; this.toSpawn = 0;
     this.ready = new Set(); this.roomVisits = {}; this.statue.room = null; this.overWhy = null;
+    this.autoAt = 0; this.autoDone = true;   // round 1 waits for N (or turning auto-start on)
     this.syncUnlocks(0);
     this.prepareStatue();
     this.hud.zReset(this);
@@ -848,10 +851,12 @@ export class ZombiesGame {
     if (r === 1) this.announce(null, 'Ammo at the Gun Shop (E) · guns come in gun cases, by the north door · I opens your inventory');
   }
 
-  // Round won: the next one waits until everyone presses N (solo: until you do).
+  // Round won: the next one waits until everyone presses N (solo: until you do), or until
+  // auto-start marks them ready.
   endRound() {
     this.betweenRounds = true;
     this.ready.clear();
+    this.armAutoReady();
     this.sound.zRoundEnd();
     this.hud.zRound(this.round, true);
     this.syncUnlocks(this.round);
@@ -862,12 +867,33 @@ export class ZombiesGame {
 
   // between rounds: N says you're ready (press it again to take it back)
   updateReady() {
-    if (this.input.pressed('KeyN')) this.toggleReady(this.player);
+    if (this.input.pressed('KeyN')) { this.autoDone = true; this.toggleReady(this.player); }
+    else if (this.autoReadyDue()) this.toggleReady(this.player);
     if (this.players.length && this.players.every((q) => this.ready.has(q.nid))) this.startRound(this.round + 1);
   }
   toggleReady(p) {
     if (this.ready.has(p.nid)) this.ready.delete(p.nid); else this.ready.add(p.nid);
     if (this.coop && this.ready.has(p.nid)) this.announce(p, `${p.name} is ready (${this.ready.size}/${this.players.length}) - press N when you are`);
+  }
+
+  // Auto-start next round (settings.autoNext, from the inventory). Only ever readies your own player:
+  // solo and the host do it here, a joining player sends 'next' like pressing N (netzombies.js).
+  // After each round: a short break, then you're ready. Pressing N in the break takes over by hand.
+  armAutoReady() { this.autoAt = this.time + AUTO_BREAK; this.autoDone = false; }
+  autoReadyDue() {
+    if (!this.settings.autoNext || this.autoDone || !this.betweenRounds || this.phase === 'over' || this.time < this.autoAt) return false;
+    this.autoDone = true;
+    return !this.ready.has(this.player.nid);
+  }
+  // seconds until auto-start readies you, or -1 if it won't this break
+  autoLeft() {
+    if (!this.settings.autoNext || this.autoDone || !this.betweenRounds) return -1;
+    return Math.max(0, Math.ceil(this.autoAt - this.time));
+  }
+  // the inventory toggle: turning it on between rounds starts a fresh countdown (unless one is running)
+  setAutoNext(on) {
+    this.settings.autoNext = !!on;
+    if (on && this.betweenRounds && !this.ready.has(this.player?.nid) && (this.autoDone || this.time >= this.autoAt)) this.armAutoReady();
   }
 
   // ----- the Golden Tung Tung -----
@@ -945,7 +971,7 @@ export class ZombiesGame {
     const parts = [];
     if (areas.length) parts.push(`${areas.join(' and ')} ${areas.length > 1 ? 'are' : 'is'} open`);
     if (AREAS[room]) parts.push(`Next: the Golden Tung Tung moves to the ${AREAS[room].name}`);
-    parts.push('Press N when ready');
+    parts.push(this.settings.autoNext ? `Auto-start in ${AUTO_BREAK}s · N to go now` : 'Press N when ready');
     this.hud.banner(`ROUND ${r} SURVIVED`, parts.join(' · '), 'T', 6);
   }
 
@@ -1420,10 +1446,15 @@ export class ZombiesGame {
     if (!it) {
       if (this.betweenRounds && this.phase !== 'over') {
         const room = AREAS[this.statue.room]?.name || 'village', nr = this.round + 1;
-        if (!this.coop) return `Round ${nr}: defend the Golden Tung Tung in the ${room} — press N to start`;
+        const left = this.autoLeft(), on = this.settings.autoNext ? ' · auto-start on' : '';
+        if (!this.coop) {
+          return left >= 0 ? `Round ${nr} starts in ${left}s (auto-start on) — Golden Tung Tung in the ${room} · N to start now`
+            : `Round ${nr}: defend the Golden Tung Tung in the ${room} — press N to start${on}`;
+        }
         const n = `${this.ready.size}/${this.players.length} ready`;
-        return this.ready.has(this.player.nid) ? `You're ready (${n}) — waiting for your team · N to cancel`
-          : `Round ${nr}: defend the Golden Tung Tung in the ${room} — press N when ready (${n})`;
+        if (this.ready.has(this.player.nid)) return `You're ready (${n}) — waiting for your team · N to cancel${on}`;
+        return left >= 0 ? `Round ${nr}: auto-ready in ${left}s (${n}) — Golden Tung Tung in the ${room} · N to ready now`
+          : `Round ${nr}: defend the Golden Tung Tung in the ${room} — press N when ready (${n})${on}`;
       }
       return '';
     }

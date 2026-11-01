@@ -76,10 +76,11 @@ const hud = new Hud();
 const sound = new Sound();
 const vm = new ViewModel();
 // Zombies: the Gun Shop, inventory and case opening menus (they take the mouse while open)
-const zmenu = new ZMenu({ sound, onClose: () => closeZMenu() });
+const zmenu = new ZMenu({ sound, onClose: () => closeZMenu(), onAutoNext: (on) => save('defuse.autoNext', on ? '1' : '0') });
 // Sensitivity uses the CS2 scale (0.022° per mouse count × sens), so your CS2 number works here.
 // Older saves used a different scale and are converted so aim feels the same.
-const settings = { sens: parseFloat(load('defuse.sens2')) };
+// autoNext: Zombies "Auto-start next round" (toggled in the inventory)
+const settings = { sens: parseFloat(load('defuse.sens2')), autoNext: load('defuse.autoNext') === '1' };
 if (!(settings.sens > 0)) {
   const old = parseFloat(load('defuse.sens'));
   settings.sens = old > 0 ? Math.min(8, Math.max(0.2, Math.round(old * 0.0022 / CS_DEG_PER_COUNT * 20) / 20)) : 2;

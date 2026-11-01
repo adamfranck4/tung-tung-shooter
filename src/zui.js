@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { WEAPONS, RARITIES, rarityOf, caseOdds, rollCase, CASE_COLOR, CASE_ODDS, ammoCost, STASH_SIZE, sellValue } from './weapons.js';
 import { displayGuns, onGunModels } from './viewmodel.js';
-import { stashDef } from './zombies.js';
+import { stashDef, AUTO_BREAK } from './zombies.js';
 import { esc } from './hud.js';
 
 const $ = (id) => document.getElementById(id);
@@ -116,8 +116,8 @@ const SPIN_TIME = 5.6;   // seconds
 const easeOut = (t) => 1 - Math.pow(1 - t, 4);
 
 export class ZMenu {
-  constructor({ sound, onClose }) {
-    this.sound = sound; this.onClose = onClose;
+  constructor({ sound, onClose, onAutoNext }) {
+    this.sound = sound; this.onClose = onClose; this.onAutoNext = onAutoNext;   // onAutoNext(on): save the setting
     this.el = $('zmenu'); this.box = $('zm-panel'); this.cs = $('zcase');
     this.game = null; this.tab = 'inv'; this.visible = false; this.sig = '';
     this.kase = null;    // the case screen: { id, rarity, state: 'preview' | 'wait' | 'spin' | 'done', ... }
@@ -171,7 +171,7 @@ export class ZMenu {
     if (!g || !p) return;
     const near = g.nearGunShop(p);
     const slots = [1, 2].map((s) => { const w = p.slots[s]; return w ? [w.key, w.def.pap || 0, w.mag, w.reserve] : 0; });
-    const sig = JSON.stringify([this.tab, p.points, g.cleared(), near, slots, p.slot, p.stash, this.sellArm]);
+    const sig = JSON.stringify([this.tab, p.points, g.cleared(), near, slots, p.slot, p.stash, this.sellArm, !!g.settings?.autoNext]);
     if (sig === this.sig) return;
     this.sig = sig;
     const tabs = `<button class="zm-tab${this.tab === 'shop' ? ' on' : ''}" data-act="tab" data-tab="shop"${near ? '' : ' disabled title="Go to the Gun Shop counter"'}>GUN SHOP</button>`
@@ -238,7 +238,14 @@ export class ZMenu {
     }).join('');
     const empty = '<p class="zm-empty">Nothing stored yet. Buy gun cases from the vending machine by the north door of the Courtyard, '
       + 'or put a gun away here to carry another one.</p>';
-    return `<div class="zm-inv"><div class="zm-load"><h4>LOADOUT</h4>${slotCard(1)}${slotCard(2)}${knife}</div>`
+    // options: auto-start the next round (saved between games)
+    const auto = !!g.settings?.autoNext;
+    const opts = '<h4 class="zm-opt-h">OPTIONS</h4>'
+      + `<button class="zm-opt${auto ? ' on' : ''}" data-act="auto" role="switch" aria-checked="${auto}">`
+      + '<span class="zm-opt-t">Auto-start next round<small>'
+      + (g.coop ? `Marks you ready ${AUTO_BREAK}s after each round` : `Starts the next round ${AUTO_BREAK}s after each one`)
+      + '</small></span><span class="zm-sw"><i></i></span></button>';
+    return `<div class="zm-inv"><div class="zm-load"><h4>LOADOUT</h4>${slotCard(1)}${slotCard(2)}${knife}${opts}</div>`
       + `<div class="zm-stash"><h4>STORED <span>${p.stash.length} / ${STASH_SIZE}</span></h4>`
       + `${items ? `<div class="zm-grid">${items}</div>` : empty}</div></div>`;
   }
@@ -261,6 +268,12 @@ export class ZMenu {
         else { this.sellArm = id; this.sellArmT = performance.now(); }
         break;
       case 'open': this.showCase(id); break;
+      case 'auto': {
+        const on = !g.settings.autoNext;
+        g.setAutoNext(on); this.onAutoNext?.(on);
+        this.sig = ''; this.render();
+        break;
+      }
       // the case screen
       case 'unlock': this.unlock(); break;
       case 'back': this.closeCase(); break;
