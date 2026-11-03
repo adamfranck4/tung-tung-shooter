@@ -2,7 +2,7 @@
 // player, reports shots, hits and purchases to the host, and draws everyone else from the
 // host's snapshots (about 25 a second, shown a tenth of a second behind so motion is smooth).
 import * as THREE from 'three';
-import { Game } from './game.js';
+import { Game, leftWhy } from './game.js';
 import { Avatar, F, r1, r2, r3, packSlots, applyInventory, showShot } from './avatar.js';
 
 const _v = new THREE.Vector3();
@@ -108,6 +108,9 @@ export class ClassicClient extends Game {
         continue;
       }
       if (c.hidden) { c.hidden = false; c.interp.clear(); c.model.root.visible = true; }
+      // a jump no one can run (the host moved where it shows them): go there, don't slide there
+      const l = c.interp.latest;
+      if (l && (l.x - e[1]) ** 2 + (l.y - e[2]) ** 2 + (l.z - e[3]) ** 2 > 9) c.interp.clear();
       c.interp.push(s.T, e[1], e[2], e[3], e[4], e[5]);
       c.netFlags = f;
       c.scoped = !!(f & F.SCOPE);
@@ -140,7 +143,7 @@ export class ClassicClient extends Game {
         break;
       case 'kill': this.onKill(ev); break;
       case 'shot': if (c && c !== this.player) showShot(this, c, ev); break;
-      case 'knife': if (c && c !== this.player) this.sound.knife(c.body.pos); break;
+      case 'knife': if (c && c !== this.player) this.sound.knife(Array.isArray(ev.o) ? _v.set(+ev.o[0] || 0, +ev.o[1] || 0, +ev.o[2] || 0) : c.body.pos); break;
       case 'plant': this.hud.banner('The bomb has been planted', `Site ${ev.s}`, 'T', 3); break;
       case 'boom':
         _v.set(ev.p[0], ev.p[1] + 0.5, ev.p[2]);
@@ -152,7 +155,7 @@ export class ClassicClient extends Game {
         this.running = false;
         this.onMatchOver?.(ev.w);
         break;
-      case 'left': this.removeAvatar(ev.n, !!ev.k); break;
+      case 'left': this.removeAvatar(ev.n, ev.k | 0); break;
       case 'inv': applyInventory(this.player, ev); break;
       default: this.feedback(ev);
     }
@@ -185,12 +188,13 @@ export class ClassicClient extends Game {
       this.vm.setTeam(this.player.team);
     }
     if (ev.hf) { const p = this.player; p.slots[1] = null; p.slots[2] = null; p.armor = 0; }   // the host sends the new kit right after
-    for (const [nid, x, y, z, yaw, ep] of ev.sp) {
+    // hid: an enemy out of your sight (no position until the host sends one)
+    for (const [nid, x, y, z, yaw, ep, hid] of ev.sp) {
       const c = this.byNid.get(nid);
       if (!c) continue;
       c.spawn(_v.set(x, y, z), yaw);
-      if (c === this.player) c.spawnEpoch = ep;
-      else c.model.root.visible = true;
+      if (c === this.player) { c.spawnEpoch = ep; continue; }
+      c.hidden = !!hid; c.model.root.visible = !hid;
     }
     for (const c of this.combatants) c.hasBomb = c.nid === ev.c;
     Object.assign(this.bomb, { state: ev.c >= 0 ? 'carried' : 'none', carrier: this.byNid.get(ev.c) || null });
@@ -212,7 +216,7 @@ export class ClassicClient extends Game {
     } else if (this.spectating === v) this.spectateSwitchAt = this.time + 1.5;
   }
 
-  removeAvatar(nid, kicked = false) {
+  removeAvatar(nid, k = 0) {
     const c = this.byNid.get(nid);
     if (!c || c === this.player) return;
     c.dispose();
@@ -220,6 +224,6 @@ export class ClassicClient extends Game {
     this.combatants = this.combatants.filter((a) => a !== c);
     this.byNid.delete(nid);
     if (this.spectating === c) this.spectating = this.nextSpectate(null);
-    this.hud.center(`${c.name} ${kicked ? 'was kicked by the anticheat' : 'left the game'}`, 3);
+    this.hud.center(`${c.name} ${leftWhy(k)}`, 3);
   }
 }

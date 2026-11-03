@@ -12,7 +12,7 @@ import { PLAYER_START, AREAS, START_AREA } from './zmap.js';
 import { knifeName } from './viewmodel.js';
 import { Avatar, Interp, F, r1, r2, r3, packSlots, showShot } from './avatar.js';
 import { Statue, STATUE_R, statueMaxHp, hunterChance, chooseRoom, statueSpot } from './zstatue.js';
-import { NET_SOUNDS } from './game.js';
+import { NET_SOUNDS, leftWhy } from './game.js';
 import { Anticheat } from './anticheat.js';
 
 const MAX_ALIVE = 24;
@@ -1279,6 +1279,7 @@ export class ZombiesGame {
     p.lastHurt = this.time;
     _d.set(p.body.pos.x - from.x, 0, p.body.pos.z - from.z).normalize();
     this.tell(p, { e: 'hurt', x: r2(_d.x), z: r2(_d.z) });
+    this.ac?.pushed(p);   // the knock back isn't a speed hack
     if (p.health <= 0) {
       if (this.coop || p.perks.has('quick')) this.goDown(p);
       else this.gameOver();
@@ -2052,8 +2053,8 @@ export class ZombiesGame {
     this.players = this.players.filter((a) => a !== p);
     this.combatants = this.players.slice();
     if (this.spectating === p) this.spectating = this.nextSpectate(null);
-    this.hud.center(`${p.name} ${p.kicked ? 'was kicked by the anticheat' : 'left the game'}`, 3);
-    this.net?.emit({ e: 'left', n: p.nid, k: p.kicked ? 1 : 0 });
+    this.hud.center(`${p.name} ${leftWhy(p.kicked ? p.kickedBy : 0)}`, 3);
+    this.net?.emit({ e: 'left', n: p.nid, k: p.kicked ? (p.kickedBy === 'host' ? 2 : 1) : 0 });
     this.checkWipe();
   }
 }

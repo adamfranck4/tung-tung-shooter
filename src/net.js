@@ -8,7 +8,7 @@
 const PEERJS_URL = 'https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js';
 const ID_PREFIX = 'tungtung-shooter-v1-';
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-export const PROTOCOL = 6;   // bump when host and players must run the same version (6: one gun case, no Mystery Box, 6-player Zombies)
+export const PROTOCOL = 7;   // bump when host and players must run the same version (7: decoys, hidden spawns, bans)
 export const MAX_PLAYERS = { classic: 10, zombies: 6 };
 export const TEAM_SIZE = 5;
 export const BOT_NAMES = {
@@ -24,6 +24,26 @@ export function cleanName(s) {
   return n || 'Player';
 }
 export function normalizeCode(s) { return String(s ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5); }
+// a random id this browser keeps, so a banned player can't come back by changing their name
+function deviceId() {
+  try {
+    let id = localStorage.getItem('defuse.device');
+    if (!id || !/^[a-z0-9]{16}$/.test(id)) {
+      const a = new Uint32Array(4); crypto.getRandomValues(a);
+      id = Array.from(a, (v) => v.toString(36).padStart(4, '0').slice(-4)).join('');
+      localStorage.setItem('defuse.device', id);
+    }
+    return id;
+  } catch (_) { return ''; }
+}
+
+// players this browser has banned while hosting (kept between rooms): [{n: name, d: device id, t: when}]
+const BANS_KEY = 'defuse.bans', MAX_BANS = 200;
+function loadBans() {
+  try { const b = JSON.parse(localStorage.getItem(BANS_KEY) || '[]'); return Array.isArray(b) ? b.filter((x) => x && typeof x.n === 'string') : []; } catch (_) { return []; }
+}
+function saveBans(b) { try { localStorage.setItem(BANS_KEY, JSON.stringify(b.slice(-MAX_BANS))); } catch (_) { /* storage off: bans last for this room only */ } }
+
 function randomCode() {
   const a = new Uint32Array(5);
   crypto.getRandomValues(a);
@@ -164,6 +184,7 @@ export class Session {
     this.code = null; this.myId = null; this.lobby = null;
     this.peers = new Map();    // host: player id -> {conn, heard}; client: 'h' -> the host
     this.nextId = 1; this.pingT = 0; this.closed = false;
+    this.bans = loadBans();
     // callbacks
     this.onLobby = null; this.onStart = null; this.onGame = null; this.onAbort = null; this.onClosed = null; this.onLeft = null;
   }
@@ -197,11 +218,13 @@ export class Session {
       const deny = (why) => { conn.send({ t: 'deny', why }); setTimeout(() => conn.close(), 500); };
       if (this.closed) return deny('That room was closed.');
       if (m.v !== PROTOCOL) return deny('That room is running a different version of the game. Both players should reload the page.');
+      const dev = typeof m.dev === 'string' ? m.dev.slice(0, 32) : '';
+      if (this.isBanned(cleanName(m.name), dev)) return deny('You are banned from this room.');
       if (L.inGame) return deny('That match has already started. Ask the host to go back to the lobby, then join again.');
       if (L.players.length >= MAX_PLAYERS[L.mode]) return deny('That room is full.');
       const id = 'p' + this.nextId++;
       L.players.push({ id, name: this.uniqueName(cleanName(m.name)), team: this.openTeam() });
-      const peer = { conn, heard: performance.now() };
+      const peer = { conn, heard: performance.now(), dev };
       this.peers.set(id, peer);
       conn.onmessage = (msg) => { peer.heard = performance.now(); if (!peer.kicked) this.fromClient(id, msg); };
       conn.onclose = () => this.drop(id);
@@ -249,7 +272,7 @@ export class Session {
     this.pushLobby();
   }
 
-  // host: remove a player (the anticheat). They're told why; a match in progress can't be rejoined.
+  // host: remove a player (see ban). They're told why.
   kick(id, why) {
     const peer = this.peers.get(id);
     if (!peer || peer.kicked) return;
@@ -257,6 +280,20 @@ export class Session {
     peer.conn.send({ t: 'closed', why });
     setTimeout(() => this.drop(id), 300);   // let the message go out first
   }
+
+  // host: remove a player and keep them out: their name and browser can't join this host again
+  ban(id, why) {
+    const p = this.lobby?.players.find((x) => x.id === id), peer = this.peers.get(id);
+    if (!p || p.host) return;
+    const n = p.name.toLowerCase(), d = peer?.dev || '';
+    if (!this.isBanned(n, d)) { this.bans.push({ n, d, t: Date.now() }); saveBans(this.bans); }
+    this.kick(id, why);
+  }
+  isBanned(name, dev) {
+    const n = String(name).toLowerCase();
+    return this.bans.some((b) => b.n === n || (dev && b.d === dev));
+  }
+  clearBans() { this.bans = []; saveBans(this.bans); }
 
   setTeam(id, team) {
     const L = this.lobby;
@@ -332,7 +369,7 @@ export class Session {
           else if (m?.t === 'deny') { clearTimeout(t); reject(new NetError(m.why || 'The host refused the connection.')); }
           else if (m?.t === 'lobby') this.lobby = m.lobby;
         };
-        conn.send({ t: 'hello', v: PROTOCOL, name: cleanName(name) });
+        conn.send({ t: 'hello', v: PROTOCOL, name: cleanName(name), dev: deviceId() });
       });
       this.role = 'client';
       conn.onmessage = (m) => { peer.heard = performance.now(); this.fromHost(m); };

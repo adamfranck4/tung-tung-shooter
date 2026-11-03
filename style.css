@@ -37,11 +37,11 @@ option { background: #1d1913; color: #f2ead6; }
 .seg button:disabled:not(.on) { opacity: 0.45; }
 .seg button:disabled:hover:not(.on) { background: rgba(255,255,255,0.06); }
 input[type=range] { width: 100%; accent-color: #ffc65c; }
-#play, #resume, #quit, #again, #lobby-start, #lobby-leave, #end-match { display: block; width: 100%; margin-top: 22px; padding: 13px; font: 700 22px 'Rajdhani', sans-serif;
+#play, #resume, #quit, #again, #lobby-start, #lobby-leave, #lobby-unban, #end-match { display: block; width: 100%; margin-top: 22px; padding: 13px; font: 700 22px 'Rajdhani', sans-serif;
   letter-spacing: 4px; background: #ffc65c; color: #1a1209; border: 0; border-radius: 7px; cursor: pointer; }
 #play:hover, #resume:hover, #again:hover, #lobby-start:hover { background: #ffd789; }
-#quit, #lobby-leave, #end-match { margin-top: 10px; background: transparent; color: #f2ead6; border: 1px solid rgba(255,255,255,0.2); font-size: 16px; }
-#quit:hover, #lobby-leave:hover, #end-match:hover { background: rgba(255,255,255,0.08); }
+#quit, #lobby-leave, #lobby-unban, #end-match { margin-top: 10px; background: transparent; color: #f2ead6; border: 1px solid rgba(255,255,255,0.2); font-size: 16px; }
+#quit:hover, #lobby-leave:hover, #lobby-unban:hover, #end-match:hover { background: rgba(255,255,255,0.08); }
 #lobby-start:disabled { opacity: 0.4; cursor: default; }
 #mobile-warn { margin-top: 12px; color: #ff9a7a; text-align: center; }
 .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px; margin-top: 20px; font-size: 14px; opacity: 0.75; }
@@ -239,6 +239,17 @@ input[type=text]::placeholder { color: rgba(242,234,214,0.35); }
 .lb-team small { opacity: 0.6; }
 .lobby-wait { margin-top: 18px; text-align: center; font-size: 18px; opacity: 0.85; }
 .pause-note { margin: -6px 0 6px; font-size: 15px; opacity: 0.75; }
+.ban-box { margin: 12px 0 4px; padding: 8px 10px; text-align: left; background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; }
+.ban-box h4 { font-size: 13px; letter-spacing: 2px; opacity: 0.7; margin-bottom: 4px; }
+.ban-box ul { list-style: none; }
+.ban-box li { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 17px; font-weight: 600; }
+.ban-box li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ban-box li.none { opacity: 0.55; font-weight: 500; font-style: italic; }
+.ban-box button.ban { flex: none; width: auto; margin: 0; padding: 4px 12px; font: 700 13px 'Rajdhani', sans-serif; letter-spacing: 1px;
+  color: #ffd9d2; background: rgba(220,60,40,0.22); border: 1px solid rgba(255,110,90,0.45); border-radius: 5px; cursor: pointer; }
+.ban-box button.ban:hover { background: rgba(220,60,40,0.4); }
+.ban-box button.ban.sure { color: #fff; background: #c8321e; border-color: #ff7b66; }
 #end-list table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 16px; text-align: left; }
 #end-list th { font-size: 13px; opacity: 0.6; letter-spacing: 1px; padding: 3px 4px; font-weight: 600; }
 #end-list td { padding: 3px 4px; border-top: 1px solid rgba(255,255,255,0.08); }

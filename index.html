@@ -235,6 +235,7 @@
       <button id="lobby-start">START MATCH</button>
       <p id="lobby-wait" class="lobby-wait hidden">Waiting for the host to start the match&hellip;</p>
       <p id="lobby-msg" class="net-msg" role="status"></p>
+      <button id="lobby-unban" class="ghost hidden">CLEAR BANS</button>
       <button id="lobby-leave" class="ghost">LEAVE ROOM</button>
     </div>
   </div>
@@ -244,6 +245,10 @@
       <h2 id="pause-title">PAUSED</h2>
       <p id="pause-note" class="pause-note hidden">The match keeps running while this menu is open.</p>
       <button id="resume">RESUME</button>
+      <div id="ban-box" class="ban-box hidden">
+        <h4 id="ban-title">BAN A PLAYER</h4>
+        <ul id="ban-list"></ul>
+      </div>
       <button id="end-match" class="ghost hidden">END MATCH FOR EVERYONE</button>
       <button id="quit" class="ghost">QUIT TO MENU</button>
     </div>

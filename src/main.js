@@ -294,8 +294,38 @@ function showPause(kind = 'pause') {
   $('resume').textContent = kind === 'ready' ? 'PLAY' : 'RESUME';
   $('end-match').classList.toggle('hidden', !(online && session.isHost));
   $('quit').textContent = online ? (session.isHost ? 'CLOSE ROOM' : 'LEAVE ROOM') : 'QUIT TO MENU';
+  renderBanList();
   setState('paused');
 }
+
+// Host, in a match: the people on the other team (everyone else in Zombies), each with a ban
+// button. The first click asks to confirm, the second bans them.
+function renderBanList() {
+  const g = world.game, box = $('ban-box');
+  const show = !!session?.isHost && !!g?.running && !!g.net;
+  box.classList.toggle('hidden', !show);
+  if (!show) return;
+  const z = !!g.zombies, me = g.player;
+  const people = (z ? g.remotes : g.avatars).filter((c) => c.pid && !c.kicked && (z || c.team !== me.team));
+  $('ban-title').textContent = z ? 'BAN A PLAYER' : 'BAN AN ENEMY PLAYER';
+  $('ban-list').innerHTML = people.length
+    ? people.map((c) => `<li><span>${esc(c.name)}</span><button class="ban" data-pid="${esc(c.pid)}">BAN</button></li>`).join('')
+    : `<li class="none">${z ? 'No other players' : 'No players on the other team'}</li>`;
+}
+$('ban-list').addEventListener('click', (e) => {
+  const b = e.target.closest('button.ban');
+  if (!b || !session?.isHost) return;
+  if (!b.classList.contains('sure')) {
+    for (const o of $('ban-list').querySelectorAll('button.sure')) { o.classList.remove('sure'); o.textContent = 'BAN'; }
+    b.classList.add('sure'); b.textContent = 'CONFIRM';
+    return;
+  }
+  const g = world.game, pid = b.dataset.pid;
+  const c = (g.zombies ? g.remotes : g.avatars)?.find((a) => a.pid === pid);
+  if (c) { c.kicked = true; c.kickedBy = 'host'; }
+  session.ban(pid, 'You were banned by the host.');
+  renderBanList();
+});
 
 function showEnd(title, score, list = '') {
   input.unlock();
@@ -471,6 +501,9 @@ function renderLobby(L) {
   $('lobby-wait').classList.toggle('hidden', host);
   $('lobby-wait').textContent = L.inGame ? 'A match is in progress. You can play in the next one.' : 'Waiting for the host to start the match...';
   $('lobby-leave').textContent = host ? 'CLOSE ROOM' : 'LEAVE ROOM';
+  const nb = host ? session.bans.length : 0;
+  $('lobby-unban').classList.toggle('hidden', !nb);
+  $('lobby-unban').textContent = `CLEAR BANS (${nb})`;
   if (state === 'lobby') world = z ? getZombies() : classic;   // the backdrop shows the map you'll play
 }
 
@@ -493,6 +526,12 @@ lobbySeg('lobby-diff', (v) => session.isHost && session.setSettings({ difficulty
 lobbySeg('lobby-rounds', (v) => session.isHost && session.setSettings({ rounds: Number(v) }));
 $('lobby-start').addEventListener('click', () => { if (session?.isHost && !session.lobby.inGame) { sound.init(); session.start(); } });
 $('lobby-leave').addEventListener('click', () => leaveRoom());
+$('lobby-unban').addEventListener('click', () => {
+  if (!session?.isHost) return;
+  session.clearBans();
+  renderLobby(session.lobby);
+  lobbyMsg('Ban list cleared. Banned players can join again.');
+});
 $('copy-link').addEventListener('click', () => {
   if (!session) return;
   const q = new URLSearchParams();

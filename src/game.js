@@ -186,11 +186,14 @@ export class Game {
     this.sound.roundStart();
     if (this.net) {
       // tm: everyone's side, so players' browsers pick up the halftime switch
-      this.net.emit({
+      // sp: where everyone starts, without the enemies each player can't see (see Anticheat.cullSpawns)
+      this.ac?.newRound();
+      const ev = {
         e: 'round', r: this.round, ph: this.phaseEnd, ls: this.liveStart, re: this.roundEnd, c: carrier ? carrier.nid : -1,
-        sp: this.combatants.map((c) => [c.nid, r2(c.body.pos.x), r2(c.body.pos.y), r2(c.body.pos.z), r3(c.yaw), c.spawnEpoch || 0]),
         tm: this.combatants.map((c) => [c.nid, c.team]), hf: halftime ? 1 : 0,
-      });
+      };
+      const sp = this.combatants.map((c) => [c.nid, r2(c.body.pos.x), r2(c.body.pos.y), r2(c.body.pos.z), r3(c.yaw), c.spawnEpoch || 0]);
+      for (const id of this.net.session.peers.keys()) this.net.emitTo(id, { ...ev, sp: this.ac ? this.ac.cullSpawns(sp, id) : sp });
       for (const a of this.avatars) this.syncInv(a, 'spawn');
     }
   }
@@ -393,9 +396,15 @@ export class Game {
       this.fx.flash(_v);
     }
     if (this.net) {
-      this.net.emit({ e: 'shot', n: c.nid, s: def.sound, d: this.shotEnds });
+      this.emitHeard(c, { e: 'shot', n: c.nid, s: def.sound, d: this.shotEnds });
       this.shotEnds = [];
     }
+  }
+
+  // a shot or knife swing, sent to every player (except one); those who can't see c only hear
+  // roughly where it came from (see Anticheat.heard)
+  emitHeard(c, ev, except = null) {
+    for (const id of this.net.session.peers.keys()) if (id !== except) this.net.emitTo(id, this.ac ? this.ac.heard(c, ev, id) : ev);
   }
 
   emitNoise(pos, radius, src) {
@@ -631,13 +640,14 @@ export class Game {
   }
 
   // Push overlapping fighters apart. Network-driven fighters stay put (their own browser
-  // keeps them clear), so only the other one moves.
+  // keeps them clear), so only the other one moves. Enemies the host hasn't said where they are
+  // (hidden) aren't there to bump into.
   separate() {
     const cs = this.combatants;
     for (let i = 0; i < cs.length; i++) {
-      const a = cs[i]; if (!a.alive) continue;
+      const a = cs[i]; if (!a.alive || a.hidden) continue;
       for (let j = i + 1; j < cs.length; j++) {
-        const b = cs[j]; if (!b.alive) continue;
+        const b = cs[j]; if (!b.alive || b.hidden) continue;
         const am = a.isAvatar ? 0 : 1, bm = b.isAvatar ? 0 : 1;
         if (!am && !bm) continue;
         const dx = b.body.pos.x - a.body.pos.x, dz = b.body.pos.z - a.body.pos.z;
@@ -716,12 +726,12 @@ export class Game {
         if (!c.alive || !this.ac.shot(c, ev)) return;
         showShot(this, c, ev);
         this.emitNoise(c.body.pos, 45, c);
-        this.net.emit({ e: 'shot', n: c.nid, s: ev.s, d: ev.d }, c.pid);
+        this.emitHeard(c, { e: 'shot', n: c.nid, s: ev.s, d: ev.d }, c.pid);
         break;
       case 'knife':
         if (!c.alive || !this.ac.melee(c)) return;
         this.sound.knife(c.body.pos);
-        this.net.emit({ e: 'knife', n: c.nid }, c.pid);
+        this.emitHeard(c, { e: 'knife', n: c.nid }, c.pid);
         break;
       case 'hit': this.remoteHit(c, ev); break;
       case 'buy': this.buy(c, ev.i | 0); break;
@@ -731,7 +741,8 @@ export class Game {
   // a player says their shot hit someone: the anticheat checks it could have
   remoteHit(att, ev) {
     const v = this.byNid.get(ev.v), claimed = WEAPONS[ev.w];
-    if (!v || !claimed || !att.alive || !v.alive || v.team === att.team) return;
+    if (!v) { this.ac.fakeHit(att, ev.v); return; }   // no such fighter: maybe one of their phantoms
+    if (!claimed || !att.alive || !v.alive || v.team === att.team) return;
     // it must be the gun the host knows they're holding (or their knife)
     const held = claimed.melee ? att.slots[3] : att.slots[att.slot];
     if (held?.key !== ev.w) { this.ac.flag(att, 'gun', 3); return; }
@@ -759,7 +770,12 @@ export class Game {
     this.combatants = this.combatants.filter((a) => a !== c);
     this.byNid.delete(c.nid);
     if (this.spectating === c) this.spectating = this.nextSpectate(null);
-    this.hud.center(`${c.name} ${c.kicked ? 'was kicked by the anticheat' : 'left the game'}`, 3);
-    this.net?.emit({ e: 'left', n: c.nid, k: c.kicked ? 1 : 0 });
+    this.hud.center(`${c.name} ${leftWhy(c.kicked ? c.kickedBy : 0)}`, 3);
+    this.net?.emit({ e: 'left', n: c.nid, k: c.kicked ? (c.kickedBy === 'host' ? 2 : 1) : 0 });
   }
+}
+
+// why someone left: k = 0 (left), 1 / 'anticheat' or 2 / 'host' (banned)
+export function leftWhy(k) {
+  return !k ? 'left the game' : k === 2 || k === 'host' ? 'was banned by the host' : 'was banned by the anticheat';
 }

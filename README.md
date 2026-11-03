@@ -61,24 +61,64 @@ code (and a **Copy invite link** button); everyone else types the code and click
   everyone goes back to the lobby.
 - Players connect to each other directly (WebRTC, via [PeerJS](https://peerjs.com)). PeerJS's free public server
   is only used to find each other, so there is still no server to deploy. Hosting a full 10-player room uses about
-  1 Mbps of upload.
+  1.7 Mbps of upload (the phantoms below are about 0.7 of that; fewer: lower `PHANTOMS` in `src/anticheat.js`).
 - Joining a match that has already started isn't supported: join in the lobby.
 - **Anticheat:** the host checks everything the other players' browsers report and ignores what isn't possible:
   moving faster than a run (or bunny hop), teleporting, walking through walls, staying in the air, guns or ammo the
   host never gave them, firing faster than the gun, and hits with no shot behind them, from too far away, through a
   wall, aimed the wrong way or for more damage than the gun does. Each failed check adds suspicion points that are
-  slowly forgiven; a player who keeps failing them is kicked ("You were kicked by the anticheat") and can't rejoin
-  that match. The host's console lists every failed check.
+  slowly forgiven; a player who keeps failing them is **banned** ("You were banned by the anticheat"). The host's
+  console lists every failed check. It also catches:
+  - **speed hacks:** on the ground nobody runs faster than their gun allows (+12%). Late or bunched-up updates are
+    allowed for, so it takes a few seconds to catch a 25% boost, about a second for a bigger one.
+  - **instant reload:** the host counts every magazine; a reload has to take the gun's reload time between the last
+    shot before it and the first one after it.
+  - **rapid fire:** over a spray of 15-30 shots, no more than 6% faster than the gun (lag spikes are spotted and
+    left out). **Instafire:** firing before the gun is drawn, again and again.
+  - **no recoil:** from the 4th shot of a spray the game sends bullets above the crosshair by a set amount (pulling the
+    mouse down moves the crosshair, not that gap). The host adds up how high a spray's bullets went: a fair player
+    measures about 95% of the expected kick, no recoil about 0%.
 - **Aim cheats:** the host also watches where each player looks (30 times a second, with their measured ping
-  allowed for) and flags an **aimbot** (aim that stays locked on a moving target's head or chest, or snaps onto one
-  in a single update and fires), a **triggerbot** (firing the instant an enemy walks into a still crosshair, again
+  allowed for) and flags an **aimbot** (aim that stays locked on a moving target's head or chest, or flicks onto
+  the middle of one and fires), a **triggerbot** (firing the instant an enemy walks into a still crosshair, again
   and again, faster than people react), a **spinbot** (spinning several turns a second, or view angles no mouse can
   reach), shots that don't leave where the player was looking (silent aim), and aim that follows someone behind a
-  wall. These come up once per gunfight, so their points are forgiven slowly (one a minute).
+  wall. These have their own, stricter pool: forgiven one point every 5 minutes, banned at 6 (a triggerbot,
+  spinbot or impossible view angle bans at once; two locked-on or wallhack tracks do too).
+- **Aim network (machine learning):** a small neural network (`src/aimml.js`) scores every second of aim at an enemy
+  near the crosshair for how human it moves: how close it stays, how fast it reacts when the enemy changes
+  direction, overshooting and correcting, shake, how evenly the error shrinks. A fight's seconds are averaged, and a
+  fight over the bar (0.97) adds 1.5 aim points, so 4 such fights ban. It was trained on simulated people (reaction
+  delays, Fitts' law flicks that miss and get corrected, tremor, every skill level) and simulated aimbots (hard
+  lock, smoothed, "humanised" with noise and delays, aim assist on top of a person, constant speed, leading the
+  target), sent with real network timing. On new simulated fights, no person got over the bar, while hard, smoothed
+  and leading aimbots did in about 90% of fights and humanised ones / aim assist in about 45%. The host's own aim
+  is scored too: if a real person (the host) ever scores high, the bar moves above them. Retrain it by opening
+  `tools/train-aim.html` (over http, from the game's folder) and pasting its output into `src/aimmodel.js`.
 - **Wallhacks:** in 5v5 each player is only sent where an enemy is when they could know it: in sight (or about to
-  be, around a corner), close by, running within earshot, just fired, or spotted on the radar. Dead players get
-  what their living teammates see. A wallhack has nothing to draw for everyone else.
-- It can't stop a cheating *host*, or an aimbot tuned to aim as sloppily as a person.
+  be, around a corner), close by, running within earshot, just fired nearby, or spotted on the radar, and at the
+  start of a round only the enemies they can see. Shots from further away come with only roughly where they were
+  fired from. Dead players get what their living teammates see.
+- **Fake players:** to flood a wallhack, each living 5v5 player is also sent enemies that aren't there. None is ever
+  where they can see it, and the game neither draws enemies it can't see nor lets you bump into them, so a fair
+  player never notices:
+  - the **decoy** ("floating tung"): one hidden enemy floating just behind a wall near their crosshair, nearly dead,
+    drifting side to side, moved somewhere new every few seconds (aimbots go for it);
+  - **walkers:** every other hidden enemy, shift-walking (silently) back and forth behind a wall somewhere around
+    them, with a gun, looking like any other enemy;
+  - **phantoms:** 8 more enemies running around the map that only exist in the network messages. The game skips
+    enemies it doesn't know; a cheat that reads the messages draws them.
+
+  The host checks them ten times a second against the player's sight. Following one as it moves, turning onto the
+  decoy after it moves, shooting at the decoy, or hitting any of them gets a player banned within a second or two.
+  Only the player's own aim counts: a fake sliding under a still crosshair because the player walked doesn't.
+  Hitting any enemy the host hasn't sent them is flagged too.
+- **Bans** keep a player's name and browser out of every room this host makes (saved in the host's browser). The
+  host can also ban a player from the Esc menu during a match (anyone on the other team in 5v5, anyone in Zombies);
+  **CLEAR BANS** in the lobby lets everyone back in. A cheater can still get around a ban with a new name in a
+  private window.
+- It can't stop a cheating *host*. A carefully humanised aimbot that ignores the fakes can still take several
+  fights to catch, and the aim network learned from simulated people, not recordings of real ones.
 - Testing on one computer: open two tabs with `?net=local` added to the URL (they connect without the internet;
   `&lag=150` fakes a 150 ms round trip).
 

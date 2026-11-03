@@ -75,10 +75,12 @@ export function applyInventory(p, ev) {
 // ---------------------------------------------------------------- someone else's shot
 const _o = new THREE.Vector3(), _e = new THREE.Vector3(), _dir = new THREE.Vector3(), _ey = new THREE.Vector3();
 // ev.d: one entry per bullet: [x, y, z, kind, nx, ny, nz]; kind 1 = wall, 2 = blood, 3 = splinters
+// ev.o: roughly where it came from, for a shooter out of your sight
 export function showShot(g, c, ev) {
-  g.sound.shot(ev.s, c.body.pos);
+  const far = Array.isArray(ev.o) && ev.o.length === 3;
+  if (far) _o.set(+ev.o[0] || 0, +ev.o[1] || 0, +ev.o[2] || 0); else c.eyePos(_o);
+  g.sound.shot(ev.s, far ? _o : c.body.pos);
   c.lastShot = g.time;
-  c.eyePos(_o);
   const ends = Array.isArray(ev.d) ? ev.d : [];
   const p = g.player;
   ends.forEach((d, i) => {
@@ -204,7 +206,10 @@ export class Avatar extends Bot {
     ac?.look(this, st.y, pitch, this.downed ? 0.55 : (this.netFlags & F.CROUCH) ? 1.15 : 1.65);
     if (st.iv === this.invVer && Array.isArray(st.s)) {
       if (!ac) unpackSlots(this, st.s);
-      if (this.slots[st.cur]) this.slot = st.cur;
+      if (this.slots[st.cur]) {
+        if (ac && st.cur !== this.slot) ac.switched(this);
+        this.slot = st.cur;
+      }
     }
   }
   // host: the ammo in that update, once its shots were counted (see Anticheat.ammo)

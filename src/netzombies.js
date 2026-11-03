@@ -3,6 +3,7 @@
 // shared world from the host's snapshots.
 import * as THREE from 'three';
 import { ZombiesGame, Zombie, unpackStash } from './zombies.js';
+import { leftWhy } from './game.js';
 import { START_AREA, AREAS } from './zmap.js';
 import { F, r1, r2, r3, packSlots, applyInventory, showShot } from './avatar.js';
 
@@ -252,7 +253,7 @@ export class ZombiesClient extends ZombiesGame {
         } else c.spawn(_v, ev.yaw);
         break;
       case 'over': this.onOver(ev); break;
-      case 'left': this.removeRemote(ev.n, !!ev.k); break;
+      case 'left': this.removeRemote(ev.n, ev.k | 0); break;
       case 'inv': applyInventory(this.player, ev); break;
       case 'stash': this.player.stash = unpackStash(ev.it); break;
       default: this.feedback(ev);
@@ -273,7 +274,7 @@ export class ZombiesClient extends ZombiesGame {
     this.sound.roundEnd(false);
   }
 
-  removeRemote(nid, kicked = false) {
+  removeRemote(nid, k = 0) {
     const q = this.byNid(nid);
     if (!q || q === this.player) return;
     q.dispose();
@@ -281,6 +282,6 @@ export class ZombiesClient extends ZombiesGame {
     this.players = this.players.filter((a) => a !== q);
     this.combatants = this.players.slice();
     if (this.spectating === q) this.spectating = this.nextSpectate(null);
-    this.hud.center(`${q.name} ${kicked ? 'was kicked by the anticheat' : 'left the game'}`, 3);
+    this.hud.center(`${q.name} ${leftWhy(k)}`, 3);
   }
 }
