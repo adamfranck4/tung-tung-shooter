@@ -228,6 +228,10 @@ everyone is told when someone unboxes an epic or legendary gun.
   - **Rainbow giant** (round 5+): 2.2x size, 900 + 120 × round HP, hits for 100. Slow, shakes the ground
     as it walks, and ignores Insta-Kill and Kaboom. Worth 500 points and always drops a power-up.
     One at a time (two from round 12); it only rises out of open ground.
+  - **THE PURGE** (every 6th round: 6, 12, 18...): 60% more zombies, up to 32 alive at once instead of 24, spawning
+    two and a half times as fast, and all of them quicker: nobody shuffles, they rise out of the ground in a
+    hurry, and only the yellow speedsters still outrun you. A siren, red screen edges and a PURGE tag mark it, the
+    round before warns you, and everyone still alive at the end gets +1000.
   - **THE BOSS** (every 7th round: 7, 14, 21...): a huge crowned, winged Tung Tung with a health bar across the
     top of the screen. It flies, hovers to throw fans of big coconuts, and swoops in to hit for 90. Each visit
     it comes back in new colors (Magma, Frost, Venom, Void, then round again) and tougher: more health

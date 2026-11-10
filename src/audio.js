@@ -278,6 +278,15 @@ export class Sound {
   powerGrab() { const o = this.out(null, 0.5); if (o) [392, 523, 659, 784, 1046].forEach((f, i) => this.tone(o.node, { freq: f, decay: 0.25, type: 'triangle', vol: 0.6, delay: i * 0.06 })); }
   nuke() { this.explosion(null); }
   zRoundStart() { this.tung(null, 0.8); const o = this.out(null, 0.5); if (o) this.tone(o.node, { freq: 55, end: 45, decay: 2.5, type: 'sawtooth', vol: 0.4, delay: 0.7 }); }
+  // a purge round starts: an air-raid siren winding up and down over the usual drum
+  zPurge() {
+    this.tung(null, 0.8);
+    const o = this.out(null, 0.32); if (!o) return;
+    for (let i = 0; i < 3; i++) {
+      this.tone(o.node, { freq: 320, end: 760, decay: 0.75, type: 'sawtooth', vol: 0.5, delay: 0.3 + i * 1.5 });
+      this.tone(o.node, { freq: 760, end: 320, decay: 0.75, type: 'sawtooth', vol: 0.5, delay: 1.05 + i * 1.5 });
+    }
+  }
   zRoundEnd() { const o = this.out(null, 0.4); if (o) [784, 659, 523, 392, 523].forEach((f, i) => this.tone(o.node, { freq: f, decay: 0.4, type: 'triangle', vol: 0.5, delay: i * 0.22 })); }
 
   roundEnd(win) {

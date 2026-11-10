@@ -2,7 +2,7 @@
 // power-ups; this side moves its own player, reports hits and button presses, and draws the
 // shared world from the host's snapshots.
 import * as THREE from 'three';
-import { ZombiesGame, Zombie, unpackStash } from './zombies.js';
+import { ZombiesGame, Zombie, unpackStash, isPurge } from './zombies.js';
 import { leftWhy } from './game.js';
 import { START_AREA, AREAS } from './zmap.js';
 import { F, r1, r2, r3, packSlots, applyInventory, showShot } from './avatar.js';
@@ -147,6 +147,7 @@ export class ZombiesClient extends ZombiesGame {
     else this.time += (s.T - this.time) * 0.1;
     if (this.phase === 'over') return;
     this.round = s.r; this.betweenRounds = !!s.br; this.nextRoundAt = s.nr;
+    this.hud.zPurge(isPurge(s.r) && !s.br);
     this.syncUnlocks(this.cleared());   // (in case a round-end message went missing)
     this.effects.instakill = s.ef[0]; this.effects.double = s.ef[1];
     // players
@@ -210,11 +211,11 @@ export class ZombiesClient extends ZombiesGame {
     switch (ev.e) {
       case 'round':
         this.round = ev.r; this.betweenRounds = false;
-        this.hud.zRound(ev.r, true); this.sound.zRoundStart();
-        if (AREAS[this.statue.room]) this.hud.banner(`ROUND ${ev.r}`, `Defend the Golden Tung Tung in the ${AREAS[this.statue.room].name}!`, 'T', 3.5);
+        this.roundStartFx(ev.r, this.statue.room);
         break;
       case 'rend':
         this.round = ev.r; this.betweenRounds = true;
+        this.hud.zPurge(false);
         this.armAutoReady();
         this.sound.zRoundEnd(); this.hud.zRound(ev.r, true);
         this.syncUnlocks(ev.r);

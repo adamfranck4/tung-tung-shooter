@@ -49,7 +49,7 @@ export class Hud {
   center(text, dur = 2) { const e = $('center-msg'); e.textContent = text; e.style.opacity = 1; this.centerT = dur; }
   banner(title, sub, team, dur = 4) {
     const e = $('banner');
-    e.className = team === 'CT' ? 'ct' : 't';
+    e.className = team === 'CT' ? 'ct' : team === 'purge' ? 'purge' : 't';
     $('banner-title').textContent = title; $('banner-sub').textContent = sub || '';
     e.style.opacity = 1; this.bannerT = dur;
   }
@@ -595,10 +595,14 @@ export class Hud {
     this.cache = {};
     this.centerT = 0; $('center-msg').style.opacity = 0;
     $('z-round').textContent = '';
+    this.zPurge(false);
     $('z-pop').innerHTML = '';
     $('z-points').textContent = String(g.player.points);
     $('z-team').innerHTML = '';
   }
+
+  // a purge round is on: red edges round the screen and a PURGE tag over the round number
+  zPurge(on) { $('hud').classList.toggle('purge', !!on); }
 
   zRound(r, pulse) {
     const e = $('z-round');

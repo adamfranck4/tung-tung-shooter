@@ -115,6 +115,13 @@ export const bossName = (r) => {
   const t = bossTier(r), lap = Math.floor((t - 1) / BOSS_LOOKS.length);
   return bossLook(r).name + (lap ? ' ' + ['', 'II', 'III', 'IV', 'V'][Math.min(4, lap)] : '');
 };
+// PURGE rounds: every 6th round (6, 12, 18...) the whole village comes at once. More zombies, more of
+// them alive at a time, coming out faster, and every one of them quicker: nobody shuffles, they rise
+// out of the ground in a hurry, and only the yellow speedsters still outrun you. Everyone still
+// standing at the end gets a bonus. (Round 42 is a purge and a boss round.)
+export const PURGE_EVERY = 6;
+export const isPurge = (r) => r > 0 && r % PURGE_EVERY === 0;
+export const PURGE = { count: 1.6, alive: 32, spawn: 0.4, speed: 1.25, topSpeed: 6.2, rise: 0.6, bonus: 1000 };
 export const KINDS = Object.keys(VARIANTS);   // a type's index here is its id online
 const modelOf = (kind) => (kind === 'big' ? 'normal' : kind);   // big zombies are a scaled-up regular one
 const MAX_SPECIAL = 0.6;   // at most this share of the spawns are special types
@@ -198,6 +205,12 @@ export class Zombie extends Combatant {
       const sprint = clamp((round - 6) * 0.12, 0, 0.8), run = clamp((round - 2) * 0.2, 0, 0.95);
       this.speed = roll < sprint ? 5.9 : roll < run ? 4.25 : 1.55 + Math.random() * 0.45;
     }
+    const purge = this.game.purge && kind !== 'boss';
+    if (purge) {
+      if (kind === 'normal') this.speed = Math.max(this.speed, 4.25);                           // no walkers
+      this.speed = Math.min(this.speed * PURGE.speed, Math.max(this.speed, PURGE.topSpeed));    // quicker, up to just under your pace
+    }
+    this.riseDur = (v.rise || 1.5) * (purge ? PURGE.rise : 1);
     this.win = sp.win || null;
     if (this.win) {
       b.pos.copy(this.win.spawn);
@@ -232,7 +245,7 @@ export class Zombie extends Combatant {
 
     if (this.state === 'rise') {
       this.riseT += dt;
-      const k = Math.min(1, this.riseT / (this.v.rise || 1.5));
+      const k = Math.min(1, this.riseT / (this.riseDur || this.v.rise || 1.5));
       b.pos.y = this.riseBase - 1.9 * this.scale * (1 - k);
       const p = g.nearestPlayer(b.pos);
       if (p) this.turnTo(Math.atan2(-(p.body.pos.x - b.pos.x), -(p.body.pos.z - b.pos.z)), dt, 3);
@@ -613,7 +626,7 @@ export class ZombiesGame {
     this.round = 0;
     this.effects = { instakill: 0, double: 0 };
     this.powerupsThisRound = 0; this.killsSinceDrop = 0; this.puId = 0;
-    this.seenKinds = new Set(); this.spawnedThisRound = 0; this.bossDue = 0;
+    this.seenKinds = new Set(); this.spawnedThisRound = 0; this.bossDue = 0; this.purge = false;
     this.interaction = null; this.flowT = 0; this.mapOpen = false;
     this.setupPlayers(roster || [{ nid: 0, name: 'You', kind: 'local' }], net ? net.myId : null, knife);
     for (const a of this.remotes) a.spawnEpoch = 0;   // matches the joining player's first state
@@ -839,21 +852,37 @@ export class ZombiesGame {
     const st = this.statue;
     if (!st.alive) this.prepareStatue();
     this.map.computeFlow([st.body.pos], this.map.statueDist);
-    this.hud.banner(`ROUND ${r}`, `Defend the Golden Tung Tung in the ${AREAS[st.room].name}!`, 'T', 3.5);
-    // more players, more zombies
-    this.toSpawn = Math.round(zombieCount(r) * (1 + 0.5 * (this.players.length - 1)));
+    this.purge = isPurge(r);
+    this.roundStartFx(r, st.room);
+    // more players, more zombies (and a purge brings a lot more)
+    this.toSpawn = Math.round(zombieCount(r) * (1 + 0.5 * (this.players.length - 1)) * (this.purge ? PURGE.count : 1));
     this.spawnT = 1.5;
     this.powerupsThisRound = 0; this.spawnedThisRound = 0;
     this.bossDue = r % BOSS_EVERY === 0 ? this.time + 5 : 0;   // boss round: it shows up a few seconds in
-    this.hud.zRound(r, true);
-    this.sound.zRoundStart();
     this.net?.emit({ e: 'round', r });
     if (r === 1) this.announce(null, 'Ammo at the Gun Shop (E) · guns come in gun cases, by the north door · I opens your inventory');
   }
 
   // Round won: the next one waits until everyone presses N (solo: until you do), or until
   // auto-start marks them ready.
+  // what a new round looks and sounds like (host and joining players)
+  roundStartFx(r, room) {
+    const where = AREAS[room] ? `Defend the Golden Tung Tung in the ${AREAS[room].name}!` : '';
+    this.hud.zRound(r, true);
+    this.hud.zPurge(isPurge(r));
+    if (isPurge(r)) {
+      this.hud.banner(`THE PURGE · ROUND ${r}`, `They are all coming, and fast. ${where}`.trim(), 'purge', 5);
+      this.sound.zPurge();
+    } else {
+      if (where) this.hud.banner(`ROUND ${r}`, where, 'T', 3.5);
+      this.sound.zRoundStart();
+    }
+  }
+
   endRound() {
+    if (this.purge) for (const p of this.players) if (p.alive) this.addPoints(p, PURGE.bonus);   // (downed players too)
+    this.purge = false;
+    this.hud.zPurge(false);
     this.betweenRounds = true;
     this.ready.clear();
     this.armAutoReady();
@@ -973,8 +1002,9 @@ export class ZombiesGame {
     const parts = [];
     if (areas.length) parts.push(`${areas.join(' and ')} ${areas.length > 1 ? 'are' : 'is'} open`);
     if (AREAS[room]) parts.push(`Next: the Golden Tung Tung moves to the ${AREAS[room].name}`);
+    if (isPurge(r + 1)) parts.unshift('WARNING: the next round is a PURGE. Stock up');
     parts.push(this.settings.autoNext ? `Auto-start in ${AUTO_BREAK}s · N to go now` : 'Press N when ready');
-    this.hud.banner(`ROUND ${r} SURVIVED`, parts.join(' · '), 'T', 6);
+    this.hud.banner(isPurge(r) ? `PURGE SURVIVED · +${PURGE.bonus}` : `ROUND ${r} SURVIVED`, parts.join(' · '), 'T', isPurge(r + 1) ? 8 : 6);
   }
 
   // co-op: players who bled out come back at the start of the next round, next to a teammate
@@ -1886,9 +1916,9 @@ export class ZombiesGame {
     if (this.betweenRounds) this.updateReady();
     else {
       this.spawnT -= dt;
-      if (this.toSpawn > 0 && this.spawnT <= 0 && this.aliveZombies() < MAX_ALIVE) {
+      if (this.toSpawn > 0 && this.spawnT <= 0 && this.aliveZombies() < (this.purge ? PURGE.alive : MAX_ALIVE)) {
         if (this.spawnNext()) this.toSpawn--;
-        this.spawnT = Math.max(0.35, 2.0 - this.round * 0.12) * (0.6 + Math.random() * 0.8);
+        this.spawnT = Math.max(0.35, 2.0 - this.round * 0.12) * (0.6 + Math.random() * 0.8) * (this.purge ? PURGE.spawn : 1);
       }
       if (this.bossDue && this.time >= this.bossDue && this.spawnBoss()) this.bossDue = 0;
     }
