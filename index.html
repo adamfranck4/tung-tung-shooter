@@ -127,18 +127,22 @@
         </div>
       </div>
 
-      <div class="row2">
-        <div>
-          <label for="knife-select">Knives</label>
+      <label for="knife-select">Knife <span id="knife-count"></span></label>
+      <div class="locker">
+        <canvas id="knife-preview" title="Click to inspect"></canvas>
+        <span class="locker-hint">Click to inspect</span>
+        <div class="locker-bar">
+          <button id="knife-prev" type="button" aria-label="Previous knife">&#8249;</button>
           <select id="knife-select"></select>
+          <button id="knife-next" type="button" aria-label="Next knife">&#8250;</button>
         </div>
-        <div>
-          <label for="crosshair-select">Crosshair</label>
-          <div class="xh-row">
-            <select id="crosshair-select"></select>
-            <canvas id="xh-preview" title="Crosshair preview"></canvas>
-          </div>
-        </div>
+        <p id="knife-desc" class="locker-desc"></p>
+      </div>
+
+      <label for="crosshair-select">Crosshair</label>
+      <div class="xh-row">
+        <select id="crosshair-select"></select>
+        <canvas id="xh-preview" title="Crosshair preview"></canvas>
       </div>
 
       <div class="cs-opt solo-opt">

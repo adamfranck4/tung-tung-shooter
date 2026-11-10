@@ -17,6 +17,7 @@ import { CS_DEG_PER_COUNT } from './player.js';
 import { ZMenu } from './zui.js';
 import { QUALITY, HIGH, EFFECTS } from './gfx.js';
 import { PostFX } from './postfx.js';
+import { KnifePreview, KNIFE_NOTES } from './knifepreview.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -206,7 +207,24 @@ function dropdown(id, items, key, onPick) {
   el.addEventListener('change', () => { choice[key] = el.value; save('defuse.' + key, el.value); onPick?.(el.value); });
   onPick?.(choice[key]);
 }
-dropdown('knife-select', KNIFE_SKINS, 'knife');
+// the knife locker: the picked knife in 3D (click it to inspect), arrows to flick through them all
+const knifePreview = new KnifePreview($('knife-preview'), sound);
+const KNIFE_CHOICES = [...KNIFE_SKINS, { id: 'random', name: 'Random each match' }];
+dropdown('knife-select', KNIFE_CHOICES, 'knife', (id) => {
+  knifePreview.show(id);
+  $('knife-desc').textContent = KNIFE_NOTES[id] || '';
+  $('knife-count').textContent = `${KNIFE_CHOICES.findIndex((k) => k.id === id) + 1} / ${KNIFE_CHOICES.length}`;
+});
+function stepKnife(by) {
+  const el = $('knife-select'), n = KNIFE_CHOICES.length;
+  el.selectedIndex = (el.selectedIndex + by + n) % n;
+  el.dispatchEvent(new Event('change'));
+}
+$('knife-prev').addEventListener('click', () => stepKnife(-1));
+$('knife-next').addEventListener('click', () => stepKnife(1));
+$('knife-preview').addEventListener('click', () => { sound.init(); knifePreview.inspect(); });
+// the knife for the match about to start ('Random each match' draws one now)
+const pickKnife = () => (choice.knife === 'random' ? KNIFE_SKINS[Math.floor(Math.random() * KNIFE_SKINS.length)].id : choice.knife);
 dropdown('crosshair-select', CROSSHAIRS, 'crosshair', (id) => {
   const preset = getCrosshair(id);
   drawCrosshair($('xh-preview'), preset, 1.5, 40, 36);
@@ -342,11 +360,11 @@ $('play').addEventListener('click', () => {
   if (choice.mode === 'zombies') {
     world = getZombies();
     world.game = world.solo;
-    world.game.start({ knife: choice.knife });
+    world.game.start({ knife: pickKnife() });
   } else {
     world = classic;
     world.game = world.solo;
-    world.game.start({ team: choice.team, difficulty: choice.difficulty, roundsToWin: choice.rounds, knife: choice.knife });
+    world.game.start({ team: choice.team, difficulty: choice.difficulty, roundsToWin: choice.rounds, knife: pickKnife() });
   }
   setState('playing');
   input.lock();
@@ -455,13 +473,13 @@ function startOnline(info) {
   const net = new NetLink(session), st = info.settings || {};
   if (session.isHost) {
     w.game = w.solo;
-    if (z) w.game.start({ knife: choice.knife, net, roster: info.roster });
-    else w.game.start({ difficulty: st.difficulty, roundsToWin: st.rounds, knife: choice.knife, net, roster: info.roster });
+    if (z) w.game.start({ knife: pickKnife(), net, roster: info.roster });
+    else w.game.start({ difficulty: st.difficulty, roundsToWin: st.rounds, knife: pickKnife(), net, roster: info.roster });
     setState('playing');
     input.lock();
   } else {
     w.game = w.client;
-    w.game.startNet({ knife: choice.knife, net, roster: info.roster, roundsToWin: st.rounds });
+    w.game.startNet({ knife: pickKnife(), net, roster: info.roster, roundsToWin: st.rounds });
     showPause('ready');
   }
 }
@@ -610,6 +628,7 @@ function frame() {
     camera.position.set(o.cx + Math.cos(menuT) * o.r, o.h, o.cz + Math.sin(menuT) * o.r);
     camera.fov = 60; camera.updateProjectionMatrix();
     camera.lookAt(o.cx, 0, o.cz);
+    if (state === 'menu') knifePreview.render(dt);
   }
   input.endFrame();
   world.fx.update(dt);

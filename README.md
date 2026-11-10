@@ -18,7 +18,10 @@ No build step, no server code, no assets to download — every texture, model an
 - Every fighter is a "Tung Tung Tung Sahur" wooden log, like the meme: rounded top, wide staring eyes, a big grin,
   thin round arms and legs, and a baseball bat (slung on the back, swung in melee). Everyone is natural wood with a
   soft tint: your teammates greenish, enemies red-orange, and each zombie type its own color.
-- Knife skins picked in the menu: Knife, Karambit, Flip, Butterfly (with flips), Sword, Katana, Kuronami no Yaiba.
+- Knife skins picked in the menu's knife locker (a live 3D preview: click it to inspect, arrows to flick through,
+  or pick "Random each match"): Knife, Karambit, Flip, Butterfly (with flips), Sword, Katana, Kuronami no Yaiba,
+  Bayonet, Cleaver, Tomahawk, Ember Dagger (fire trail), Frost Karambit (ice trail), Gilded Butterfly, Sahur Bat
+  and Plasma Blade.
   Skins are cosmetic. Every knife has its own CS2-style draw and inspect (**F**) animation, held in a jointed hand
   that lets go for spins and tosses. Attacks alternate forehand and backhand slashes with a glowing trail. The Katana
   does an iai draw: it comes out of a scabbard held in your left hand, straight into a cut across the screen.

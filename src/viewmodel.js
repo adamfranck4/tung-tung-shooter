@@ -147,15 +147,23 @@ function knifeRegular(k) {
   b(k, 0.014, 0.036, 0.03, 0x3a3c40, -0.118, 0.002, 0);                             // pommel
 }
 
-function knifeKarambit(k) {
+function knifeKarambit(k, parts, look = {}) {
   k.add(bladeMesh(shapeFrom((s) => {
     s.moveTo(0, 0.014);
     s.quadraticCurveTo(0.09, 0.03, 0.12, -0.06);   // outer curve down to the claw tip
     s.quadraticCurveTo(0.075, -0.01, 0, -0.012);   // inner (sharp) edge back
-  }), 0.006, 0xd2d6dc));
+  }), 0.006, look.blade ?? 0xd2d6dc, look.bladeMat || steel));
+  if (look.core) {                                 // a bright vein down the middle of the claw
+    k.add(bladeMesh(shapeFrom((s) => {
+      s.moveTo(0.008, 0.004);
+      s.quadraticCurveTo(0.082, 0.016, 0.112, -0.046);
+      s.quadraticCurveTo(0.078, -0.002, 0.008, -0.002);
+    }), 0.0068, look.core, glow));
+  }
   const handle = new THREE.Group(); handle.rotation.z = 0.25; k.add(handle);
-  b(handle, 0.1, 0.03, 0.024, 0x6b1f1f, -0.05, 0, 0);
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.022, 0.006, 8, 18), shiny(0x9aa0a8));
+  b(handle, 0.1, 0.03, 0.024, look.handle ?? 0x6b1f1f, -0.05, 0, 0);
+  if (look.wrap != null) for (let i = 0; i < 4; i++) b(handle, 0.008, 0.032, 0.026, look.wrap, -0.02 - i * 0.02, 0, 0);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.022, 0.006, 8, 18), (look.ringMat || shiny)(look.ring ?? 0x9aa0a8));
   ring.position.set(-0.12, 0, 0); handle.add(ring);
 }
 
@@ -175,12 +183,13 @@ function knifeFlip(k, parts) {
   b(k, 0.02, 0.032, 0.026, 0x8a9099, -0.005, 0.003, 0, 0, 0, 0, shiny(0x8a9099)); // bolster
 }
 
-function knifeButterfly(k, parts) {
+function knifeButterfly(k, parts, look = {}) {
   // the fist holds handle B; the blade swings around B's pin, and handle A swings around the blade's other pin
   const handle = (parent, x, y, z) => {
     const piv = new THREE.Group(); piv.position.set(x, y, z); parent.add(piv);
-    b(piv, 0.12, 0.014, 0.012, 0, -0.06, 0, 0, 0, 0, 0, shiny(0x6d7480));
-    b(piv, 0.1, 0.006, 0.013, 0x22262c, -0.06, 0, 0);
+    b(piv, 0.12, 0.014, 0.012, 0, -0.06, 0, 0, 0, 0, 0, shiny(look.handle ?? 0x6d7480));
+    b(piv, 0.1, 0.006, 0.013, look.inlay ?? 0x22262c, -0.06, 0, 0);
+    if (look.studs != null) for (let i = 0; i < 5; i++) b(piv, 0.006, 0.0045, 0.0138, 0, -0.022 - i * 0.019, 0, 0, 0, 0, 0, glow(look.studs));
     return piv;
   };
   handle(k, 0, -0.006, -0.007);
@@ -189,7 +198,7 @@ function knifeButterfly(k, parts) {
     s.moveTo(0, -0.006); s.lineTo(0.14, -0.006);
     s.lineTo(0.175, 0.01);
     s.lineTo(0.14, 0.024); s.lineTo(0, 0.022);
-  }), 0.005, 0xcfd3d9));
+  }), 0.005, look.blade ?? 0xcfd3d9));
   parts.bfA = handle(swing, 0, 0.015, 0.007);
   parts.bfSwing = swing; parts.trailParent = swing;
 }
@@ -205,6 +214,146 @@ function knifeSword(k) {
   b(blade, 0.13, 0.028, 0.026, 0x3b2414, -0.07, 0, 0);                                // grip
   const pommel = new THREE.Mesh(new THREE.SphereGeometry(0.02, 10, 8), shiny(0xc9a13b));
   pommel.position.set(-0.14, 0, 0); blade.add(pommel);
+}
+
+// ----- more knives -----
+// Bayonet: a long clip-point blade with a muzzle ring on the guard and a grooved olive handle.
+function knifeBayonet(k) {
+  k.add(bladeMesh(shapeFrom((s) => {
+    s.moveTo(0, -0.013); s.lineTo(0.15, -0.013);
+    s.quadraticCurveTo(0.19, -0.01, 0.206, 0.006);        // belly up to the point
+    s.lineTo(0.152, 0.011);                                // the clip
+    s.quadraticCurveTo(0.13, 0.017, 0.11, 0.017); s.lineTo(0, 0.017);
+  }), 0.0055, 0xc4c9d0));
+  b(k, 0.1, 0.0035, 0.009, 0, 0.062, 0.007, 0, 0, 0, 0, steel(0x7b828c));          // fuller
+  for (let i = 0; i < 5; i++) b(k, 0.004, 0.006, 0.0062, 0, 0.018 + i * 0.009, 0.0165, 0, 0, 0, 0.5, steel(0x6a7079)); // saw teeth
+  b(k, 0.011, 0.05, 0.025, 0, -0.003, 0.004, 0, 0, 0, 0, shiny(0x2c2f34));         // guard
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.0105, 0.0035, 6, 16), shiny(0x2c2f34));
+  ring.rotation.y = PI / 2; ring.position.set(-0.003, 0.038, 0); k.add(ring);     // muzzle ring
+  b(k, 0.105, 0.03, 0.025, 0x4a5236, -0.06, 0.002, 0);                             // handle
+  for (let i = 0; i < 5; i++) b(k, 0.005, 0.031, 0.026, 0x30361f, -0.026 - i * 0.017, 0.002, 0);
+  b(k, 0.016, 0.036, 0.029, 0, -0.119, 0.002, 0, 0, 0, 0, shiny(0x2c2f34));        // pommel
+}
+
+// Cleaver: a slab of a blade with a hanging hole and a riveted wooden handle.
+function knifeCleaver(k) {
+  const shape = shapeFrom((s) => {
+    s.moveTo(0, -0.012); s.lineTo(0.012, -0.05); s.lineTo(0.165, -0.054);
+    s.lineTo(0.172, 0.014); s.quadraticCurveTo(0.17, 0.026, 0.155, 0.026); s.lineTo(0, 0.022);
+  });
+  const hole = new THREE.Path(); hole.absarc(0.148, 0.004, 0.008, 0, TAU, true); shape.holes.push(hole);
+  k.add(bladeMesh(shape, 0.0065, 0xb4b9c1));
+  k.add(bladeMesh(shapeFrom((s) => {                                               // the ground edge, brighter
+    s.moveTo(0.014, -0.041); s.lineTo(0.166, -0.045); s.lineTo(0.165, -0.0545); s.lineTo(0.012, -0.0505);
+  }), 0.0069, 0xeef1f5));
+  b(k, 0.016, 0.034, 0.027, 0, -0.004, 0.006, 0, 0, 0, 0, shiny(0x8a9099));        // bolster
+  b(k, 0.11, 0.031, 0.025, 0x6a3f1e, -0.066, 0.006, 0);                            // handle
+  b(k, 0.11, 0.008, 0.0255, 0x4d2c13, -0.066, -0.006, 0);
+  for (const x of [-0.03, -0.066, -0.102]) cyl(k, 0.0045, 0.027, 0xc9a13b, x, 0.008, 0);   // brass rivets
+}
+
+// Tomahawk: a bearded axe head with a spike on the back, on a wrapped wooden shaft.
+function knifeTomahawk(k) {
+  b(k, 0.285, 0.019, 0.017, 0x7a5028, 0.0, 0, 0);                                  // shaft
+  b(k, 0.1, 0.0225, 0.0205, 0x1d1d1f, -0.085, 0, 0);                               // grip wrap
+  for (let i = 0; i < 6; i++) b(k, 0.004, 0.0235, 0.0215, 0x3a3c40, -0.125 + i * 0.016, 0, 0, 0, 0, 0.35);
+  b(k, 0.012, 0.026, 0.023, 0, -0.14, 0, 0, 0, 0, 0, shiny(0x3a3c40));             // butt cap
+  k.add(bladeMesh(shapeFrom((s) => {                                               // the head
+    s.moveTo(0.092, 0.013); s.lineTo(0.134, 0.013);
+    s.quadraticCurveTo(0.138, -0.03, 0.17, -0.068);                                // toe
+    s.quadraticCurveTo(0.118, -0.088, 0.062, -0.07);                               // the cutting edge
+    s.quadraticCurveTo(0.09, -0.032, 0.092, 0.013);                                // beard
+  }), 0.011, 0x4a4f57, gunmetal));
+  k.add(bladeMesh(shapeFrom((s) => {                                               // polished edge
+    s.moveTo(0.17, -0.068); s.quadraticCurveTo(0.118, -0.088, 0.062, -0.07);
+    s.quadraticCurveTo(0.118, -0.074, 0.162, -0.058);
+  }), 0.0114, 0xe6eaef));
+  k.add(bladeMesh(shapeFrom((s) => {                                               // spike on the back
+    s.moveTo(0.098, 0.011); s.lineTo(0.113, 0.062); s.lineTo(0.128, 0.011);
+  }), 0.008, 0x8d939c));
+}
+
+// Ember Dagger: volcanic glass with a crack of lava down the blade, glowing edges and a coal in the pommel.
+function knifeEmber(k) {
+  const D = 0.006, hot = 0xff7a1a;
+  k.add(bladeMesh(shapeFrom((s) => {
+    s.moveTo(0, -0.014); s.lineTo(0.05, -0.021); s.lineTo(0.115, -0.014); s.lineTo(0.202, 0);
+    s.lineTo(0.115, 0.014); s.lineTo(0.05, 0.021); s.lineTo(0, 0.014);
+  }), D, 0x1b1516, darkSteel));
+  for (const side of [1, -1]) {                                                    // glowing edges
+    k.add(bladeMesh(shapeFrom((s) => {
+      s.moveTo(0.05, side * 0.0212); s.lineTo(0.115, side * 0.0142); s.lineTo(0.2035, 0);
+      s.lineTo(0.115, side * 0.0102); s.lineTo(0.05, side * 0.0172);
+    }), D + 0.0004, hot, glow));
+  }
+  k.add(bladeMesh(shapeFrom((s) => {                                               // the lava crack
+    const top = [[0.012, 0.002], [0.04, 0.006], [0.062, 0.001], [0.09, 0.005], [0.118, 0.0], [0.15, 0.003], [0.178, 0]];
+    const bot = [[0.15, -0.001], [0.118, -0.0045], [0.09, 0.0005], [0.062, -0.004], [0.04, 0.001], [0.012, -0.002]];
+    s.moveTo(...top[0]); for (const q of top.slice(1)) s.lineTo(...q); for (const q of bot) s.lineTo(...q);
+  }), D + 0.001, 0xffb340, glow));
+  k.add(bladeMesh(shapeFrom((s) => {                                               // horned guard
+    s.moveTo(-0.012, 0); s.lineTo(-0.012, 0.02); s.quadraticCurveTo(0.002, 0.03, 0.03, 0.045);
+    s.quadraticCurveTo(0.012, 0.024, 0.002, 0.012); s.lineTo(0.002, -0.012);
+    s.quadraticCurveTo(0.012, -0.024, 0.03, -0.045); s.quadraticCurveTo(0.002, -0.03, -0.012, -0.02);
+  }), 0.012, 0x2a2122, gunmetal));
+  b(k, 0.09, 0.022, 0.02, 0x241616, -0.057, 0, 0);                                 // handle
+  for (let i = 0; i < 4; i++) b(k, 0.004, 0.0235, 0.0215, 0, -0.026 - i * 0.02, 0, 0, 0, 0, 0, glow(0xff5a10)); // ember bands
+  b(k, 0.012, 0.027, 0.024, 0, -0.106, 0, 0, 0, 0, 0, gunmetal(0x2a2122));         // pommel
+  const coal = new THREE.Mesh(new THREE.SphereGeometry(0.0105, 10, 8), glow(0xffa040));
+  coal.position.set(-0.118, 0, 0); k.add(coal);
+}
+
+// Sahur Bat: Tung Tung's own bat, with a golden band and a wrapped handle.
+function knifeBat(k) {
+  const wood = mat(0xb98a4e), dark = mat(0x8a6234);
+  const seg = (r0, r1, x0, x1, m) => {              // a round section from x0 to x1 (radius r0 -> r1)
+    const g = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, x1 - x0, 14), m);
+    g.rotation.z = -PI / 2; g.position.set((x0 + x1) / 2, 0, 0); k.add(g); return g;
+  };
+  seg(0.021, 0.021, -0.158, -0.144, dark);          // knob
+  seg(0.0125, 0.0135, -0.144, 0.06, wood);          // handle
+  seg(0.0135, 0.031, 0.06, 0.36, wood);             // taper
+  seg(0.031, 0.033, 0.36, 0.6, wood);               // barrel
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.033, 14, 8), wood);
+  cap.scale.x = 0.45; cap.position.x = 0.6; k.add(cap);
+  for (let i = 0; i < 9; i++) seg(0.0146, 0.0146, -0.138 + i * 0.016, -0.128 + i * 0.016, mat(i % 2 ? 0x24242a : 0x8f1d1d)); // grip tape
+  seg(0.0318, 0.0326, 0.4, 0.425, shiny(0xd4a93a));                                // golden band
+  for (const x of [0.47, 0.5, 0.53]) seg(0.0332, 0.0333, x, x + 0.004, dark);      // burn rings
+}
+
+// Plasma Blade: a flat blade of light held in a field between two emitter prongs.
+const HALO = {};
+function halo(c) {
+  return HALO[c] || (HALO[c] = new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.3,
+    blending: THREE.AdditiveBlending, depthWrite: false }));
+}
+function knifePlasma(k) {
+  const L = 0.6;
+  const blade = (w, tip) => shapeFrom((s) => {
+    s.moveTo(0.012, -w); s.lineTo(L - 0.06, -w); s.quadraticCurveTo(L + tip * 0.4, -w * 0.7, L + tip, 0);
+    s.quadraticCurveTo(L + tip * 0.4, w * 0.7, L - 0.06, w); s.lineTo(0.012, w);
+  });
+  k.add(bladeMesh(blade(0.0105, 0.03), 0.004, 0xfff0ff, glow));                    // white-hot core
+  k.add(bladeMesh(blade(0.0175, 0.04), 0.0036, 0xff4fd8, glow));                   // magenta body
+  const h = bladeMesh(blade(0.027, 0.052), 0.012, 0xb04cff, halo); h.renderOrder = 1; k.add(h);
+  for (const side of [1, -1]) {                                                    // emitter prongs
+    k.add(bladeMesh(shapeFrom((s) => {
+      s.moveTo(-0.004, side * 0.012); s.lineTo(-0.004, side * 0.034); s.lineTo(0.05, side * 0.03);
+      s.lineTo(0.085, side * 0.022); s.lineTo(0.04, side * 0.0215); s.lineTo(0.012, side * 0.012);
+    }), 0.014, 0x2b303a, gunmetal));
+  }
+  b(k, 0.02, 0.07, 0.024, 0, -0.012, 0, 0, 0, 0, 0, gunmetal(0x3a4050));           // emitter block
+  b(k, 0.006, 0.05, 0.0245, 0, -0.012, 0, 0, 0, 0, 0, glow(0xff7ae6));
+  b(k, 0.15, 0.028, 0.025, 0x1c1f26, -0.097, 0, 0);                                // hilt
+  for (let i = 0; i < 5; i++) b(k, 0.012, 0.0295, 0.0265, 0, -0.045 - i * 0.024, 0, 0, 0, 0, 0, gunmetal(0x4a5263));
+  b(k, 0.11, 0.004, 0.0262, 0, -0.095, 0.006, 0, 0, 0, 0, glow(0xb04cff));         // charge strip
+  b(k, 0.018, 0.034, 0.03, 0, -0.18, 0, 0, 0, 0, 0, gunmetal(0x3a4050));           // pommel
+}
+function ice(c) {
+  return STEEL['i' + c] || (STEEL['i' + c] = glossy({
+    color: c, shininess: 220, specular: 0xffffff, envMap: studioEnv(), reflectivity: 0.5, combine: THREE.MixOperation,
+    emissive: 0x1d5f8a, transparent: true, opacity: 0.86,
+  }, { metalness: 0.15, roughness: 0.06 }));
 }
 
 // ----- katana -----
@@ -641,6 +790,29 @@ export const KNIFE_SKINS = [
   { id: 'kuronami', name: 'Kuronami no Yaiba', build: knifeKunai, reverse: true, grip: [-0.052, 0], pivot: [-0.052, 0],
     trail: [[-0.1, 0], [KUNAI_TIP, 0]], chained: true,
     trailColor: 0x7cc8ff, trailInner: 0x1238e0, trailAlpha: [0.9, 1], trailSolid: true, trailLife: 0.18 },
+  // anim: whose hold and draw / inspect animations it borrows (default: its own id)
+  { id: 'bayonet', name: 'Bayonet', anim: 'knife', build: knifeBayonet, grip: [-0.058, 0.002], pivot: [-0.058, 0.002],
+    trail: [[0.02, 0.002], [0.204, 0.006]] },
+  { id: 'cleaver', name: 'Cleaver', anim: 'knife', build: knifeCleaver, grip: [-0.064, 0.006], pivot: [-0.064, 0.006],
+    trail: [[0.02, 0.016], [0.166, -0.05]] },
+  { id: 'tomahawk', name: 'Tomahawk', anim: 'knife', build: knifeTomahawk, grip: [-0.085, 0], pivot: [-0.085, 0],
+    trail: [[0.1, 0.0], [0.13, -0.08]] },
+  { id: 'ember', name: 'Ember Dagger', anim: 'knife', build: knifeEmber, grip: [-0.055, 0], pivot: [-0.055, 0],
+    trail: [[0.02, 0], [0.2, 0]], trailColor: 0xffb04a, trailInner: 0xff3600, trailAlpha: [0.25, 0.95], trailLife: 0.2 },
+  { id: 'frost', name: 'Frost Karambit', anim: 'karambit', reverse: true, gripAngle: 0.25, ring: true,
+    build: (k, parts) => knifeKarambit(k, parts, { blade: 0x9fdcff, bladeMat: ice, core: 0xe6f9ff, handle: 0xe4eef5,
+      wrap: 0x5fb4e6, ring: 0x9fdcff, ringMat: ice }),
+    grip: [-0.072, -0.018], pivot: [-0.1163, -0.0297], trail: [[0.02, 0.006], [0.118, -0.056]],
+    trailColor: 0xbff2ff, trailInner: 0x3aa0ff, trailAlpha: [0.2, 0.9], trailLife: 0.18 },
+  { id: 'gilded', name: 'Gilded Butterfly', anim: 'butterfly',
+    build: (k, parts) => knifeButterfly(k, parts, { handle: 0xd4a93a, inlay: 0x15130f, blade: 0xf3e3b2, studs: 0xff3b4e }),
+    grip: [-0.06, -0.004], pivot: [-0.03, -0.004], trail: [[0.02, 0.008], [0.172, 0.01]],
+    trailColor: 0xffdf9a, trailInner: 0xffa51f },
+  { id: 'bat', name: 'Sahur Bat', anim: 'sword', build: knifeBat, grip: [-0.075, 0], pivot: [-0.075, 0],
+    trail: [[0.06, 0], [0.61, 0]], trailFrom: 0.5, big: true, trailColor: 0xffe9c2 },
+  { id: 'plasma', name: 'Plasma Blade', anim: 'sword', build: knifePlasma, grip: [-0.085, 0], pivot: [-0.085, 0],
+    trail: [[0.03, 0], [0.63, 0]], trailFrom: 0.35, big: true,
+    trailColor: 0xff7ae6, trailInner: 0x7a1cff, trailAlpha: [0.15, 0.9], trailLife: 0.2 },
 ];
 export function knifeName(id) { return (KNIFE_SKINS.find((s) => s.id === id) || KNIFE_SKINS[0]).name; }
 
@@ -760,9 +932,10 @@ function buildKnife(skin, band) {
   const H = hand.group; g.add(H);
   const rk = gripKnife(H, skin, skin.reverse);
   const { holder, k, align, spin, reach, inner, parts, tA, tB } = rk;
-  const pose = POSE[skin.id] || (skin.big ? POSE.big : POSE.base);
+  const anim = skin.anim || skin.id;
+  const pose = POSE[anim] || (skin.big ? POSE.big : POSE.base);
   const elbow = new THREE.Vector3(...pose.elbow);   // stays put; the forearm swings from it as the hand moves
-  const kn = { skin, hand, H, k, spin, reach, parts, tA, tB, pose, elbow, clips: CLIPS[skin.id], arm: forearm(g) };
+  const kn = { skin, hand, H, k, spin, reach, parts, tA, tB, pose, elbow, clips: CLIPS[anim], arm: forearm(g) };
   if (skin.chained) {
     // the second kunai in the left hand (a mirrored right hand, forward grip), and the chain between them
     const lh = buildHand(band);
@@ -809,9 +982,13 @@ export function displayGuns() {
   return models;
 }
 
-function buildModels(team, gunsOnly = false) {
+function buildModels(team, gunsOnly = false, knivesOnly = false) {
   const band = team === 'T' ? 0xe0852b : team === 'CT' ? 0x2f6be0 : 0xa01818;
   const models = {};
+  if (knivesOnly) {                       // (the menu's knife preview)
+    for (const skin of KNIFE_SKINS) models['knife_' + skin.id] = buildKnife(skin, band);
+    return models;
+  }
   let g, mz;
 
   g = new THREE.Group(); // AK
@@ -1342,7 +1519,9 @@ const SIGHTS = {
 };
 
 export class ViewModel {
-  constructor() {
+  // knivesOnly: build just the knives (the menu's knife preview has no use for the guns)
+  constructor({ knivesOnly = false } = {}) {
+    this.knivesOnly = knivesOnly;
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.01, 10);
     this.scene.add(new THREE.HemisphereLight(0xfff4e0, 0x6a5a48, 2.2));
@@ -1375,7 +1554,7 @@ export class ViewModel {
     if (this.team === team) return;
     if (this.models) for (const m of Object.values(this.models)) this.root.remove(m);
     this.team = team;
-    this.models = buildModels(team);
+    this.models = buildModels(team, false, this.knivesOnly);
     for (const m of Object.values(this.models)) { m.visible = false; this.root.add(m); }
     this.key = null;
   }
