@@ -14,9 +14,76 @@ export function overlapsAny(b, cols) {
   return false;
 }
 
-function resolveHorizontal(b, cols, axis, wasGround) {
-  const p = b.pos, hw = b.halfW;
+// ---------- nearby boxes ----------
+// A map has hundreds of boxes and a body only ever touches the few around it, so each list of boxes
+// gets a grid (4 m cells, built the first time it's used) that hands moveBody just the boxes near
+// the body, in their original order (the order decides how overlaps are resolved, so the result is
+// the same as checking them all). Lists are told apart by identity; one that changes (a door
+// opening, the statue moving) must be reported with collidersChanged().
+const GRID = 4, PAD = 2, WIDE = 400, SMALL = 48;
+const INDEX = new WeakMap();
+export function collidersChanged(cols) { INDEX.delete(cols); }
+
+function buildIndex(cols) {
+  let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
   for (const c of cols) {
+    if (c.x0 > -1e4 && c.x0 < x0) x0 = c.x0;
+    if (c.z0 > -1e4 && c.z0 < z0) z0 = c.z0;
+    if (c.x1 < 1e4 && c.x1 > x1) x1 = c.x1;
+    if (c.z1 < 1e4 && c.z1 > z1) z1 = c.z1;
+  }
+  if (!(x1 > x0) || !(z1 > z0)) { x0 = z0 = 0; x1 = z1 = GRID; }
+  const w = Math.max(1, Math.min(512, Math.ceil((x1 - x0) / GRID)));
+  const h = Math.max(1, Math.min(512, Math.ceil((z1 - z0) / GRID)));
+  const ix = { n: cols.length, x0, z0, w, h, cells: new Array(w * h), wide: [],
+    stamp: new Uint32Array(cols.length), tick: 0, found: new Int32Array(64), out: [] };
+  cols.forEach((c, i) => {
+    const a = cellRange(ix, c.x0, c.x1, c.z0, c.z1);
+    if ((a[1] - a[0] + 1) * (a[3] - a[2] + 1) > WIDE) { ix.wide.push(i); return; }   // (a wall around the whole map)
+    for (let cz = a[2]; cz <= a[3]; cz++) for (let cx = a[0]; cx <= a[1]; cx++) (ix.cells[cz * w + cx] ||= []).push(i);
+  });
+  return ix;
+}
+const _range = [0, 0, 0, 0];
+function cellRange(ix, x0, x1, z0, z1) {
+  const cl = (v, hi) => (v < 0 ? 0 : v > hi ? hi : v);
+  _range[0] = cl(Math.floor((x0 - ix.x0) / GRID) || 0, ix.w - 1); _range[1] = cl(Math.floor((x1 - ix.x0) / GRID) || 0, ix.w - 1);
+  _range[2] = cl(Math.floor((z0 - ix.z0) / GRID) || 0, ix.h - 1); _range[3] = cl(Math.floor((z1 - ix.z0) / GRID) || 0, ix.h - 1);
+  return _range;
+}
+// the boxes within PAD of a body at (x, z), in list order (the returned array is reused: don't keep it)
+function nearby(cols, x, z, hw) {
+  if (cols.length < SMALL) return cols;
+  let ix = INDEX.get(cols);
+  if (!ix || ix.n !== cols.length) INDEX.set(cols, ix = buildIndex(cols));
+  const r = hw + PAD, a = cellRange(ix, x - r, x + r, z - r, z + r);
+  const tick = ++ix.tick, stamp = ix.stamp;
+  let found = ix.found, n = 0;
+  const add = (i) => {
+    if (stamp[i] === tick) return;
+    stamp[i] = tick;
+    if (n === found.length) { const f = new Int32Array(n * 2); f.set(found); found = ix.found = f; }
+    let k = n++;                                   // (kept sorted as it fills: the lists are short)
+    while (k > 0 && found[k - 1] > i) { found[k] = found[k - 1]; k--; }
+    found[k] = i;
+  };
+  for (const i of ix.wide) add(i);
+  for (let cz = a[2]; cz <= a[3]; cz++) for (let cx = a[0]; cx <= a[1]; cx++) {
+    const cell = ix.cells[cz * ix.w + cx];
+    if (cell) for (const i of cell) add(i);
+  }
+  const out = ix.out;
+  out.length = n;
+  for (let k = 0; k < n; k++) out[k] = cols[found[k]];
+  return out;
+}
+
+// Push the body out of the boxes it overlaps along one axis, from box `from` of the list on. Stops and
+// returns the index of the box that left it more than `far` from `start` (-1: went through them all).
+function resolveFrom(b, cols, from, axis, wasGround, start, far) {
+  const p = b.pos, hw = b.halfW;
+  for (let k = from; k < cols.length; k++) {
+    const c = cols[k];
     if (!overlap(p, hw, b.height, c)) continue;
     // small ledges: step up instead of stopping
     if (wasGround && c.y1 > p.y && c.y1 - p.y <= STEP) {
@@ -32,20 +99,33 @@ function resolveHorizontal(b, cols, axis, wasGround) {
       p.z = p.z < (c.z0 + c.z1) / 2 ? c.z0 - hw - EPS : c.z1 + hw + EPS;
       b.vel.z = 0;
     }
+    if (Math.abs((axis === 0 ? p.x : p.z) - start) > far) return k;
   }
+  return -1;
+}
+// cols: the boxes near the body (or all of them). Returns the list to go on with: if the body gets
+// thrown clear of the nearby ones (it was inside something big), the rest of the move checks them all.
+function resolveHorizontal(b, cols, all, axis, wasGround, start) {
+  if (cols === all) { resolveFrom(b, all, 0, axis, wasGround, start, Infinity); return all; }
+  const k = resolveFrom(b, cols, 0, axis, wasGround, start, PAD - 0.5);
+  if (k < 0) return cols;
+  resolveFrom(b, all, INDEX.get(all).found[k] + 1, axis, wasGround, start, Infinity);
+  return all;
 }
 
 // b: { pos, vel, halfW, height, onGround }   pos = feet position
 // groundAt(x, z): optional terrain height (hills); flat ground at y = 0 otherwise.
 // noGravity: used while climbing a ladder.
-export function moveBody(b, dt, cols, groundAt = null, noGravity = false) {
+export function moveBody(b, dt, all, groundAt = null, noGravity = false) {
   const p = b.pos;
   const wasGround = b.onGround;
+  const sx = p.x, sz = p.z;
+  let cols = nearby(all, sx, sz, b.halfW);
 
   p.x += b.vel.x * dt;
-  resolveHorizontal(b, cols, 0, wasGround);
+  cols = resolveHorizontal(b, cols, all, 0, wasGround, sx);
   p.z += b.vel.z * dt;
-  resolveHorizontal(b, cols, 2, wasGround);
+  cols = resolveHorizontal(b, cols, all, 2, wasGround, sz);
 
   if (!noGravity) b.vel.y -= GRAVITY * dt;
   const prevY = p.y;

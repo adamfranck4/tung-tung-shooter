@@ -6,6 +6,7 @@
 // (see UPSTAIRS). Along the south edge: the Spooky Woods and the Container Yard. The props and
 // decoration are built in zdecor.js.
 import * as THREE from 'three';
+import { collidersChanged } from './physics.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { BoxBuilder } from './map.js';
 import { surfaceMaterial } from './textures.js';
@@ -864,6 +865,7 @@ export class ZMap {
     d.open = true;
     for (const list of [this.colliders, this.playerColliders]) {
       const i = list.indexOf(d.collider); if (i >= 0) list.splice(i, 1);
+      collidersChanged(list);
     }
     this.setDoorPath(d, true);
   }
@@ -878,6 +880,7 @@ export class ZMap {
       }
     }
     for (const w of this.windows) this.setBoards(w, w.max);
+    collidersChanged(this.colliders); collidersChanged(this.playerColliders);
   }
 
   // every frame: doors flying off, and the woods' mist and wisps drifting

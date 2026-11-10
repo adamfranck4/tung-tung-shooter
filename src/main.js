@@ -617,9 +617,12 @@ function advance(dt) {
 }
 
 let lastFrameAt = 0;   // when the browser last drew a frame
-function frame() {
+function frame(shownAt) {
   requestAnimationFrame(frame);
-  const now = lastFrameAt = performance.now();
+  lastFrameAt = performance.now();
+  // time by when the screen refreshes, not by when this code got to run: frames then advance the game
+  // by even amounts even when one starts a little late, so movement doesn't judder
+  const now = shownAt ?? lastFrameAt;
   const dt = Math.max(0, Math.min(0.1, (now - last) / 1000));
   last = now;
   if (!advance(dt) && (state === 'menu' || state === 'lobby')) {

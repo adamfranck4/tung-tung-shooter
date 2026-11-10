@@ -250,7 +250,7 @@ export class Combatant {
   applyMovement(dt, wx, wz, speedMul, jump, climbVel = null) {
     const b = this.body;
     const map = this.game.map;
-    const groundAt = map.groundAt ? map.groundAt.bind(map) : null;
+    const groundAt = map.groundAt ? (map.groundAtFn ||= map.groundAt.bind(map)) : null;   // (made once, not every tick)
     if (climbVel !== null) {
       const sp = Math.hypot(b.vel.x, b.vel.z);
       if (sp > 0) { const ns = Math.max(sp - Math.max(sp, STOP_SPEED) * FRICTION * dt, 0); b.vel.x *= ns / sp; b.vel.z *= ns / sp; }

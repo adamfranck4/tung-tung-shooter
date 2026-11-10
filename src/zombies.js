@@ -7,7 +7,7 @@ import { Combatant, RUN_SPEED, dirFrom, chaseCamera } from './combatant.js';
 import { Player } from './player.js';
 import { buildTungModel, makeCoconut, tickRainbow } from './bots.js';
 import { WEAPONS, papDef, MAX_PAP, ammoCost, RARITIES, rarityOf, rollCase, CASE_PRICE, STASH_SIZE, sellValue } from './weapons.js';
-import { raycast, raySphere, rayBox, moveBody, wrapAngle } from './physics.js';
+import { raycast, raySphere, rayBox, moveBody, wrapAngle, collidersChanged } from './physics.js';
 import { PLAYER_START, AREAS, START_AREA } from './zmap.js';
 import { knifeName } from './viewmodel.js';
 import { Avatar, Interp, F, r1, r2, r3, packSlots, showShot } from './avatar.js';
@@ -355,7 +355,7 @@ export class Zombie extends Combatant {
     if (this.lowT > 0) { this.lowT -= dt; alt = surf + 0.15; }
     alt = Math.min(alt, ceil - b.height - 0.15);
     b.vel.y += (clamp((alt - b.pos.y) * 3, -6, 5) - b.vel.y) * Math.min(1, dt * 5);
-    moveBody(b, dt, map.colliders, (x, z) => map.groundAt(x, z), true);
+    moveBody(b, dt, map.colliders, map.groundAtFn ||= map.groundAt.bind(map), true);
     if (wx || wz) {
       if (this.horizSpeed() < speed * 0.2) this.stuckT += dt; else this.stuckT = Math.max(0, this.stuckT - dt);
       if (this.stuckT > 0.5) { this.lowT = 1.5; this.stuckT = 0; }
@@ -915,10 +915,12 @@ export class ZombiesGame {
     this.removeStatueCollider();
     st.place(room, pos, map.ceilAt(pos.x, pos.z));
     map.colliders.push(st.collider); map.playerColliders.push(st.collider);
+    collidersChanged(map.colliders); collidersChanged(map.playerColliders);
   }
   removeStatueCollider() {
     for (const list of [this.map.colliders, this.map.playerColliders]) {
       const i = list.indexOf(this.statue.collider); if (i >= 0) list.splice(i, 1);
+      collidersChanged(list);
     }
   }
 
@@ -1782,7 +1784,9 @@ export class ZombiesGame {
   }
 
   separate() {
-    const zs = this.zombies.filter((z) => z.active && z.alive && z.state === 'chase');
+    const zs = this.chasers || (this.chasers = []);   // (reused every tick)
+    zs.length = 0;
+    for (const z of this.zombies) if (z.active && z.alive && z.state === 'chase') zs.push(z);
     for (let i = 0; i < zs.length; i++) {
       const a = zs[i].body.pos;
       for (let j = i + 1; j < zs.length; j++) {
