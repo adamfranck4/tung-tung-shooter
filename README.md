@@ -228,6 +228,10 @@ everyone is told when someone unboxes an epic or legendary gun.
   - **Rainbow giant** (round 5+): 2.2x size, 900 + 120 × round HP, hits for 100. Slow, shakes the ground
     as it walks, and ignores Insta-Kill and Kaboom. Worth 500 points and always drops a power-up.
     One at a time (two from round 12); it only rises out of open ground.
+  - **Difficulty** (Easy / Normal / Hard, picked in the menu; online the host picks it in the lobby). Compared with
+    Normal, Easy has 20% fewer zombies with 25% less health that are a little slower and hit 40% softer, a statue
+    with 40% more health, and you start with 750 points. Hard has 25% more zombies with 35% more health that are
+    faster and hit 40% harder, and a statue with 25% less health.
   - **THE PURGE** (every 6th round: 6, 12, 18...): 60% more zombies, up to 32 alive at once instead of 24, spawning
     two and a half times as fast, and all of them quicker: nobody shuffles, they rise out of the ground in a
     hurry, and only the yellow speedsters still outrun you. A siren, red screen edges and a PURGE tag mark it, the

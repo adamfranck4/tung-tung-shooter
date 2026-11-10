@@ -147,14 +147,17 @@
         <canvas id="xh-preview" title="Crosshair preview"></canvas>
       </div>
 
-      <div class="cs-opt solo-opt">
-        <label>Bot difficulty</label>
+      <div class="solo-opt">
+        <label id="diff-label">Bot difficulty</label>
         <div class="seg" id="diff-seg">
           <button data-v="easy">Easy</button>
           <button data-v="normal" class="on">Normal</button>
           <button data-v="hard">Hard</button>
         </div>
+        <p id="diff-desc" class="mode-desc hidden"></p>
+      </div>
 
+      <div class="cs-opt solo-opt">
         <label>Rounds to win</label>
         <div class="seg" id="rounds-seg">
           <button data-v="5">5</button>
@@ -217,17 +220,20 @@
         </div>
       </div>
 
+      <div id="lobby-diff-opt">
+        <label id="lobby-diff-label">Bot difficulty</label>
+        <div class="seg" id="lobby-diff">
+          <button data-v="easy">Easy</button>
+          <button data-v="normal">Normal</button>
+          <button data-v="hard">Hard</button>
+        </div>
+      </div>
+
       <div id="lobby-host-opts" class="lb-classic">
         <label>Empty slots</label>
         <div class="seg" id="lobby-bots">
           <button data-v="1">Fill with bots</button>
           <button data-v="0">No bots</button>
-        </div>
-        <label>Bot difficulty</label>
-        <div class="seg" id="lobby-diff">
-          <button data-v="easy">Easy</button>
-          <button data-v="normal">Normal</button>
-          <button data-v="hard">Hard</button>
         </div>
         <label>Rounds to win</label>
         <div class="seg" id="lobby-rounds">

@@ -8,7 +8,7 @@ import { Sound } from './audio.js';
 import { Effects } from './effects.js';
 import { ViewModel, KNIFE_SKINS } from './viewmodel.js';
 import { Game } from './game.js';
-import { ZombiesGame } from './zombies.js';
+import { ZombiesGame, Z_DIFF } from './zombies.js';
 import { ClassicClient } from './netclassic.js';
 import { ZombiesClient } from './netzombies.js';
 import { Session, NetLink, MAX_PLAYERS, TEAM_SIZE, cleanName, normalizeCode } from './net.js';
@@ -160,10 +160,10 @@ function buildZombiesWorld() {
   const onGameOver = (s) => {
     const rounds = `${s.round} round${s.round === 1 ? '' : 's'}`;
     const why = s.why === 'statue' ? `The Golden Tung Tung was smashed in the ${s.room} · ` : '';
-    if (!s.coop) { showEnd('GAME OVER', `${why}You reached round ${s.round} · ${s.kills} kills · ${s.headshots} headshots`); return; }
+    if (!s.coop) { showEnd('GAME OVER', `${why}You reached round ${s.round} on ${s.difficulty} · ${s.kills} kills · ${s.headshots} headshots`); return; }
     const rows = s.players.slice().sort((a, b) => b.points - a.points).map((q) => `<tr class="${q.me ? 'me' : ''}"><td>${esc(q.name)}</td>`
       + `<td class="num">${q.kills}</td><td class="num">${q.headshots}</td><td class="num">${q.downs}</td><td class="num">${q.points}</td></tr>`).join('');
-    showEnd('GAME OVER', `${why}Your team survived ${rounds}`,
+    showEnd('GAME OVER', `${why}Your team survived ${rounds} on ${s.difficulty}`,
       `<table><tr><th>Player</th><th class="num">Kills</th><th class="num">HS</th><th class="num">Downs</th><th class="num">Points</th></tr>${rows}</table>`);
   };
   solo.onGameOver = client.onGameOver = onGameOver;
@@ -242,6 +242,13 @@ function segment(id, key, parse = (v) => v, onPick = null) {
     onPick?.(choice[key]);
   });
 }
+// the difficulty buttons set the bots in 5v5 and the zombies in Zombies
+function showDifficulty() {
+  const z = choice.mode === 'zombies';
+  $('diff-label').textContent = z ? 'Zombies difficulty' : 'Bot difficulty';
+  $('diff-desc').textContent = z ? Z_DIFF[choice.difficulty]?.note || '' : '';
+  $('diff-desc').classList.toggle('hidden', !z);
+}
 function showMode(mode) {
   const z = mode === 'zombies', online = choice.net === 'online';
   document.querySelectorAll('.cs-opt, .solo-opt').forEach((e) => {
@@ -252,13 +259,15 @@ function showMode(mode) {
     ? `Co-op for up to ${MAX_PLAYERS.zombies} players: share the zombies, doors and power-ups, and hold <b>E</b> next to a downed teammate to revive them.`
     : `Up to ${MAX_PLAYERS.classic} players. Pick teams in the lobby; bots can fill the empty slots.`;
   $('z-desc').classList.toggle('hidden', !z);
+  showDifficulty();
   world = z ? getZombies() : classic; // menu backdrop shows the selected map
   save('defuse.mode', mode);
 }
 segment('mode-seg', 'mode', String, showMode);
 segment('net-seg', 'net', String, (v) => { save('defuse.net', v); netMsg(''); showMode(choice.mode); });
 segment('team-seg', 'team');
-segment('diff-seg', 'difficulty');
+choice.difficulty = ['easy', 'normal', 'hard'].includes(load('defuse.difficulty')) ? load('defuse.difficulty') : 'normal';
+segment('diff-seg', 'difficulty', String, (v) => { save('defuse.difficulty', v); showDifficulty(); });
 segment('rounds-seg', 'rounds', Number);
 // graphics quality is applied when the page loads, so changing it reloads the page
 segment('gfx-seg', 'gfx', String, (q) => { if (q !== quality) { save('defuse.quality', q); location.reload(); } });
@@ -360,7 +369,7 @@ $('play').addEventListener('click', () => {
   if (choice.mode === 'zombies') {
     world = getZombies();
     world.game = world.solo;
-    world.game.start({ knife: pickKnife() });
+    world.game.start({ knife: pickKnife(), difficulty: choice.difficulty });
   } else {
     world = classic;
     world.game = world.solo;
@@ -473,13 +482,13 @@ function startOnline(info) {
   const net = new NetLink(session), st = info.settings || {};
   if (session.isHost) {
     w.game = w.solo;
-    if (z) w.game.start({ knife: pickKnife(), net, roster: info.roster });
+    if (z) w.game.start({ knife: pickKnife(), net, roster: info.roster, difficulty: st.difficulty });
     else w.game.start({ difficulty: st.difficulty, roundsToWin: st.rounds, knife: pickKnife(), net, roster: info.roster });
     setState('playing');
     input.lock();
   } else {
     w.game = w.client;
-    w.game.startNet({ knife: pickKnife(), net, roster: info.roster, roundsToWin: st.rounds });
+    w.game.startNet({ knife: pickKnife(), net, roster: info.roster, roundsToWin: st.rounds, difficulty: st.difficulty });
     showPause('ready');
   }
 }
@@ -495,11 +504,13 @@ function renderLobby(L) {
   markSeg('lobby-mode', L.mode, host && !L.inGame);
   document.querySelectorAll('.lb-classic').forEach((e) => e.classList.toggle('hidden', z));
   $('lobby-host-opts').classList.toggle('hidden', z || !host);
+  $('lobby-diff-opt').classList.toggle('hidden', !host);
+  $('lobby-diff-label').textContent = z ? 'Zombies difficulty' : 'Bot difficulty';
   markSeg('lobby-bots', L.bots ? '1' : '0'); markSeg('lobby-diff', L.difficulty); markSeg('lobby-rounds', L.rounds);
   const me = L.players.find((p) => p.id === session.myId);
   markSeg('lobby-team', me?.team, !L.inGame);
   const diff = { easy: 'Easy', normal: 'Normal', hard: 'Hard' }[L.difficulty] || L.difficulty;
-  $('lobby-summary').textContent = z ? 'Survive Sahur Village together. Zombies, doors and power-ups are shared; points and perks are your own.'
+  $('lobby-summary').textContent = z ? `Survive Sahur Village together. Zombies, doors and power-ups are shared; points and perks are your own. Difficulty: ${diff}. ${Z_DIFF[L.difficulty]?.note || ''}`
     : host ? '' : `${L.bots ? `Bots (${diff}) fill the empty slots` : 'No bots'} · first to ${L.rounds} rounds`;
   // who's here
   const li = (p) => `<li class="${p.id === session.myId ? 'me' : ''}">${esc(p.name)}${p.host ? ' <em>HOST</em>' : ''}${p.id === session.myId ? ' <small>(you)</small>' : ''}</li>`;

@@ -122,6 +122,18 @@ export const bossName = (r) => {
 export const PURGE_EVERY = 6;
 export const isPurge = (r) => r > 0 && r % PURGE_EVERY === 0;
 export const PURGE = { count: 1.6, alive: 32, spawn: 0.4, speed: 1.25, topSpeed: 6.2, rise: 0.6, bonus: 1000 };
+// Difficulty (picked in the menu; online, by the host in the lobby). Everything is a multiple of Normal:
+// hp / dmg / speed: the zombies' health, how hard they and their coconuts hit (you and the statue),
+// and how fast they move (on Hard, up to just under your own pace); count: how many come each round;
+// statue: the Golden Tung Tung's health; points: what you start with.
+export const Z_DIFF = {
+  easy:   { name: 'Easy',   hp: 0.75, dmg: 0.6, speed: 0.92, count: 0.8,  statue: 1.4,  points: 750,
+            note: 'Fewer, weaker, slower zombies that hit softer. The statue is tougher and you start with 750.' },
+  normal: { name: 'Normal', hp: 1,    dmg: 1,   speed: 1,    count: 1,    statue: 1,    points: 500,
+            note: 'The standard game.' },
+  hard:   { name: 'Hard',   hp: 1.35, dmg: 1.4, speed: 1.08, count: 1.25, statue: 0.75, points: 500,
+            note: 'More zombies, tougher and faster, and they hit harder. The statue is weaker.' },
+};
 export const KINDS = Object.keys(VARIANTS);   // a type's index here is its id online
 const modelOf = (kind) => (kind === 'big' ? 'normal' : kind);   // big zombies are a scaled-up regular one
 const MAX_SPECIAL = 0.6;   // at most this share of the spawns are special types
@@ -193,7 +205,8 @@ export class Zombie extends Combatant {
   spawn(sp, round, kind = 'normal') {
     this.reset(kind);
     const v = this.v, b = this.body, s = this.scale;
-    this.health = this.maxHealth = v.hp(round) * (kind === 'boss' ? 1 + 0.65 * (this.game.players.length - 1) : 1);
+    const diff = this.game.diff;
+    this.health = this.maxHealth = Math.round(v.hp(round) * diff.hp * (kind === 'boss' ? 1 + 0.65 * (this.game.players.length - 1) : 1));
     this.puppet = false;
     // some zombies go straight for the Golden Tung Tung instead of you (never the boss)
     this.hunter = kind !== 'boss' && Math.random() < hunterChance(round, this.game.players.length);
@@ -205,6 +218,7 @@ export class Zombie extends Combatant {
       const sprint = clamp((round - 6) * 0.12, 0, 0.8), run = clamp((round - 2) * 0.2, 0, 0.95);
       this.speed = roll < sprint ? 5.9 : roll < run ? 4.25 : 1.55 + Math.random() * 0.45;
     }
+    this.speed = diff.speed <= 1 ? this.speed * diff.speed : Math.min(this.speed * diff.speed, Math.max(this.speed, PURGE.topSpeed));
     const purge = this.game.purge && kind !== 'boss';
     if (purge) {
       if (kind === 'normal') this.speed = Math.max(this.speed, 4.25);                           // no walkers
@@ -304,7 +318,8 @@ export class Zombie extends Combatant {
       const prev = this.attackT;
       this.attackT -= dt;
       if (prev > 0.32 && this.attackT <= 0.32 && canAttack && rd < v.hitReach && inReach) {
-        if (onStatue) g.hurtStatue(v.dmg); else g.hurtPlayer(v.dmg, b.pos, p);
+        const dmg = Math.round(v.dmg * g.diff.dmg);
+        if (onStatue) g.hurtStatue(dmg); else g.hurtPlayer(dmg, b.pos, p);
       }
     } else {
       this.attackCd -= dt;
@@ -596,6 +611,7 @@ export class ZombiesGame {
     this.net = null; this.netDelay = 0.075; this.shotEnds = [];
     this.running = false; this.phase = 'live';
     this.bomb = { state: 'none' };
+    this.difficulty = 'normal'; this.diff = Z_DIFF.normal;
     this.lastZSound = 0; this.lastFlap = 0; this.pjId = 0;
     this.puTex = {};
     // the Golden Tung Tung (one per scene: the solo and online games take turns with it)
@@ -616,9 +632,10 @@ export class ZombiesGame {
 
   // ----- lifecycle -----
   // roster (online): the players, see Session.roster(). net: the NetLink when hosting online.
-  start({ knife = 'knife', net = null, roster = null } = {}) {
+  start({ knife = 'knife', net = null, roster = null, difficulty = 'normal' } = {}) {
     this.stop();
     this.net = net; this.netDelay = 0.075;
+    this.setDifficulty(difficulty);
     this.running = true; this.phase = 'live'; this.time = 0;
     this.ac = net ? new Anticheat(this) : null;   // checks what the other players' browsers report
     this.map.resetDoors();
@@ -639,8 +656,13 @@ export class ZombiesGame {
     this.introBanner();
   }
 
+  setDifficulty(id) {
+    this.difficulty = Z_DIFF[id] ? id : 'normal';
+    this.diff = Z_DIFF[this.difficulty];
+  }
+
   introBanner() {
-    this.hud.banner('TUNG TUNG ZOMBIES', 'Defend the Golden Tung Tung: it moves to a new room every round and the zombies want it broken. '
+    this.hud.banner(this.difficulty === 'normal' ? 'TUNG TUNG ZOMBIES' : `TUNG TUNG ZOMBIES · ${this.diff.name.toUpperCase()}`, 'Defend the Golden Tung Tung: it moves to a new room every round and the zombies want it broken. '
       + (this.coop ? 'Everyone presses N when ready.' : 'Press N when you are ready.'), 'T', 6);
   }
 
@@ -677,7 +699,7 @@ export class ZombiesGame {
 
   resetPlayer(p) {
     Object.assign(p, {
-      points: 500, kills: 0, headshots: 0, downs: 0, perks: new Set(), maxHealth: BASE_HEALTH, health: BASE_HEALTH,
+      points: this.diff.points, kills: 0, headshots: 0, downs: 0, perks: new Set(), maxHealth: BASE_HEALTH, health: BASE_HEALTH,
       lastHurt: -10, downed: false, downT: 0, reviveT: 0, reviveFrac: 0, reviver: null, rebuildT: 0, reloadMul: 1, rateMul: 1,
       stash: [], stashSeq: 0,
     });
@@ -855,7 +877,7 @@ export class ZombiesGame {
     this.purge = isPurge(r);
     this.roundStartFx(r, st.room);
     // more players, more zombies (and a purge brings a lot more)
-    this.toSpawn = Math.round(zombieCount(r) * (1 + 0.5 * (this.players.length - 1)) * (this.purge ? PURGE.count : 1));
+    this.toSpawn = Math.round(zombieCount(r) * (1 + 0.5 * (this.players.length - 1)) * this.diff.count * (this.purge ? PURGE.count : 1));
     this.spawnT = 1.5;
     this.powerupsThisRound = 0; this.spawnedThisRound = 0;
     this.bossDue = r % BOSS_EVERY === 0 ? this.time + 5 : 0;   // boss round: it shows up a few seconds in
@@ -934,7 +956,7 @@ export class ZombiesGame {
     if (!pos) { room = START_AREA; pos = spawnPoint(0); }
     this.roomVisits[room] = (this.roomVisits[room] || 0) + 1;
     this.placeStatue(room, pos);
-    st.maxHp = st.hp = statueMaxHp(this.round + 1, this.players.length);
+    st.maxHp = st.hp = Math.round(statueMaxHp(this.round + 1, this.players.length) * this.diff.statue);
     this.map.computeFlow([pos], this.map.statueDist);
   }
 
@@ -1403,6 +1425,7 @@ export class ZombiesGame {
     const p = this.player;
     return {
       round: this.round, kills: p.kills, headshots: p.headshots, points: p.points, coop: this.coop,
+      difficulty: this.diff.name,
       why: this.overWhy, room: AREAS[this.statue.room]?.name || '',
       players: this.players.map((q) => ({ name: q.name, kills: q.kills, headshots: q.headshots, points: q.points, downs: q.downs, me: q === p })),
     };
@@ -1745,7 +1768,7 @@ export class ZombiesGame {
     const dx = t.x - o.x, dz = t.z - o.z, d = Math.hypot(dx, dz) || 1, T = d / hs;
     const vel = new THREE.Vector3(dx / d * hs, (t.y - o.y + 0.5 * COCO_G * T * T) / T, dz / d * hs);
     // the boss throws a fan of them (more each visit), and hits harder
-    const n = z.kind === 'boss' ? Math.min(7, 2 + z.tier) : 1, dmg = z.v.throwDmg + (z.kind === 'boss' ? 5 * (z.tier - 1) : 0);
+    const n = z.kind === 'boss' ? Math.min(7, 2 + z.tier) : 1, dmg = Math.round((z.v.throwDmg + (z.kind === 'boss' ? 5 * (z.tier - 1) : 0)) * this.diff.dmg);
     for (let i = 0; i < n; i++) {
       const a = (i - (n - 1) / 2) * 0.17, c = Math.cos(a), sn = Math.sin(a);
       const v = new THREE.Vector3(vel.x * c - vel.z * sn, vel.y, vel.x * sn + vel.z * c);

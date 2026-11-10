@@ -11,8 +11,9 @@ const _v = new THREE.Vector3();
 const PERK_IDS = new Set(['quick', 'speed', 'dtap', 'jugg']);
 
 export class ZombiesClient extends ZombiesGame {
-  startNet({ knife = 'knife', net, roster }) {
+  startNet({ knife = 'knife', net, roster, difficulty = 'normal' }) {
     this.stop();
+    this.setDifficulty(difficulty);
     this.net = net; this.netDelay = 0.1;
     this.running = true; this.phase = 'live'; this.time = 0; this.synced = false;
     this.map.resetDoors();
