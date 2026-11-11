@@ -1,4 +1,5 @@
 // All sounds are synthesized with the Web Audio API (no audio files).
+import { seal } from './guard.js';
 const SHOTS = {
   pistol: { freq: 3200, decay: 0.13, vol: 0.55, thump: 140, thumpVol: 0.4 },
   smg:    { freq: 3600, decay: 0.09, vol: 0.45, thump: 120, thumpVol: 0.35 },
@@ -295,3 +296,4 @@ export class Sound {
     notes.forEach((f, i) => this.tone(o.node, { freq: f, decay: 0.35, type: 'triangle', vol: 0.6, delay: i * 0.13 }));
   }
 }
+seal(Sound);

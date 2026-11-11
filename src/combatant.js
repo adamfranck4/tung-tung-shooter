@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { WEAPONS, adsOf } from './weapons.js';
 import { moveBody, overlapsAny, raySphere, rayBox, raycast } from './physics.js';
+import { seal } from './guard.js';
 
 // CS2 movement values, converted from Source units (1 unit = 1 inch = 0.0254 m).
 const U = 0.0254;
@@ -301,3 +302,4 @@ export class Combatant {
     return best;
   }
 }
+seal(Combatant);

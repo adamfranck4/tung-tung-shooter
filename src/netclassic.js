@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { Game, leftWhy } from './game.js';
 import { Avatar, F, r1, r2, r3, packSlots, applyInventory, showShot } from './avatar.js';
+import { seal } from './guard.js';
 
 const _v = new THREE.Vector3();
 
@@ -50,6 +51,7 @@ export class ClassicClient extends Game {
     p.update(dt);
     for (const a of this.avatars) a.update(dt);
     this.separate();
+    p.settle();
     this.bombBlink();
     this.updateSpectate();
     p.updateWeapon(dt);
@@ -166,7 +168,7 @@ export class ClassicClient extends Game {
       const p = this.player;
       this.hud.damage(); this.sound.hurt();
       p.punch += 0.02;
-      p.body.vel.x *= 0.5; p.body.vel.z *= 0.5;
+      p.body.vel.x *= 0.5; p.body.vel.z *= 0.5; p.settle();
       return;
     }
     super.feedback(ev);
@@ -227,3 +229,4 @@ export class ClassicClient extends Game {
     this.hud.center(`${c.name} ${leftWhy(k)}`, 3);
   }
 }
+seal(ClassicClient);

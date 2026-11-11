@@ -6,6 +6,7 @@ import { ZombiesGame, Zombie, unpackStash, isPurge } from './zombies.js';
 import { leftWhy } from './game.js';
 import { START_AREA, AREAS } from './zmap.js';
 import { F, r1, r2, r3, packSlots, applyInventory, showShot } from './avatar.js';
+import { seal } from './guard.js';
 
 const _v = new THREE.Vector3();
 const PERK_IDS = new Set(['quick', 'speed', 'dtap', 'jugg']);
@@ -56,6 +57,7 @@ export class ZombiesClient extends ZombiesGame {
       p.updateWeapon(dt);
     }
     this.separate();
+    p.settle?.();
     this.updateInteract();
     this.animatePowerups(dt);
     this.map.updateDoors(dt);
@@ -287,3 +289,4 @@ export class ZombiesClient extends ZombiesGame {
     this.hud.center(`${q.name} ${leftWhy(k)}`, 3);
   }
 }
+seal(ZombiesClient);

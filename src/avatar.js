@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { Bot } from './bots.js';
 import { WEAPONS, papDef, MAX_PAP } from './weapons.js';
 import { wrapAngle } from './physics.js';
+import { seal, frozen } from './guard.js';
 
 // bit flags used in state updates and snapshots
 // HIDE (snapshots only): an enemy the host doesn't tell you the position of (out of sight)
@@ -268,3 +269,5 @@ export class Avatar extends Bot {
     }
   }
 }
+frozen(F);
+seal(Interp, Avatar);

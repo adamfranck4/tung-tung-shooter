@@ -15,6 +15,7 @@ import { Avatar, F, r2, r3, packSlots, showShot } from './avatar.js';
 import { BOT_NAMES } from './net.js';
 import { Anticheat } from './anticheat.js';
 import { matte } from './gfx.js';
+import { seal } from './guard.js';
 
 const FREEZE_TIME = 5;
 const ROUND_TIME = 115;
@@ -362,7 +363,7 @@ export class Game {
       victim.punch += 0.02; // aim punch
     } else if (victim.isAvatar) this.tell(victim, { e: 'hurt', d: dmg });
     // slow down on hit (tagging)
-    victim.body.vel.x *= 0.5; victim.body.vel.z *= 0.5;
+    victim.body.vel.x *= 0.5; victim.body.vel.z *= 0.5; victim.settle?.();
     if (victim.health <= 0) this.kill(victim, attacker, def, headshot);
   }
 
@@ -633,6 +634,7 @@ export class Game {
     this.ac?.record(this.combatants);
     this.director.update();
     this.separate();
+    this.player.settle();
     this.updateBomb(dt);
     this.checkWin();
     this.updateSpectate();
@@ -779,3 +781,4 @@ export class Game {
 export function leftWhy(k) {
   return !k ? 'left the game' : k === 2 || k === 'host' ? 'was banned by the host' : 'was banned by the anticheat';
 }
+seal(Game);

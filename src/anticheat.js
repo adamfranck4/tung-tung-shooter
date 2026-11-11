@@ -4,11 +4,16 @@
 // slowly forgiven; a player who reaches KICK_AT (AIM_KICK_AT for aim cheats) is banned from the
 // room (see Session.ban: their name and browser can't join again).
 //
-// It can't see inside a player's browser, so it only catches what a cheat has to tell the host:
+// It can't see inside a player's browser (that's the guard's job, see guard.js: it runs there
+// and reports here), so it only catches what a cheat has to tell the host:
 // moving too fast or through walls, flying, guns or ammo the host never gave, firing too fast
 // (or before the gun is out), reloading faster than the gun can, bullets that don't kick the
 // way the gun kicks (no recoil), and hits that weren't possible (no shot, too far, through a
-// wall, not aimed that way).
+// wall, not aimed that way). Where it can, it also doesn't go along with the cheat: someone
+// flying or speeding is kept, for everyone else, where a fair player could have got to.
+//
+// The host's own player is put through the movement checks too. A host who fails them isn't
+// banned by anyone: their room closes.
 //
 // It also watches where each player looks (sent 30 times a second) for what aim cheats do:
 // aim that stays locked on a moving target, one-update snaps that land exactly on a target,
@@ -32,11 +37,13 @@
 // A wallhack fills up with them. Aim that follows one, lands on the decoy after it moves, shoots
 // at the decoy, or hits any of them is a cheat.
 import * as THREE from 'three';
-import { raycast, wrapAngle } from './physics.js';
-import { dirFrom, RUN_SPEED } from './combatant.js';
+import { raycast, wrapAngle, GRAVITY } from './physics.js';
+import { dirFrom, RUN_SPEED, JUMP_SPEED } from './combatant.js';
+import { DEV } from './guard.js';
 import { F, r1, r2, r3 } from './avatar.js';
 import { WORLD } from './map.js';
 import { aimScore, AIM_THRESHOLD } from './aimml.js';
+import { seal } from './guard.js';
 
 const KICK_AT = 9;                    // suspicion points (movement, guns, hits)
 const AIM_KICK_AT = 6;                // aim cheat points
@@ -49,8 +56,20 @@ const MAX_RUN = 10;                   // m/s sideways (running is 6.35; bunny ho
 const RUN_SLACK = 3;                  // m, for updates that arrive bunched up
 const MAX_RISE = 8, RISE_SLACK = 2;   // m/s and m upwards (a jump starts at 7.7 m/s)
 const MAX_GAP = 8;                    // m between where a player says they are and where the host has them
+const TRAIL = 12;                     // updates (0.4 s) of reported positions kept, for corners cut by someone running behind
 const HELD_LIMIT = 2.5;               // s in a row of being held back by the speed limit
 const AIR_LIMIT = 3;                  // s off the ground (a jump lasts under a second)
+// flying: off the ground, nobody is ever higher than a jump from where they last stood would
+// have them by now (the arc of a 7.7 m/s jump under gravity), +0.95 m (a crouch-jump tucks the
+// feet up half a metre; steps; rounding). Updates arrive late, so the arc may run 0.25 s late.
+const ARC_RISE = 0.95, ARC_LATE = 0.25, ARC_EARLY = 0.1;
+const ARC_OVER = 0.3;                 // s above the arc before it counts (a late clump of updates adds 0.05 at most)
+// the clock: players send 30 updates for every second of their game, and a game never runs
+// ahead of real time. Over CLOCK_WIN real seconds, more than 5% over that (+20 updates that
+// were held up) means their game's clock is being pushed (a speed hack on the whole page).
+const CLOCK_WIN = 8, CLOCK_SLACK = 1.05, CLOCK_ADD = 20, SEND_RATE = 30;
+const STRIKE = 3.2;                 // points for flying or speeding: the third time in a row bans
+const WARNED = 1.5;                   // points count this much more for a player whose guard warned about their browser
 const AIM_SLACK = 0.7;                // rad between where a player looks and what they hit (recoil, spread, lag)
 
 // speed on the ground: no faster than their gun lets anyone run (+12% and 0.15 m/s); up to
@@ -131,7 +150,7 @@ const GUNS = { T: ['ak', 'ak', 'pistol', 'deagle', 'sniper', 'smg', 'm16'], CT: 
 
 // what the banned player is told
 const REASONS = {
-  teleport: 'teleporting', speed: 'moving too fast', wall: 'walking through walls', fly: 'flying',
+  teleport: 'teleporting', speed: 'moving too fast', wall: 'walking through walls', fly: 'flying', clock: 'a sped-up game clock',
   gun: 'using a gun the host never gave you', ammo: 'giving yourself ammo', rate: 'firing too fast',
   empty: 'firing without ammo', noshot: 'hits without shots', through: 'shooting through walls',
   range: 'hitting from too far away', aim: 'hitting what you were not aiming at', damage: 'too much damage',
@@ -176,6 +195,11 @@ export class Anticheat {
         pts: 0, ptsT: this.game.time, apts: 0, aptsT: this.game.time, cool: {},
         pos: { x: p.x, y: p.y, z: p.z }, rep: { x: p.x, y: p.y, z: p.z }, t: this.game.time,
         run: RUN_SLACK, rise: RISE_SLACK, air: 0, held: 0,
+        // flying: the height and time they last stood on something, how long they've been above a jump's arc
+        offY: p.y, offT: null, over: 0, onG: true,
+        trail: [],   // the last TRAIL positions they reported (x, y, z, x, y, z...)
+        // the clock: updates counted since nT (real seconds)
+        n: 0, nT: null,
         credit: 3, creditT: this.game.time, tokens: 0, tokT: -9, mtok: 0, mT: -9,
         // aim: view updates [{t, ts, x, y, z (eyes), yaw, pitch, dx, dy, dz (view direction)}], oldest first
         // (t: when it arrived, ts: a steadier estimate of when it was sent, see clock())
@@ -198,6 +222,7 @@ export class Anticheat {
     const s = this.st(av), p = av.body.pos;
     Object.assign(s.pos, { x: p.x, y: p.y, z: p.z }); Object.assign(s.rep, s.pos);
     s.t = this.game.time; s.run = RUN_SLACK; s.rise = RISE_SLACK; s.air = 0; s.held = 0;
+    s.offY = p.y; s.offT = null; s.over = 0; s.onG = true; s.trail.length = 0;
     s.aim.length = 0; s.spin.length = 0; s.snapOn = false; s.eng = null;
     s.bank = SPEED_BANK; s.gx = undefined;
     s.wshots = {}; s.fire.ts.length = 0; s.rc.n = 0; s.rc.c = 0; s.rc.m = s.rc.e = 0; s.swT = -9;
@@ -205,7 +230,7 @@ export class Anticheat {
   }
 
   // the host pushed them (a zombie's hit): a burst of speed that isn't theirs
-  pushed(av) { if (av?.isAvatar) this.st(av).pushT = this.game.time; }
+  pushed(av) { if (av?.isAvatar || (av && av === this.game.player)) this.st(av).pushT = this.game.time; }
 
   // they switched weapons (the new one takes its draw time to come out)
   switched(av) { this.st(av).swT = this.game.time; }
@@ -218,6 +243,7 @@ export class Anticheat {
   record(...lists) {
     const now = this.game.time;
     this.selfAim();
+    this.selfMove();
     if (now - this.recT < 1 / 40) return;
     this.recT = now;
     for (const list of lists) for (const c of list) {
@@ -250,8 +276,10 @@ export class Anticheat {
   // Aim cheats show up once per gunfight, so their points are kept in a second pool that is
   // forgiven much more slowly and bans sooner.
   flag(av, why, pts) {
-    if (!av?.isAvatar || av.kicked) return;
+    const self = !!av && av === this.game.player;
+    if (!av || av.kicked || !(av.isAvatar || self)) return;
     const s = this.st(av), now = this.game.time, slow = AIM_CHEATS.has(why);
+    if (!self && this.game.net?.session?.warned?.(av.pid)) pts *= WARNED;
     s.pts = Math.max(0, s.pts - (now - s.ptsT) * FORGIVE); s.ptsT = now;
     s.apts = Math.max(0, s.apts - (now - s.aptsT) * FORGIVE_AIM); s.aptsT = now;
     if (now - (s.cool[why] ?? -9) < COOLDOWN) return;
@@ -265,8 +293,27 @@ export class Anticheat {
   kick(av, why) {
     av.kicked = true; av.kickedBy = 'anticheat';
     const g = this.game;
+    if (av === g.player) {   // the host: nobody to ban them, so the room closes
+      console.warn(`[anticheat] the host failed its own checks (${REASONS[why] || why}): closing the room`);
+      g.net?.session?.onSelf?.(REASONS[why] || why);
+      return;
+    }
     console.warn(`[anticheat] banned ${av.name} (${REASONS[why] || why})`);
     g.net?.session?.ban(av.pid, `You were banned by the anticheat (${REASONS[why] || why}).`);
+  }
+
+  // 30 times a second: the host's own player, put through the same movement checks as everyone
+  // else (only the checks: nothing is corrected). Test builds skip it (they fast-forward time).
+  selfMove() {
+    const g = this.game, p = g.player, now = g.time;
+    if (DEV || !p || !g.net || p.kicked || now - (this.selfMT ?? -9) < 1 / SEND_RATE - 1e-6) return;
+    this.selfMT = now;
+    const b = p.body.pos;
+    if (!p.alive || p.downed) { if (p.ac) this.spawned(p); return; }
+    const s = this.st(p);
+    // the game put them somewhere else (a respawn): start over from there
+    if (Math.hypot(b.x - s.rep.x, b.z - s.rep.z) > 5 || Math.abs(b.y - s.rep.y) > 5) this.spawned(p);
+    this.move(p, b.x, b.y, b.z);
   }
 
   // shots and knife swings first: a hit is reported just before the shot that made it
@@ -282,44 +329,82 @@ export class Anticheat {
     const s = this.st(av), g = this.game, now = g.time, dt = Math.min(1, Math.max(0, now - s.t));
     s.t = now;
     this.clock(s, now);
+    this.sendRate(av, s);
     const out = s.pos, rep = s.rep;
     // updates come 30 times a second, so even a bad connection can't jump this far between two
     if (Math.hypot(x - rep.x, z - rep.z) > 6 || y - rep.y > 4) this.flag(av, 'teleport', 4);
     rep.x = x; rep.y = y; rep.z = z;
 
-    s.run = Math.min(RUN_SLACK, s.run + dt * MAX_RUN);
-    s.rise = Math.min(RISE_SLACK, s.rise + dt * MAX_RISE);
+    // on the ground they're only followed as fast as their gun lets them run (a speed hack's extra
+    // is left behind); in the air, or just pushed, as fast as anyone can go
+    // (timed on the real clock too: when the host's game runs slow, a background tab or a weak
+    // computer, players still move in real time)
+    const w0 = av.slots[av.slot], fast = !s.onG || now - s.pushT < PUSH_SKIP, rdt = Math.min(1, Math.max(dt, s.clkD));
+    s.run = Math.min(RUN_SLACK, s.run + rdt * (fast ? MAX_RUN : RUN_SPEED * (w0?.def.speed || 1) * SPEED_SLACK + SPEED_ADD));
+    s.rise = Math.min(RISE_SLACK, s.rise + rdt * MAX_RISE);
     let dx = x - out.x, dz = z - out.z, dy = y - out.y;
     const d = Math.hypot(dx, dz);
     // held back by the speed limit for a while: more than a bad connection explains
     s.held = d > s.run + 0.01 ? s.held + dt : Math.max(0, s.held - dt);
-    if (s.held > HELD_LIMIT) { this.flag(av, 'speed', 2); s.held = 0; }
+    if (s.held > HELD_LIMIT) { this.flag(av, 'speed', STRIKE); s.held = 0; }
     if (d > s.run) { dx *= s.run / d; dz *= s.run / d; }
     s.run -= Math.min(d, s.run);
     if (dy > s.rise) dy = s.rise;
     if (dy > 0) s.rise -= dy;
 
-    // walls: the line at waist height from the last position to the new one must be clear
+    // walls: the line at waist height from the last position to the new one must be clear.
+    // Someone the host has a little behind (lag, or held to their speed) cuts corners that way, so
+    // when it isn't, they're taken to the newest place they reported lately that can be reached
+    // from here. Only when there is none (all of it is behind the wall) did they go through it.
+    const T = s.trail;
+    T.push(x, y, z); if (T.length > TRAIL * 3) T.splice(0, 3);
     const len = Math.hypot(dx, dy, dz);
-    if (len > 0.01) {
-      _e.set(out.x, out.y + 0.9, out.z);
-      _d.set(dx / len, dy / len, dz / len);
-      const w = raycast(_e, _d, len, this.cols(true), _hit);
-      if (w && w.t < len - 0.02 && (_hit.nx || _hit.nz)) { this.flag(av, 'wall', 2); dx = dz = 0; dy = Math.min(dy, 0); }
+    if (len > 0.01 && this.walled(out, dx, dy, dz, len)) {
+      const up = Math.max(dy, 0);
+      let ok = false;
+      for (let i = T.length - 6; i >= 0 && !ok; i -= 3) {
+        const qx = T[i] - out.x, qy = T[i + 1] - out.y, qz = T[i + 2] - out.z, ql = Math.hypot(qx, qy, qz);
+        if (ql < 0.05) { ok = true; dx = dz = 0; dy = Math.min(dy, 0); }           // (that's where they are)
+        else if (!this.walled(out, qx, qy, qz, ql)) { ok = true; const k = Math.min(1, len / ql); dx = qx * k; dz = qz * k; dy = Math.min(qy * k, up); }
+      }
+      if (!ok) { if (T.length >= TRAIL * 3) this.flag(av, 'wall', 2); dx = dz = 0; dy = Math.min(dy, 0); }
     }
     out.x += dx; out.y += dy; out.z += dz;
 
     // a player who keeps getting further from where the host has them is too fast
-    if (Math.hypot(x - out.x, z - out.z) > MAX_GAP) this.flag(av, 'speed', 2);
+    if (Math.hypot(x - out.x, z - out.z) > MAX_GAP) this.flag(av, 'speed', STRIKE);
 
-    // flying: too long off the ground, and not on a ladder
-    const map = g.map, above = out.y - this.floorBelow(out), ladder = !!map.ladderAt?.(_e.set(out.x, out.y, out.z));
+    // flying: above the arc of a jump from where they last stood, or too long off the ground
+    const map = g.map, ladder = !!map.ladderAt?.(_e.set(out.x, out.y, out.z));
+    let floor = this.floorBelow(out), above = out.y - floor;
+    if (above < 0.08 || ladder || s.offT === null || now - s.pushT < PUSH_SKIP) {
+      s.offY = out.y; s.offT = s.wc.clk; s.over = Math.max(0, s.over - dt * 0.5);
+    } else {
+      // (the highest point of the arc anywhere between ARC_LATE ago and ARC_EARLY from now)
+      const arc = (t) => JUMP_SPEED * t - 0.5 * GRAVITY * t * t, peak = JUMP_SPEED / GRAVITY;
+      const t0 = Math.max(0, s.wc.clk - s.offT - ARC_LATE), t1 = s.wc.clk - s.offT + ARC_EARLY;   // (real seconds, see above)
+      const top = s.offY + ARC_RISE + (t0 <= peak && t1 >= peak ? arc(peak) : Math.max(arc(t0), arc(t1)));
+      if (out.y > top + 0.01) {
+        s.over += Math.min(dt, 0.05);
+        out.y = Math.max(top, floor); above = out.y - floor;
+        if (s.over > ARC_OVER) { this.flag(av, 'fly', STRIKE); s.over = 0; }
+      } else s.over = Math.max(0, s.over - dt * 0.5);
+    }
+    s.onG = above < 0.08 && !ladder;
     if (above > 0.6 && !ladder) {
       s.air += dt;
-      if (s.air > AIR_LIMIT) { this.flag(av, 'fly', 3); s.air = 0; }
+      if (s.air > AIR_LIMIT) { this.flag(av, 'fly', STRIKE); s.air = 0; }
     } else s.air = 0;
     this.groundSpeed(av, s, x, z, above < 0.08 && !ladder);
     return out;
+  }
+
+  // is there a wall on the line (at waist height) from p along (dx, dy, dz), len long?
+  walled(p, dx, dy, dz, len) {
+    _e.set(p.x, p.y + 0.9, p.z);
+    _d.set(dx / len, dy / len, dz / len);
+    const w = raycast(_e, _d, len, this.cols(true), _hit);
+    return !!w && w.t < len - 0.02 && !!(_hit.nx || _hit.nz);
   }
 
   // A steadier clock for when each update was sent: arrival times jump around with the network
@@ -345,6 +430,17 @@ export class Anticheat {
     s.clkD = steady(s.wc, performance.now() / 1000);
   }
 
+  // A sped-up clock: more updates than a game running in real time sends (see CLOCK_WIN).
+  sendRate(av, s) {
+    const rt = performance.now() / 1000;
+    if (s.nT === null || rt - s.nT > CLOCK_WIN * 3) { s.nT = rt; s.n = 0; return; }
+    s.n++;
+    const T = rt - s.nT;
+    if (T < CLOCK_WIN) return;
+    if (s.n > SEND_RATE * T * CLOCK_SLACK + CLOCK_ADD) this.flag(av, 'clock', 6);
+    s.nT = rt; s.n = 0;
+  }
+
   // Speed hacks: on the ground, friction holds everyone to their gun's running speed (bunny hops
   // are in the air, so they're left to the looser limit above). Each update earns that speed
   // (+12%, +0.15 m/s) for the time it covers on the steady clock above, so updates that arrive
@@ -360,7 +456,7 @@ export class Anticheat {
     if (!ground || now - s.pushT < PUSH_SKIP) { s.bank = SPEED_BANK; return; }
     const top = RUN_SPEED * (w?.def.speed || 1) * SPEED_SLACK + SPEED_ADD;
     s.bank = Math.min(SPEED_BANK, s.bank) + top * s.clkD - moved;
-    if (s.bank < -SPEED_DEBT) { this.flag(av, 'speed', 2); s.bank = SPEED_BANK; }
+    if (s.bank < -SPEED_DEBT) { this.flag(av, 'speed', STRIKE); s.bank = SPEED_BANK; }
   }
 
   // what bullets hit, or (for movement) what players bump into
@@ -1313,3 +1409,4 @@ export class Anticheat {
     return false;
   }
 }
+seal(Anticheat);

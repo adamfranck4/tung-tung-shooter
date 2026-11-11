@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { letterTexture, surfaceMaterial } from './textures.js';
 import { solidDistance, mergeBands, blockHash, addEdgeTrims, buildContactShadows } from './mapkit.js';
 import { matte } from './gfx.js';
+import { seal } from './guard.js';
 
 export const CELL = 2;
 export const GW = 60, GH = 60;
@@ -430,3 +431,4 @@ export class GameMap {
     return c;
   }
 }
+seal(GameMap);

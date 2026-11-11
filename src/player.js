@@ -1,13 +1,26 @@
 // The human player: reads keyboard/mouse input and drives a Combatant.
 import { Combatant } from './combatant.js';
 import { BUY_ITEMS, adsOf } from './weapons.js';
+import { seal, report } from './guard.js';
 
 // CS2's m_yaw / m_pitch: 0.022 degrees per mouse count, times the sensitivity setting.
 export const CS_DEG_PER_COUNT = 0.022 * Math.PI / 180;
 const MAX_PITCH = 89 * Math.PI / 180;
 const NOISY_SPEED = 3.6; // m/s; shift-walking stays below this and is silent, like CS2
 
+// Self-checks against cheats that write into the game from outside (see guard.js). Only this
+// file moves your view (look) and your body (update, plus the few places that call settle()), so:
+//  - a view that isn't where look() left it was written by something else (an aimbot),
+//  - a position or speed that isn't where the last tick left it was too (flying, speed hacks).
+// A little is let through before it counts, so a rounding slip can never ban anyone.
+const DRIFT_POS = 1.2, DRIFT_VEL = 7;   // m and m/s that may go unexplained (forgiven at 0.4 m/s and 2 m/s per second)
+const DRIFT_JUMP = 3;                   // m: further than this at once is a respawn somewhere, not a cheat's nudge
+
 export class Player extends Combatant {
+  #yaw = null; #pitch = 0;                          // the view as look() last left it
+  #x = 0; #y = 0; #z = 0; #vx = 0; #vy = 0; #vz = 0; // the body as the last tick left it...
+  #at = -1; #drift = 0; #vdrift = 0;                // ...when that was, and how much has gone unexplained
+
   constructor(game, team) {
     super(game, 'You', team);
     this.stepT = 0;
@@ -15,10 +28,42 @@ export class Player extends Combatant {
     this.jumpBuffer = 0;
   }
 
+  spawn(pos, yaw) {
+    super.spawn(pos, yaw);
+    this.#yaw = null; this.#drift = this.#vdrift = 0;
+    this.settle();
+    this.game.ac?.spawned(this);   // hosting online: the host's own player is checked like everyone else
+  }
+
+  // The game itself just moved or pushed you (bumping into someone, a hit's knock-back): that's
+  // where you now are. Called at the end of every tick and by those few places.
+  settle() {
+    const b = this.body;
+    this.#x = b.pos.x; this.#y = b.pos.y; this.#z = b.pos.z;
+    this.#vx = b.vel.x; this.#vy = b.vel.y; this.#vz = b.vel.z;
+    this.#at = this.game.time;
+  }
+
+  // has the body changed since the last tick left it?
+  #bodyCheck(dt) {
+    const b = this.body, since = this.game.time - this.#at;
+    if (this.#at < 0 || since < 0 || since > 0.1) return;   // no tick just before this one (a menu, downed, a new match)
+    this.#drift = Math.max(0, this.#drift - 0.4 * dt); this.#vdrift = Math.max(0, this.#vdrift - 2 * dt);
+    const d = Math.hypot(b.pos.x - this.#x, b.pos.y - this.#y, b.pos.z - this.#z);
+    if (d > 1e-9 && d < DRIFT_JUMP) { this.#drift += d; if (this.#drift > DRIFT_POS) { this.#drift = 0; report('ban', 'pos-write', ''); } }
+    const v = Math.hypot(b.vel.x - this.#vx, b.vel.y - this.#vy, b.vel.z - this.#vz);
+    if (v > 1e-9) { this.#vdrift += v; if (this.#vdrift > DRIFT_VEL) { this.#vdrift = 0; report('ban', 'vel-write', ''); } }
+  }
+
   // Aim. Called once per rendered frame (not per physics tick) so the view never lags the mouse.
   look() {
     const g = this.game, inp = g.input;
-    if (!this.alive) return;
+    if (!this.alive) { this.#yaw = null; return; }
+    if (this.#yaw !== null && (this.yaw !== this.#yaw || this.pitch !== this.#pitch)) report('ban', 'aim-write', '');
+    this.#look(g, inp);
+    this.#yaw = this.yaw; this.#pitch = this.pitch;
+  }
+  #look(g, inp) {
     // zoomed in (scope, or aiming down sights): the mouse turns you slower, by the same amount
     const zoom = this.scoped ? (this.weapon?.def.zoomFov || g.scopeFov) / g.baseFov : this.adsFov();
     const k = CS_DEG_PER_COUNT * g.settings.sens * zoom;
@@ -49,8 +94,13 @@ export class Player extends Combatant {
 
   // Everything else. Called once per physics tick.
   update(dt) {
-    const g = this.game, inp = g.input;
     if (!this.alive) return;
+    this.#bodyCheck(dt);
+    this.#update(dt);
+    this.settle();
+  }
+  #update(dt) {
+    const g = this.game, inp = g.input;
 
     // ----- buy menu (Zombies: B is the ammo menu; the Gun Shop counter opens its own with E) -----
     if (inp.pressed('KeyB') && g.mode === 'zombies') g.hud.center('Buy ammo at the Gun Shop counter (E)', 1.5);
@@ -167,3 +217,4 @@ export class Player extends Combatant {
     }
   }
 }
+seal(Player);

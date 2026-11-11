@@ -14,6 +14,7 @@
 import * as THREE from 'three';
 import { ENTRANCES, PLANT_SPOTS, CT_HOLDS, T_ROUTES, T_CONTROL } from './map.js';
 import { RUN_SPEED } from './combatant.js';
+import { seal } from './guard.js';
 
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
 const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
@@ -408,3 +409,4 @@ export class Director {
     c.setObjective({ pos: pick(PLANT_SPOTS[s]).clone(), look: pick(ENTRANCES[s]), kind: 'plant', site: s });
   }
 }
+seal(Director);

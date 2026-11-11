@@ -4,6 +4,7 @@ import { Combatant } from './combatant.js';
 import { wrapAngle } from './physics.js';
 import { flashTexture, markerTexture, tungSkinTexture, tungFaceTexture, rainbowSkin } from './textures.js';
 import { matte } from './gfx.js';
+import { seal } from './guard.js';
 
 export const DIFF = {
   easy:   { reaction: 0.7,  turn: 3.0, aimErr: 0.09,  settle: 1.4, head: 0.12, comp: 0.3,  spray: 4,  fov: 2.0, jitter: 0.016 },
@@ -664,3 +665,4 @@ export class Bot extends Combatant {
     m.flash.visible = false;
   }
 }
+seal(Bot);

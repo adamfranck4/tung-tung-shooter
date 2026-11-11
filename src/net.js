@@ -4,11 +4,14 @@
 //
 // Test option: add ?net=local to the URL to connect tabs of the same browser without the
 // internet (and &lag=150 to fake a 150 ms round trip).
+import { seal, DEV, findings, rebase, watchLib, report, tamperText } from './guard.js';
 
 const PEERJS_URL = 'https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js';
+// (the file's fingerprint: the browser refuses a PeerJS that was swapped for another one)
+const PEERJS_SHA = 'sha384-x0YgkOr/3UOZP2CRDxGW9e0Q+2Qjyr3uJrm4xU32Y7ZCNAo7Cc7bjhrZMi/dwczu';
 const ID_PREFIX = 'tungtung-shooter-v1-';
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-export const PROTOCOL = 7;   // bump when host and players must run the same version (7: decoys, hidden spawns, bans)
+export const PROTOCOL = 8;   // bump when host and players must run the same version (8: the guard reports to the host)
 export const MAX_PLAYERS = { classic: 10, zombies: 6 };
 export const TEAM_SIZE = 5;
 export const BOT_NAMES = {
@@ -77,9 +80,15 @@ function loadPeerJS() {
   if (window.Peer) return Promise.resolve(window.Peer);
   if (!peerLib) {
     peerLib = new Promise((resolve, reject) => {
+      // something already sitting where PeerJS goes would get to read and rewrite the connection
+      if (Object.getOwnPropertyDescriptor(window, 'Peer') || Object.getOwnPropertyDescriptor(window, 'peerjs')) report('kick', 'hook', 'window.Peer');
       const s = document.createElement('script');
-      s.src = PEERJS_URL; s.async = true; s.crossOrigin = 'anonymous';
-      s.onload = () => (window.Peer ? resolve(window.Peer) : reject(new NetError('Online play failed to load.')));
+      s.src = PEERJS_URL; s.async = true; s.crossOrigin = 'anonymous'; s.integrity = PEERJS_SHA;
+      s.onload = () => {
+        if (!window.Peer) { reject(new NetError('Online play failed to load.')); return; }
+        rebase(); watchLib('window', window, ['Peer', 'peerjs']); watchLib('Peer', window.Peer.prototype);
+        resolve(window.Peer);
+      };
       s.onerror = () => { peerLib = null; s.remove(); reject(new NetError('Could not load online play. Check your internet connection.')); };
       document.head.appendChild(s);
     });
@@ -220,11 +229,20 @@ export class Session {
       if (m.v !== PROTOCOL) return deny('That room is running a different version of the game. Both players should reload the page.');
       const dev = typeof m.dev === 'string' ? m.dev.slice(0, 32) : '';
       if (this.isBanned(cleanName(m.name), dev)) return deny('You are banned from this room.');
+      // what their browser's guard found before they got here (see guard.js)
+      if (m.test && !DEV) return deny('That is a test build of the game. Open the game without ?dev to play online.');
+      if (!Array.isArray(m.g) && !DEV) return deny('That room needs the anticheat. Reload the page and try again.');
+      const bad = this.worstOf(m.g);
+      if (bad) {
+        console.warn(`[anticheat] ${cleanName(m.name)} turned away: ${tamperText(bad[1], bad[2])}`);
+        if (bad[0] === 'ban') { this.bans.push({ n: cleanName(m.name).toLowerCase(), d: dev, t: Date.now() }); saveBans(this.bans); }
+        return deny(`The anticheat found cheat software in your browser: ${tamperText(bad[1], bad[2])}. Turn off your browser extensions and reload the page.`);
+      }
       if (L.inGame) return deny('That match has already started. Ask the host to go back to the lobby, then join again.');
       if (L.players.length >= MAX_PLAYERS[L.mode]) return deny('That room is full.');
       const id = 'p' + this.nextId++;
       L.players.push({ id, name: this.uniqueName(cleanName(m.name)), team: this.openTeam() });
-      const peer = { conn, heard: performance.now(), dev };
+      const peer = { conn, heard: performance.now(), dev, pongs: 0, warned: new Set() };
       this.peers.set(id, peer);
       conn.onmessage = (msg) => { peer.heard = performance.now(); if (!peer.kicked) this.fromClient(id, msg); };
       conn.onclose = () => this.drop(id);
@@ -252,8 +270,12 @@ export class Session {
       case 'pong': {   // the answer to our ping: how long a message takes there and back
         const peer = this.peers.get(id), ms = performance.now() - m.k;
         if (peer && Number.isFinite(ms) && ms >= 0 && ms < 5000) peer.rtt = peer.rtt == null ? ms : peer.rtt + (ms - peer.rtt) * 0.25;
+        // every answer carries what their guard has found; one that stops saying has been tampered with
+        if (peer && !Array.isArray(m.g) && !DEV && ++peer.pongs >= 3) this.guardSays(id, [['kick', 'no-guard', '']]);
+        else this.guardSays(id, m.g);
         break;
       }
+      case 'ac': this.guardSays(id, m.g); break;
     }
   }
 
@@ -271,6 +293,35 @@ export class Session {
     if (L.inGame) this.onLeft?.(id, name);
     this.pushLobby();
   }
+
+  // the worst of a guard's findings ([[level, kind, detail], ...]): a 'ban', else a 'kick', else null
+  worstOf(g) {
+    if (!Array.isArray(g)) return null;
+    const ok = g.filter((f) => Array.isArray(f) && typeof f[1] === 'string').map((f) => [f[0], f[1].slice(0, 24), String(f[2] ?? '').slice(0, 80)]);
+    return ok.find((f) => f[0] === 'ban') || ok.find((f) => f[0] === 'kick') || null;
+  }
+
+  // host: a player's guard reported what it found in their browser. 'ban': only a cheat does it;
+  // 'kick': the game was tampered with (they can come back once it's off); 'warn': the host's
+  // checks get stricter for them (see Anticheat.flag).
+  guardSays(id, g) {
+    const peer = this.peers.get(id), p = this.lobby?.players.find((x) => x.id === id);
+    if (!peer || peer.kicked || !p || !Array.isArray(g)) return;
+    for (const f of g) {
+      if (!Array.isArray(f) || f[0] !== 'warn' || peer.warned.has(f[1] + f[2]) || peer.warned.size > 30) continue;
+      peer.warned.add(f[1] + f[2]);
+      console.warn(`[anticheat] ${p.name}'s browser: ${tamperText(String(f[1]), String(f[2] ?? ''))} (an extension?)`);
+    }
+    const bad = this.worstOf(g);
+    if (!bad) return;
+    const why = tamperText(bad[1], bad[2]);
+    console.warn(`[anticheat] ${bad[0] === 'ban' ? 'banned' : 'removed'} ${p.name}: their browser's guard found ${why}`);
+    this.onGuard?.(id, bad[0]);
+    if (bad[0] === 'ban') this.ban(id, `You were banned by the anticheat (${why}).`);
+    else this.kick(id, `The anticheat removed you: it found ${why} in your browser. Turn off your browser extensions and reload the page.`);
+  }
+  // host: has this player's guard warned about their browser?
+  warned(id) { return (this.peers.get(id)?.warned.size || 0) > 0; }
 
   // host: remove a player (see ban). They're told why.
   kick(id, why) {
@@ -369,7 +420,7 @@ export class Session {
           else if (m?.t === 'deny') { clearTimeout(t); reject(new NetError(m.why || 'The host refused the connection.')); }
           else if (m?.t === 'lobby') this.lobby = m.lobby;
         };
-        conn.send({ t: 'hello', v: PROTOCOL, name: cleanName(name), dev: deviceId() });
+        conn.send({ t: 'hello', v: PROTOCOL, name: cleanName(name), dev: deviceId(), g: findings(), test: DEV ? 1 : undefined });
       });
       this.role = 'client';
       conn.onmessage = (m) => { peer.heard = performance.now(); this.fromHost(m); };
@@ -387,7 +438,7 @@ export class Session {
       case 'g': this.onGame?.('h', m); break;
       case 'abort': this.onAbort?.(); break;
       case 'closed': this.lost(m.why || 'The host closed the room.'); break;
-      case 'ping': if (m.k != null) this.send('h', { t: 'pong', k: m.k }); break;
+      case 'ping': if (m.k != null) this.send('h', { t: 'pong', k: m.k, g: findings() }); break;
     }
   }
 
@@ -418,9 +469,13 @@ export class Session {
     }
   }
 
-  leave() {
+  // player: tell the host right away what the guard just found
+  tellGuard() { if (this.role === 'client') this.send('h', { t: 'ac', g: findings() }); }
+
+  // why: what the others are told when the host's room closes
+  leave(why = 'The host closed the room.') {
     if (this.closed) return;
-    if (this.isHost) this.broadcast({ t: 'closed', why: 'The host closed the room.' });
+    if (this.isHost) this.broadcast({ t: 'closed', why });
     else this.send('h', { t: 'bye' });
     this.closed = true;
     const tr = this.transport, peers = [...this.peers.values()];
@@ -479,3 +534,4 @@ export class NetLink {
     for (const id of this.session.peers.keys()) this.session.send(id, { t: 'g', s: perPeer && data ? perPeer(data, id) : data, ev: this.take(id) });
   }
 }
+seal(Conn, PeerTransport, LocalTransport, Session, NetLink);

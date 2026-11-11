@@ -14,6 +14,7 @@ import { solidDistance, mergeBands, blockHash, addEdgeTrims, buildContactShadows
 import { RARITIES, CASE_PRICE, CASE_COLOR } from './weapons.js';
 import { buildMound, buildTrees, buildLogs, buildStalls, buildBunting, buildWallDecor } from './zdecor.js';
 import { matte, glowColor, MIST_OPACITY, LAMP_LIGHTS } from './gfx.js';
+import { seal } from './guard.js';
 
 const C = 2;                 // cell size in meters
 const GW = 60, GH = 54;
@@ -1571,3 +1572,4 @@ export class ZMap {
     return true;
   }
 }
+seal(ZMap);

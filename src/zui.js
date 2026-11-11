@@ -7,6 +7,7 @@ import { WEAPONS, RARITIES, rarityOf, caseOdds, rollCase, CASE_COLOR, CASE_ODDS,
 import { displayGuns, onGunModels } from './viewmodel.js';
 import { stashDef, AUTO_BREAK } from './zombies.js';
 import { esc } from './hud.js';
+import { seal } from './guard.js';
 
 const $ = (id) => document.getElementById(id);
 const TIER = { common: 0, rare: 1, epic: 2, legendary: 3 };
@@ -401,3 +402,4 @@ export class ZMenu {
       + '<button data-act="back">KEEP IT STORED</button></div>';
   }
 }
+seal(ZMenu);

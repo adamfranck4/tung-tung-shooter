@@ -14,6 +14,7 @@ import { Avatar, Interp, F, r1, r2, r3, packSlots, showShot } from './avatar.js'
 import { Statue, STATUE_R, statueMaxHp, hunterChance, chooseRoom, statueSpot } from './zstatue.js';
 import { NET_SOUNDS, leftWhy } from './game.js';
 import { Anticheat } from './anticheat.js';
+import { seal } from './guard.js';
 
 const MAX_ALIVE = 24;
 // Auto-start next round (inventory option): how long a break you get before you're marked ready by yourself
@@ -1963,6 +1964,7 @@ export class ZombiesGame {
     }
     for (const z of this.zombies) if (z.active) z.update(dt);
     this.separate();
+    this.player.settle?.();
     this.ac?.record(this.players, this.zombies);
     this.updateProjectiles(dt);
     if (this.phase === 'over') return;
@@ -1991,7 +1993,7 @@ export class ZombiesGame {
       case 'case': this.onCaseResult?.(ev); break;   // a case you opened: the menu plays it
       case 'hurt':
         p.punch += 0.05;
-        p.body.vel.x += (+ev.x || 0) * 3; p.body.vel.z += (+ev.z || 0) * 3;
+        p.body.vel.x += (+ev.x || 0) * 3; p.body.vel.z += (+ev.z || 0) * 3; p.settle?.();
         this.hud.damage(); this.sound.batHit();
         break;
     }
@@ -2115,3 +2117,4 @@ export class ZombiesGame {
     this.checkWipe();
   }
 }
+seal(Zombie, ZombiesGame);

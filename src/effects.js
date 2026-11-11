@@ -1,6 +1,7 @@
 // Visual effects: bullet holes, dust and blood particles, tracers, explosions.
 import * as THREE from 'three';
 import { bulletHoleTexture } from './textures.js';
+import { seal } from './guard.js';
 
 const MAX_P = 400;
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _s = new THREE.Vector3(), _v = new THREE.Vector3();
@@ -177,3 +178,4 @@ export class Effects {
     }
   }
 }
+seal(Effects);

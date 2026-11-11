@@ -73,7 +73,16 @@ code (and a **Copy invite link** button); everyone else types the code and click
   slowly forgiven; a player who keeps failing them is **banned** ("You were banned by the anticheat"). The host's
   console lists every failed check. It also catches:
   - **speed hacks:** on the ground nobody runs faster than their gun allows (+12%). Late or bunched-up updates are
-    allowed for, so it takes a few seconds to catch a 25% boost, about a second for a bigger one.
+    allowed for, so it takes a few seconds to catch a 25% boost, about a second for a bigger one. The host also only
+    follows a player that fast, so to everyone else a speed hacker moves at normal speed while it's being caught
+    (the third strike bans, about 3 seconds).
+  - **flying:** off the ground nobody is higher than a jump from where they last stood would have them by now
+    (the arc of a jump under gravity, with room for a crouch-jump and late updates). Above that they're kept on the
+    arc for everyone else, and the third strike bans (about 3 seconds). Ladders and knock-back are allowed for.
+  - **a sped-up game:** a page whose clock runs fast sends more than 30 updates a second; 5% over that for 8 seconds
+    is flagged.
+  - The host's own player goes through the movement checks too. A host who fails them can't be banned by anyone,
+    so their room closes and everyone is told why.
   - **instant reload:** the host counts every magazine; a reload has to take the gun's reload time between the last
     shot before it and the first one after it.
   - **rapid fire:** over a spray of 15-30 shots, no more than 6% faster than the gun (lag spikes are spotted and
@@ -120,10 +129,39 @@ code (and a **Copy invite link** button); everyone else types the code and click
   host can also ban a player from the Esc menu during a match (anyone on the other team in 5v5, anyone in Zombies);
   **CLEAR BANS** in the lobby lets everyone back in. A cheater can still get around a ban with a new name in a
   private window.
-- It can't stop a cheating *host*. A carefully humanised aimbot that ignores the fakes can still take several
-  fights to catch, and the aim network learned from simulated people, not recordings of real ones.
+- **The guard (cheating browser extensions):** `src/guard.js` runs in every player's own browser, before anything
+  else, against cheats that live in the page (extensions, userscripts, code pasted into the console). Such a cheat
+  can't change the game's files, so it has to reach into the running game, and each way in is closed or watched:
+  - the debug handles (`window.__game` and friends) are gone; the names are tripwires now (looking inside one
+    removes you from online play, writing through one bans you);
+  - the game's classes are sealed and its weapon tables frozen, so importing the game's modules again and
+    replacing a method does nothing but report the attempt;
+  - traps on `Object.prototype` that catch the game's objects as they're built are found, removed and blocked;
+  - the browser's own functions (arrays, maps, the mouse, the connection, the clocks, drawing) are checked for
+    replacements, both ones made before the game loaded (even ones disguised as "native code") and ones made
+    while playing;
+  - only real key presses and mouse movement count: made-up events are ignored, and a stream of made-up aiming
+    is an aimbot;
+  - the player checks itself: a view that isn't where the mouse left it, or a position or speed that isn't where
+    the last tick left it, was written from outside (aimbots, flying, speed hacks), however the cheat got in;
+  - the game's clock is compared with a clock the page can't reach, so speeding the page up is caught in a
+    couple of seconds.
+
+  What it finds has a level. **Ban**: only a cheat does this. **Kick**: the game has been tampered with; you're
+  removed and can come back once the extension is off and the page reloaded. **Warn**: something privacy
+  extensions also do (changed clocks or drawing functions); the host is told and that player's suspicion points
+  count 1.5 times. A player's guard tells the host, who removes them; a host's guard closes their room. Solo
+  games aren't touched. Every answer to the host's ping carries the guard's findings, and a player whose answers
+  stop carrying them is removed.
+- It can't stop someone who swaps the game's files for their own copy (the guard is one of those files): for them
+  there are only the host's checks above, which don't trust anything a browser says. A cheating host with their
+  own copy of the game can't be stopped either. A carefully humanised aimbot that ignores the fakes can still take
+  several fights to catch, and the aim network learned from simulated people, not recordings of real ones. ESP can
+  still show the enemies the host does send (the ones you could see or hear anyway).
 - Testing on one computer: open two tabs with `?net=local` added to the URL (they connect without the internet;
-  `&lag=150` fakes a 150 ms round trip).
+  `&lag=150` fakes a 150 ms round trip). Add `&dev` (it only works on localhost) for a test build: the debug
+  handles work, made-up input counts and the guard only logs to the console. A host that isn't a test build turns
+  test builds away.
 
 ## Zombies mode
 
@@ -395,6 +433,7 @@ vercel --prod
 - `src/net.js` — online rooms, lobby and message batching (PeerJS)
 - `src/avatar.js` — other players' fighters, moved by network updates
 - `src/anticheat.js` — the host's checks on what other players report (movement, guns and ammo, shots, hits, aim)
+- `src/guard.js` — the guard in every player's browser against extension cheats (must stay the first import of `main.js`)
   and which enemy positions each player is sent
 - `src/netclassic.js`, `src/netzombies.js` — 5v5 and Zombies on a joining player's browser (the host runs
   `game.js` / `zombies.js` for everyone)

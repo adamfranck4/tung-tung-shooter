@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { buildTungModel } from './bots.js';
 import { AREAS, GUN_SHOP } from './zmap.js';
 import { matte, glossy, beamColor, BEAM_OPACITY } from './gfx.js';
+import { seal } from './guard.js';
 
 export const STATUE_R = 0.6;          // half the plinth's width: what zombies bump into and hit
 const PLINTH_H = 0.5, SCALE = 1.35;
@@ -177,3 +178,4 @@ export function statueSpot(map, room) {
   const px = best[0] * C + C / 2, pz = best[1] * C + C / 2;
   return new THREE.Vector3(px, map.surfaceAt(px, pz), pz);
 }
+seal(Statue);

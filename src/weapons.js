@@ -1,5 +1,6 @@
 // Weapon stats. Spread / kick values are in radians, damage is per bullet.
 // falloff = damage multiplier per 10m travelled.
+import { frozen } from './guard.js';
 export const WEAPONS = {
   knife: {
     key: 'knife', name: 'Knife', slot: 3, melee: true, damage: 50, rate: 0.45, range: 2.1,
@@ -254,3 +255,6 @@ export const BUY_ITEMS = [
   weaponItem('Sniper', () => 'sniper'),
   { cat: 'Gear', key: null, armor: true, label: () => 'Kevlar + Helmet', price: () => ARMOR_PRICE },
 ];
+frozen(WEAPONS);
+frozen(ADS);
+frozen(PAP_LEVELS);

@@ -3,6 +3,7 @@ import { WORLD } from './map.js';
 import { BUY_ITEMS, WEAPONS, CASE_COLOR } from './weapons.js';
 import { drawCrosshair, crosshairScale } from './crosshair.js';
 import { PERKS, AREAS, ZW, FL, GUN_SHOP } from './zmap.js';
+import { seal } from './guard.js';
 
 // Zombies map (M): marker colors for you and up to three teammates
 const MAP_COLORS = ['#ffd36a', '#7fd4ff', '#a6ff8a', '#ff9ad8', '#ffa05a', '#b89aff'];
@@ -679,3 +680,4 @@ export class Hud {
     }
   }
 }
+seal(Hud);

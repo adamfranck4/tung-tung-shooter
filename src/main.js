@@ -1,3 +1,4 @@
+import { DEV, tick as guardTick, simAdvance, onTamper, worst, tamperText, debugHandles } from './guard.js';   // (first: see guard.js)
 import * as THREE from 'three';
 import { makeTextures } from './textures.js';
 import { GameMap, WORLD } from './map.js';
@@ -183,9 +184,9 @@ let zombies = null;
 const getZombies = () => (zombies = zombies || precompile(buildZombiesWorld()));
 let world = classic;
 let session = null;   // the online room you're in, if any
-Object.defineProperty(window, '__game', { get: () => world.game }); // handy for debugging in the console
-Object.defineProperty(window, '__session', { get: () => session });
-window.__worlds = { classic, getZombies };
+// Handy for debugging in the console, in test builds only (?dev on your own computer). Everywhere
+// else these names are tripwires for cheats (see guard.js).
+debugHandles({ __game: { get: () => world.game }, __session: { get: () => session }, __worlds: { value: { classic, getZombies } }, __input: { value: input } });
 
 // ---------- menu ----------
 const choice = { mode: 'classic', net: 'solo', team: 'T', difficulty: 'normal', rounds: 8, knife: 'knife', crosshair: 'classic', gfx: quality };
@@ -409,7 +410,23 @@ function netMsg(text, bad = false) { $('net-msg').textContent = text || ''; $('n
 function lobbyMsg(text, bad = false) { $('lobby-msg').textContent = text || ''; $('lobby-msg').classList.toggle('bad', !!bad); }
 function netBusy(on) { for (const id of ['host-btn', 'join-btn']) $(id).disabled = on; }
 
+// The guard found the game tampered with (see guard.js): no online play until the page is reloaded
+// without whatever did it. Solo games carry on: there's nobody to cheat.
+function blockedMsg() {
+  const f = DEV ? null : worst('kick');
+  return f ? `Online play is off: the anticheat found ${tamperText(f.kind, f.detail)} in this browser. Turn off your browser extensions and reload the page.` : '';
+}
+onTamper((f) => {
+  if (DEV || !session) return;
+  if (f.level === 'warn') { session.tellGuard(); return; }
+  // in a room: a player tells the host (who removes them) and leaves; a host's room closes
+  const s = session;
+  s.tellGuard();
+  leaveRoom(blockedMsg(), s.isHost ? 'The room was closed by the anticheat: it found cheat software in the host\'s browser.' : undefined);
+});
+
 async function hostRoom() {
+  if (blockedMsg()) { netMsg(blockedMsg(), true); return; }
   sound.init();
   const s = new Session();
   netBusy(true); netMsg('Creating a room...');
@@ -419,6 +436,7 @@ async function hostRoom() {
 }
 
 async function joinRoom() {
+  if (blockedMsg()) { netMsg(blockedMsg(), true); return; }
   const code = normalizeCode(codeEl.value);
   if (code.length !== 5) { netMsg('Type the 5-character room code from the host.', true); codeEl.focus(); return; }
   sound.init();
@@ -439,17 +457,25 @@ function enterRoom(s) {
   s.onAbort = () => { backToLobby(); lobbyMsg('The host ended the match.'); };
   s.onClosed = (why) => leaveRoom(why);
   s.onLeft = (pid) => { if (world.game.running) world.game.removePlayer?.(pid); };
+  // host: a player's own guard reported a cheat in their browser (they're being removed)
+  s.onGuard = (pid) => {
+    const g = world.game, c = (g.zombies ? g.remotes : g.avatars)?.find((a) => a.pid === pid);
+    if (c) { c.kicked = true; c.kickedBy = 'anticheat'; }
+  };
+  // host: your own player failed the host's movement checks (see Anticheat.selfMove)
+  s.onSelf = (why) => leaveRoom(`Your room was closed by the anticheat (${why}).`, `The room was closed by the anticheat: the host was caught ${why}.`);
   lobbyMsg(''); $('copy-msg').textContent = '';
   setState('lobby');
   renderLobby(s.lobby);
   syncBackgroundTicker();
 }
 
-function leaveRoom(why = '') {
+// told: what the others are told when it's the host leaving
+function leaveRoom(why = '', told = undefined) {
   const s = session;
   session = null;
   stopMatch();
-  s?.leave();
+  s?.leave(told);
   syncBackgroundTicker();
   input.unlock();
   setState('menu');
@@ -616,6 +642,7 @@ function advance(dt) {
   const g = world.game;
   const live = state === 'playing' || (!!session && g.running && (state === 'paused' || state === 'over' || state === 'zmenu'));
   if (live) {
+    simAdvance(dt);
     step(dt);
     if (g.player?.alive) vm.update(dt, g.player, g, input.dx, input.dy);
     hud.update(dt, g);
@@ -631,6 +658,7 @@ let lastFrameAt = 0;   // when the browser last drew a frame
 function frame(shownAt) {
   requestAnimationFrame(frame);
   lastFrameAt = performance.now();
+  guardTick();
   // time by when the screen refreshes, not by when this code got to run: frames then advance the game
   // by even amounts even when one starts a little late, so movement doesn't judder
   const now = shownAt ?? lastFrameAt;
@@ -662,6 +690,7 @@ if (bgWorker) {
   bgWorker.onmessage = () => {
     const now = performance.now();
     if (!session || now - lastFrameAt < 250) return;   // frames are being drawn: the normal loop runs the game
+    guardTick();
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
     if (dt > 0) { advance(dt); input.endFrame(); }
@@ -670,7 +699,7 @@ if (bgWorker) {
 function syncBackgroundTicker() { bgWorker?.postMessage(session ? 33 : 0); }
 
 // debug helper: advance the simulation without relying on requestAnimationFrame
-window.__sim = (seconds = 1, fps = 60) => {
+const sim = (seconds = 1, fps = 60) => {
   const g = world.game;
   const frames = Math.round(seconds * fps);
   for (let i = 0; i < frames; i++) {
@@ -685,10 +714,8 @@ window.__sim = (seconds = 1, fps = 60) => {
   render();
 };
 
-window.__renderer = renderer; // debug: lets test scripts render frames to a contact sheet
-window.__post = post;         // debug: the Ultra graphics effects (null otherwise)
 // debug helper: average milliseconds per frame (simulation + rendering, waiting for the GPU)
-window.__bench = (frames = 120) => {
+const bench = (frames = 120) => {
   const gl = renderer.getContext();
   const g = world.game;
   const t0 = performance.now();
@@ -700,6 +727,9 @@ window.__bench = (frames = 120) => {
   }
   return +((performance.now() - t0) / frames).toFixed(2);
 };
+
+// test builds: __renderer lets test scripts render frames to a contact sheet; __post is the Ultra effects (or null)
+debugHandles({ __sim: { value: sim }, __bench: { value: bench }, __renderer: { value: renderer }, __post: { value: post } });
 
 setState('menu');
 showMode(choice.mode);

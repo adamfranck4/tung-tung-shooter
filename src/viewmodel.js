@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { flashTexture } from './textures.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { matte, glossy, HIGH } from './gfx.js';
+import { seal } from './guard.js';
 
 const M = {};
 function mat(c) { return M[c] || (M[c] = matte({ color: c })); }
@@ -1776,3 +1777,4 @@ export class ViewModel {
 }
 
 loadGunModels();
+seal(ViewModel);
