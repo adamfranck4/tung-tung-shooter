@@ -445,3 +445,7 @@ Photo textures from [Poly Haven](https://polyhaven.com) (CC0, free for any use):
 Floor Tiles 04 and Raw Plank Wall.
 
 Gun models by [Quaternius](https://quaternius.com) (CC0, free for any use), downloaded from [Poly Pizza](https://poly.pizza).
+
+## License
+
+The code is released under the [MIT License](LICENSE). The textures and gun models above are CC0.
